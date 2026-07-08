@@ -1,0 +1,149 @@
+export type CrmObject =
+  | "Account"
+  | "Contact"
+  | "Lead"
+  | "Opportunity"
+  | "Product2"
+  | "Pricebook2"
+  | "Event"
+  | "Case"
+  | "QuickText"
+  | "MessagingSession"
+  | "Knowledge__kav"
+  | "ListEmail"
+  | "Invoice"
+  | "VideoCall";
+
+export type RecordData = {
+  id?: string;
+  [key: string]: unknown;
+};
+
+export type UserRecord = {
+  id: string;
+  name: string;
+  alias: string;
+  avatarUrl?: string | null;
+};
+
+export type BootstrapData = {
+  user: UserRecord;
+  accounts: RecordData[];
+  contacts: RecordData[];
+  leads: RecordData[];
+  opportunities: RecordData[];
+  cases: RecordData[];
+  products: RecordData[];
+  priceBooks: RecordData[];
+  priceBookEntries: RecordData[];
+  events: RecordData[];
+  calendarSources: RecordData[];
+  quickTexts: RecordData[];
+  quickTextFolders: RecordData[];
+  knowledgeArticles: RecordData[];
+  listEmails: RecordData[];
+  messagingSessions: RecordData[];
+  invoices: RecordData[];
+  videoCalls: RecordData[];
+  files: RecordData[];
+  attachments: RecordData[];
+  tasks: RecordData[];
+  emailActivities: RecordData[];
+  callActivities: RecordData[];
+  partners: RecordData[];
+  stores: RecordData[];
+  campaigns: RecordData[];
+  campaignMembers: RecordData[];
+  recordLabels: RecordData[];
+  marketingActivations: RecordData[];
+  subscriptionCheckouts: RecordData[];
+  customReports: RecordData[];
+  customDashboards: RecordData[];
+  notifications: RecordData[];
+  notificationPreferences: RecordData[];
+  guidanceItems: RecordData[];
+  guidanceStates: RecordData[];
+  userPreferences: RecordData[];
+  setupShortcutStates: RecordData[];
+  helpArticleStates: RecordData[];
+  appNavPreferences: RecordData[];
+  listViewPreferences: RecordData[];
+  globalSearchRecents: RecordData[];
+  agentforceMessages: RecordData[];
+};
+
+export type ColumnDefinition = {
+  key: string;
+  label: string;
+  editable?: boolean;
+  link?: boolean;
+  width?: string;
+};
+
+export type ObjectDefinition = {
+  object: CrmObject;
+  label: string;
+  plural: string;
+  icon: string;
+  dataKey: keyof BootstrapData;
+  defaultList: string;
+  listViews: string[];
+  actions: string[];
+  columns: ColumnDefinition[];
+  searchInputName: string;
+  statusWhenEmpty?: string;
+  emptyTitle?: string;
+  emptyBody?: string;
+  disabledInlineEditMessage?: string;
+  supportsNew?: boolean;
+};
+
+export type FieldType =
+  | "text"
+  | "textarea"
+  | "email"
+  | "url"
+  | "phone"
+  | "number"
+  | "currency"
+  | "date"
+  | "time"
+  | "checkbox"
+  | "picklist"
+  | "lookup"
+  | "readonly";
+
+export type FieldDefinition = {
+  name: string;
+  label: string;
+  section: string;
+  type: FieldType;
+  required?: boolean;
+  options?: string[];
+  lookupObject?: CrmObject | "User" | "People";
+  defaultValue?: string | boolean | number;
+  readOnly?: boolean;
+};
+
+export type FormDefinition = {
+  object: CrmObject;
+  title: string;
+  fields: FieldDefinition[];
+  saveLabel?: string;
+};
+
+export type AppKey =
+  | "home"
+  | "contacts"
+  | "accounts"
+  | "sales"
+  | "service"
+  | "marketing"
+  | "commerce"
+  | "your-account";
+
+export type AppNavItem = {
+  label: string;
+  href: string;
+  object?: CrmObject;
+};
