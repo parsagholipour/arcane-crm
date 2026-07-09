@@ -7,6 +7,7 @@ import * as Popover from "@radix-ui/react-popover";
 import * as Tabs from "@radix-ui/react-tabs";
 import {
   Activity,
+  AlertCircle,
   BadgeDollarSign,
   Bell,
   Bookmark,
@@ -15,6 +16,7 @@ import {
   Building2,
   CalendarDays,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -32,6 +34,7 @@ import {
   Home,
   LayoutDashboard,
   Library,
+  List,
   Mail,
   Megaphone,
   MessageSquareText,
@@ -49,6 +52,7 @@ import {
   Target,
   ThumbsUp,
   Trash2,
+  TriangleAlert,
   Upload,
   User,
   Video,
@@ -74,6 +78,7 @@ import {
   CASE_STATUS,
   CURRENT_USER,
   EVENT_SUBJECTS,
+  FORECAST_CATEGORY,
   FORM_DEFINITIONS,
   LEAD_STATUS,
   LIST_EMAIL_LAYOUTS,
@@ -471,6 +476,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
   const [data, setData] = useState<BootstrapData>(() => decorateBootstrap(initialData));
   const [modal, setModal] = useState<ModalState | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
+  const toastTimerRef = useRef<number | null>(null);
   const [consoleTabs, setConsoleTabs] = useState<ConsoleTab[]>([]);
   const [recordLabels, setRecordLabels] = useState<Record<string, string[]>>(() => labelsFromData(initialData.recordLabels));
   const [campaignMembers, setCampaignMembers] = useState<Record<string, string[]>>(() => campaignMembersFromData(initialData.campaignMembers, initialData.campaigns));
@@ -503,7 +509,8 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
 
   function showToast(next: ToastState) {
     setToast(next);
-    window.setTimeout(() => setToast(null), 3200);
+    if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 3200);
   }
 
   function getRecords(object: CrmObject) {
@@ -676,6 +683,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
         <AppNavBar data={data} activeApp={screen.activeApp} pathname={pathname} onEditNav={() => setModal({ type: "navEdit", app: screen.activeApp })} />
         {showConsoleTabs && <ConsoleTabs tabs={consoleTabs} activeHref={pathnameWithSearch(pathname, searchParams)} onClose={(href) => setConsoleTabs((tabs) => tabs.filter((tab) => tab.href !== href))} />}
         <main className="slds-scrollbar min-h-0 flex-1 overflow-auto p-3">
+          <div key={pathname} className="crm-screen-enter">
           <ScreenRenderer
             screen={screen}
             data={data}
@@ -710,6 +718,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
             listSearchQuery={searchParams.get("search") ?? ""}
             analyticsReportName={searchParams.get("report") ?? ""}
           />
+          </div>
         </main>
       </div>
       <ModalHost
@@ -733,7 +742,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
 
   async function applyListAction(action: string, object: CrmObject, selectedIds: string[], payload: RecordData) {
     const key = dataKeyForObject(object);
-    const targetIds = selectedIds.length > 0 ? selectedIds : (data[key] as RecordData[]).map((record) => requiredId(record));
+    const targetIds = selectedIds;
     const workflowResult = await persistWorkflow(action, object, targetIds, payload);
     if (!workflowResult) return;
 
@@ -791,13 +800,51 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
       return;
     }
 
+    if (action === "Convert Lead" && object === "Lead") {
+      const selectedLeads = data.leads.filter((lead) => targetIds.includes(requiredId(lead)));
+      if (selectedLeads.length === 0) {
+        showToast({ tone: "warning", message: "Select at least one lead to convert." });
+        closeModal();
+        return;
+      }
+      const conversion = leadConversionResultFromWorkflow(workflowResult, selectedLeads, data, payload);
+      setData((previous) =>
+        decorateBootstrap({
+          ...previous,
+          accounts: upsertRecordsById(previous.accounts, conversion.accounts),
+          contacts: upsertRecordsById(previous.contacts, conversion.contacts),
+          opportunities: upsertRecordsById(previous.opportunities, conversion.opportunities),
+          leads: upsertRecordsById(previous.leads, conversion.leads)
+        })
+      );
+      void createAppNotification({
+        title: "Lead converted",
+        body: `${selectedLeads.length} lead${selectedLeads.length === 1 ? "" : "s"} converted to account and contact records.`,
+        href: defaultRouteForObject("Lead"),
+        category: "Workflow"
+      });
+      showToast({ tone: "success", message: `${selectedLeads.length} lead${selectedLeads.length === 1 ? "" : "s"} converted.` });
+      closeModal();
+      return;
+    }
+
     if (action === "Change Owner") {
-      const ownerName = String(payload.ownerName ?? data.user.name);
+      const ownerName = String(payload.ownerName ?? data.user.name).trim() || data.user.name;
       const updatedRecords = Array.isArray(workflowResult.records) ? (workflowResult.records as RecordData[]) : [];
       setData((previous) =>
         decorateBootstrap({
           ...previous,
-          [key]: (previous[key] as RecordData[]).map((record) => updatedRecords.find((updatedRecord) => updatedRecord.id === record.id) ?? record)
+          [key]: (previous[key] as RecordData[]).map((record) => {
+            const updatedRecord = updatedRecords.find((item) => item.id === record.id);
+            if (updatedRecord) return { ...record, ...updatedRecord };
+            if (!targetIds.includes(requiredId(record))) return record;
+            return {
+              ...record,
+              ownerId: ownerName,
+              updatedById: data.user.id,
+              updatedAt: new Date().toISOString()
+            };
+          })
         } as BootstrapData)
       );
       void createAppNotification({
@@ -1054,6 +1101,7 @@ function ScreenRenderer({
         onCreate={onCreate}
         onEdit={() => onEdit(screen.object, record)}
         onDelete={() => onDelete(screen.object, record)}
+        onChangeOwner={() => onListAction("Change Owner", screen.object, [record], [requiredId(record)])}
         onRecordEdit={onEdit}
         onRecordDelete={onDelete}
         onSaveActivity={onSaveActivity}
@@ -1084,7 +1132,7 @@ function TrialBanner() {
 
 function LeftAppRail({ activeApp }: { activeApp: AppKey }) {
   return (
-    <aside className="flex w-[86px] shrink-0 flex-col items-center bg-shell py-3 text-white">
+    <aside className="flex w-[80px] shrink-0 flex-col items-center bg-shell py-3 text-white">
       <div className="mb-3 flex h-9 w-9 items-center justify-center rounded bg-white text-brand-600 shadow-sm">
         <Cloud size={24} fill="currentColor" />
       </div>
@@ -1098,15 +1146,15 @@ function LeftAppRail({ activeApp }: { activeApp: AppKey }) {
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "group relative flex min-h-[3.5rem] flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-[11px] leading-tight text-[#c9e0f5] outline-none transition-[background-color,color,box-shadow] duration-150",
+                "group relative flex min-h-[3.75rem] flex-col items-center justify-center gap-1 rounded-md px-0.5 py-1.5 text-[12.5px] leading-tight text-[#c9e0f5] outline-none transition-[background-color,color,box-shadow] duration-150",
                 "hover:bg-[#1b4f81] hover:text-white hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]",
                 "focus-visible:bg-[#1b4f81] focus-visible:text-white focus-visible:shadow-[inset_0_0_0_2px_#ffffff]",
                 "active:bg-[#163a5f]",
                 active && "bg-[#1b4f81] font-semibold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.28)]"
               )}
             >
-              {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-white" aria-hidden="true" />}
-              <Icon size={18} className={cn("transition-transform duration-150 group-hover:scale-105", active && "scale-105")} />
+              {active && <span className="absolute left-0.5 top-2 bottom-2 w-0.5 rounded-full bg-white" aria-hidden="true" />}
+              <Icon size={22} className={cn("transition-transform duration-150 group-hover:scale-105", active && "scale-105")} />
               <span className="text-center">{item.label}</span>
             </Link>
           );
@@ -1191,14 +1239,14 @@ function SearchOverlay({
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <button className="mx-auto flex h-8 w-full max-w-xl items-center gap-2 rounded border border-[#c9c9c9] bg-[#f3f3f3] px-3 text-left text-sm text-[#444] hover:bg-white" aria-label="Search...">
-          <Search size={16} />
+        <button className="mx-auto flex h-8 w-full max-w-xl items-center gap-2 rounded-full border border-[#cfd4dc] bg-[#f2f4f7] px-3.5 text-left text-sm text-[#514f4d] hover:border-[#b5bcc7] hover:bg-white hover:shadow-[0_1px_3px_rgba(16,24,40,0.08)] data-[state=open]:border-brand-500 data-[state=open]:bg-white data-[state=open]:shadow-[0_0_0_3px_rgba(1,118,211,0.14)]" aria-label="Search...">
+          <Search size={16} className="text-[#706e6b]" />
           <span>Search...</span>
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="center" className="z-50 w-[680px] rounded border border-[#c9c9c9] bg-white p-3 shadow-popover">
-          <div className="flex items-center gap-2 rounded border border-brand-500 px-2">
+          <div className="flex items-center gap-2 rounded-md border border-brand-500 px-2 shadow-[0_0_0_3px_rgba(1,118,211,0.12)]">
             <Search size={16} className="text-brand-600" />
             <input
               autoFocus
@@ -2040,7 +2088,7 @@ function HeaderUtility({
 
   useEffect(() => {
     setGuidanceItems(buildGuidanceItems(data));
-  }, [data.guidanceItems, data.guidanceStates]);
+  }, [data]);
 
   useEffect(() => {
     setProfileName(data.user.name);
@@ -2302,7 +2350,7 @@ function HeaderUtility({
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
-        <button aria-label={label} className="relative flex h-8 w-8 items-center justify-center rounded text-[#444] transition-colors duration-150 hover:bg-[#f3f3f3] hover:text-brand-700 focus-visible:bg-[#f3f3f3] focus-visible:text-brand-700 active:bg-[#e5e5e5]">
+        <button aria-label={label} className="relative flex h-8 w-8 items-center justify-center rounded-md text-[#444] hover:bg-[#f2f4f7] hover:text-brand-700 focus-visible:bg-[#f2f4f7] focus-visible:text-brand-700 active:scale-90 active:bg-[#e8ebef] data-[state=open]:bg-brand-50 data-[state=open]:text-brand-700">
           <Icon size={17} />
           {effectiveBadge && <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#ba0517] px-1 text-[10px] text-white">{effectiveBadge}</span>}
         </button>
@@ -2479,11 +2527,11 @@ function HeaderUtility({
                   </FieldShell>
                 </div>
                 <div className="mt-2 grid gap-2 md:grid-cols-2">
-                  <label className="flex items-center justify-between rounded border border-[#d8dde6] bg-white p-2 text-sm">
+                  <label className="flex items-center justify-between rounded-lg border border-[#e4e7ec] bg-white shadow-card p-2 text-sm">
                     Guidance cards
                     <input type="checkbox" checked={guidanceEnabled} onChange={(event) => { setGuidanceEnabled(event.target.checked); void savePreferences({ guidanceEnabled: event.target.checked }); }}  className={checkboxClass} />
                   </label>
-                  <label className="flex items-center justify-between rounded border border-[#d8dde6] bg-white p-2 text-sm">
+                  <label className="flex items-center justify-between rounded-lg border border-[#e4e7ec] bg-white shadow-card p-2 text-sm">
                     Console tabs
                     <input type="checkbox" checked={consoleTabsEnabled} onChange={(event) => { setConsoleTabsEnabled(event.target.checked); void savePreferences({ consoleTabsEnabled: event.target.checked }); }}  className={checkboxClass} />
                   </label>
@@ -2588,7 +2636,7 @@ function HeaderUtility({
             <div className="p-3">
               <div className="flex items-center gap-3 rounded border border-[#d8dde6] bg-[#f8f8f8] p-3">
                 {data.user.avatarUrl ? (
-                  <img src={data.user.avatarUrl} alt="" className="h-14 w-14 rounded-full object-cover ring-2 ring-white" />
+                  <AvatarImage src={String(data.user.avatarUrl)} className="h-14 w-14 rounded-full ring-2 ring-white" />
                 ) : (
                   <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-lg font-semibold text-white">{data.user.alias.slice(0, 2)}</div>
                 )}
@@ -2611,7 +2659,7 @@ function HeaderUtility({
                   </FieldShell>
                   {profileAvatarUrl && (
                     <div className="flex items-center gap-2 rounded border border-[#d8dde6] p-2 text-sm">
-                      <img src={profileAvatarUrl} alt="" className="h-9 w-9 rounded-full object-cover" />
+                      <AvatarImage src={profileAvatarUrl} className="h-9 w-9 rounded-full" />
                       <span className="text-[#706e6b]">Avatar preview</span>
                     </div>
                   )}
@@ -2669,7 +2717,7 @@ function AppNavBar({ data, activeApp, pathname, onEditNav }: { data: BootstrapDa
   const visible = items.slice(0, 7);
   const overflow = items.slice(7);
   return (
-    <div className="flex h-11 shrink-0 items-center gap-4 border-b border-[#d8dde6] bg-white px-3">
+    <div className="relative z-10 flex h-11 shrink-0 items-center gap-4 border-b border-[#e4e7ec] bg-white px-3 shadow-header">
       <div className="flex min-w-32 items-center gap-2 font-semibold text-[#181818]">
         <AppIcon size={18} className="text-brand-600" />
         <span>{app.label}</span>
@@ -2722,22 +2770,56 @@ function AppNavBar({ data, activeApp, pathname, onEditNav }: { data: BootstrapDa
 }
 
 function ConsoleTabs({ tabs, activeHref, onClose }: { tabs: ConsoleTab[]; activeHref: string; onClose: (href: string) => void }) {
+  const maxVisibleTabs = 6;
+  const activeTab = tabs.find((tab) => tab.href === activeHref);
+  const baseVisibleTabs = tabs.length > maxVisibleTabs && activeTab && tabs.indexOf(activeTab) >= maxVisibleTabs
+    ? [...tabs.slice(0, maxVisibleTabs - 1), activeTab]
+    : tabs.slice(0, maxVisibleTabs);
+  const visibleHrefs = new Set(baseVisibleTabs.map((tab) => tab.href));
+  const overflowTabs = tabs.filter((tab) => !visibleHrefs.has(tab.href));
+
   return (
-    <div className="flex h-9 shrink-0 items-end gap-1 overflow-x-auto border-b border-[#d8dde6] bg-[#f3f3f3] px-2 pt-1">
-      {tabs.map((tab) => (
+    <div className="flex h-9 shrink-0 items-end gap-1 overflow-hidden border-b border-[#d8dde6] bg-[#f3f3f3] px-2 pt-1">
+      {baseVisibleTabs.map((tab) => (
         <div key={tab.href} role="tab" aria-selected={activeHref === tab.href} className={cn("flex h-8 max-w-56 items-center rounded-t border border-[#d8dde6] bg-white text-xs", activeHref === tab.href && "border-b-white font-semibold")}>
           <Link href={tab.href} className="truncate px-3">
             * {tab.label}
+          </Link>
+          <Link href={consoleTabListHref(tab.href)} className="mr-1 flex h-5 w-5 items-center justify-center rounded text-[#706e6b] hover:bg-[#f3f3f3] hover:text-brand-700" aria-label={`List ${tab.label}`}>
+            <List size={12} />
           </Link>
           <button className="mr-1 flex h-5 w-5 items-center justify-center rounded hover:bg-[#f3f3f3]" aria-label={`Close tab ${tab.label}`} onClick={() => onClose(tab.href)}>
             <X size={12} />
           </button>
         </div>
       ))}
-      {tabs.length > 6 && (
-        <button className="flex h-8 items-center gap-1 rounded-t border border-[#d8dde6] bg-white px-3 text-xs">
-          More <ChevronDown size={12} />
-        </button>
+      {overflowTabs.length > 0 && (
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button className="flex h-8 items-center gap-1 rounded-t border border-[#d8dde6] bg-white px-3 text-xs hover:bg-[#f8f8f8]" aria-label={`More console tabs, ${overflowTabs.length} hidden`}>
+              More <ChevronDown size={12} />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content className="z-50 min-w-64 rounded border border-[#d8dde6] bg-white p-1 shadow-popover">
+              {overflowTabs.map((tab) => (
+                <DropdownMenu.Item key={tab.href} asChild>
+                  <div className="flex items-center gap-1 rounded px-2 py-1.5 text-sm hover:bg-brand-50">
+                    <Link href={tab.href} className="min-w-0 flex-1 truncate">
+                      * {tab.label}
+                    </Link>
+                    <Link href={consoleTabListHref(tab.href)} className="flex h-6 w-6 items-center justify-center rounded text-[#706e6b] hover:bg-white hover:text-brand-700" aria-label={`List ${tab.label}`}>
+                      <List size={13} />
+                    </Link>
+                    <button className="flex h-6 w-6 items-center justify-center rounded text-[#706e6b] hover:bg-white hover:text-[#ba0517]" aria-label={`Close tab ${tab.label}`} onClick={(event) => { event.preventDefault(); event.stopPropagation(); onClose(tab.href); }}>
+                      <X size={13} />
+                    </button>
+                  </div>
+                </DropdownMenu.Item>
+              ))}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
       )}
     </div>
   );
@@ -2832,6 +2914,8 @@ function ListViewPage({
     if (action === "New" || action === "New Quick Text" || action === "New Event") onCreate(object);
     else if (action === "Send Email") onCreate("ListEmail");
     else if (action === "Refresh") onToast({ tone: "success", message: "List refreshed." });
+    else if (action === "Edit List") setControlDialog("Select Fields to Display");
+    else if (action === "Charts" || action === "Filters" || action === "List View Controls") setControlDialog(action);
     else onListAction(action, object, visibleRecords, selected);
   }
 
@@ -2991,7 +3075,7 @@ function ListViewPage({
 
   return (
     <section className="space-y-3">
-      <div className="rounded border border-[#d8dde6] bg-white">
+      <div className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#d8dde6] p-3">
           <div className="flex items-start gap-3">
             <ObjectIcon definition={definition} />
@@ -3127,6 +3211,7 @@ function ListViewPage({
           onClose={() => setControlDialog(null)}
           onSave={saveListViewPreference}
           onDelete={deleteListViewPreference}
+          onControlAction={handleListViewControl}
         />
       )}
     </section>
@@ -3146,7 +3231,8 @@ function ListViewPreferenceModal({
   isCustom,
   onClose,
   onSave,
-  onDelete
+  onDelete,
+  onControlAction
 }: {
   action: string;
   definition: ObjectDefinition;
@@ -3161,6 +3247,7 @@ function ListViewPreferenceModal({
   onClose: () => void;
   onSave: (values: { viewName: string; columns: string[]; columnWidths?: Record<string, string>; filters?: RecordData[]; chartType?: string; chartField?: string; pinned?: boolean; isCustom?: boolean; previousViewName?: string }) => Promise<boolean>;
   onDelete: () => Promise<boolean>;
+  onControlAction?: (action: string) => void;
 }) {
   const defaultName = action === "New" ? `New ${definition.label} List` : action === "Clone" ? `${listView} Clone` : listView;
   const [viewName, setViewName] = useState(defaultName);
@@ -3225,6 +3312,36 @@ function ListViewPreferenceModal({
               {option}
             </label>
           ))}
+        </div>
+      </BaseDialog>
+    );
+  }
+
+  if (action === "List View Controls") {
+    const controls = listViewControlItems(definition.object, listView, isCustom);
+    return (
+      <BaseDialog open title="List View Controls" onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}>
+        <div className="space-y-3">
+          <div className="rounded border border-[#d8dde6] bg-[#f8f8f8] p-3 text-sm">
+            <div className="font-semibold">{listView}</div>
+            <div className="text-xs text-[#706e6b]">{definition.plural} list view tools</div>
+          </div>
+          <div className="grid gap-2">
+            {controls.map((item) => (
+              <button
+                key={item.label}
+                disabled={!item.enabled}
+                onClick={() => item.enabled && onControlAction?.(item.label)}
+                className="flex items-center justify-between gap-3 rounded border border-[#d8dde6] p-3 text-left text-sm hover:border-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:bg-[#f8f8f8] disabled:text-[#a8a8a8] disabled:hover:border-[#d8dde6]"
+              >
+                <span>
+                  <span className="block font-semibold">{item.label}</span>
+                  <span className="mt-0.5 block text-xs text-[#706e6b]">{item.description}</span>
+                </span>
+                <ChevronRight size={15} className="shrink-0" />
+              </button>
+            ))}
+          </div>
         </div>
       </BaseDialog>
     );
@@ -3447,7 +3564,7 @@ function DataGrid({
         </thead>
         <tbody>
           {records.map((record) => (
-            <tr key={requiredId(record)} className="border-t border-[#d8dde6] bg-white hover:bg-brand-50/40">
+            <tr key={requiredId(record)} className="border-t border-[#e9edf2] bg-white transition-colors duration-100 hover:bg-brand-50/50">
               <td className="border-r border-[#eef1f6] px-3 py-2">
                 <input className={checkboxClass}
                   type="checkbox"
@@ -3543,7 +3660,7 @@ function RowActions({ object, record, onEdit, onDelete, onChangeOwner }: { objec
 
 function EmptyState({ definition, onCreate }: { definition: ObjectDefinition; onCreate: () => void }) {
   return (
-    <div className="rounded border border-[#d8dde6] bg-white p-8 text-center">
+    <div className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-8 text-center">
       <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-brand-600">
         <PanelLeft size={28} />
       </div>
@@ -3619,7 +3736,7 @@ function KanbanBoard({
         return (
           <section
             key={column.key}
-            className={cn("flex w-72 shrink-0 flex-col rounded border border-[#d8dde6] bg-[#f8f8f8]", draggedId && column.acceptsDrop && "ring-1 ring-brand-400")}
+            className={cn("flex w-72 shrink-0 flex-col rounded-lg border border-[#e4e7ec] bg-[#f8f9fb] shadow-card transition-shadow duration-150", draggedId && column.acceptsDrop && "ring-2 ring-brand-400/70 ring-offset-1")}
             onDragOver={(event) => {
               if (column.acceptsDrop) event.preventDefault();
             }}
@@ -3647,7 +3764,7 @@ function KanbanBoard({
                     draggable={!isMoving}
                     onDragStart={() => setDraggedId(id)}
                     onDragEnd={() => setDraggedId(null)}
-                    className={cn("rounded border border-[#d8dde6] bg-white p-2 shadow-sm transition hover:border-brand-300", draggedId === id && "opacity-60", isMoving && "opacity-70")}
+                    className={cn("cursor-grab rounded-md border border-[#e4e7ec] bg-white p-2 shadow-card transition-all duration-150 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-card-hover active:cursor-grabbing", draggedId === id && "rotate-1 scale-[1.02] opacity-70 shadow-card-hover", isMoving && "opacity-70")}
                   >
                     <div className="flex items-start gap-2">
                       <GripVertical size={14} className="mt-0.5 shrink-0 text-[#706e6b]" aria-hidden />
@@ -3716,6 +3833,7 @@ function RecordPage({
   onCreate,
   onEdit,
   onDelete,
+  onChangeOwner,
   onRecordEdit,
   onRecordDelete,
   onSaveActivity,
@@ -3732,6 +3850,7 @@ function RecordPage({
   onCreate: (object: CrmObject) => void;
   onEdit: () => void;
   onDelete: () => void;
+  onChangeOwner: () => void;
   onRecordEdit: (object: CrmObject, record: RecordData) => void;
   onRecordDelete: (object: CrmObject, record: RecordData) => void;
   onSaveActivity: (activity: RecordData) => Promise<void>;
@@ -3763,7 +3882,7 @@ function RecordPage({
   return (
     <section className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="space-y-3">
-        <div className="rounded border border-[#d8dde6] bg-white">
+        <div className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#d8dde6] p-3">
             <div className="flex items-start gap-3">
               <ObjectIcon definition={definition} />
@@ -3789,7 +3908,7 @@ function RecordPage({
                   <DropdownMenu.Portal>
                     <DropdownMenu.Content align="end" className="z-50 rounded border border-[#d8dde6] bg-white p-1 text-sm shadow-popover">
                       <DropdownMenu.Item onSelect={() => setDialog({ type: "partner" })} className="cursor-pointer rounded px-3 py-2 hover:bg-brand-50">New Partner</DropdownMenu.Item>
-                      <DropdownMenu.Item onSelect={onEdit} className="cursor-pointer rounded px-3 py-2 hover:bg-brand-50">Change Owner</DropdownMenu.Item>
+                      <DropdownMenu.Item onSelect={onChangeOwner} className="cursor-pointer rounded px-3 py-2 hover:bg-brand-50">Change Owner</DropdownMenu.Item>
                       <DropdownMenu.Item onSelect={() => window.print()} className="cursor-pointer rounded px-3 py-2 hover:bg-brand-50">Printable View</DropdownMenu.Item>
                       <DropdownMenu.Item onSelect={onDelete} className="cursor-pointer rounded px-3 py-2 text-[#ba0517] hover:bg-[#fff1f1]">Delete Account</DropdownMenu.Item>
                     </DropdownMenu.Content>
@@ -3816,7 +3935,7 @@ function RecordPage({
             </div>
           )}
         </div>
-        <Tabs.Root defaultValue="related" className="rounded border border-[#d8dde6] bg-white">
+        <Tabs.Root defaultValue="related" className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
           <Tabs.List className="flex border-b border-[#d8dde6]">
             <Tabs.Trigger value="related" className="border-b-2 border-transparent px-4 py-3 text-sm data-[state=active]:border-brand-500 data-[state=active]:font-semibold data-[state=active]:text-brand-700">
               Related
@@ -3840,7 +3959,7 @@ function RecordPage({
             />
           </Tabs.Content>
           <Tabs.Content value="details" className="p-3">
-            <DetailsSections object={object} record={record} onEdit={onEdit} />
+            <DetailsSections object={object} record={record} onEdit={onEdit} onChangeOwner={onChangeOwner} />
           </Tabs.Content>
         </Tabs.Root>
       </div>
@@ -3954,7 +4073,7 @@ function RelatedListCard({
 }) {
   const viewAllLabel = viewAll ?? (records.length > 0 ? `View All ${object === "Partner" ? "Partners" : OBJECT_DEFINITIONS[object].plural}` : undefined);
   return (
-    <div className="rounded border border-[#d8dde6] bg-white">
+    <div className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
       <div className="flex items-center justify-between border-b border-[#d8dde6] px-3 py-2">
         <h3 className="font-semibold">{title}</h3>
         <Button onClick={onAction}>{action}</Button>
@@ -4056,7 +4175,7 @@ function RecordHierarchyDialog({ object, record, data, onClose }: { object: "Acc
     <BaseDialog open title={object === "Account" ? "Account Hierarchy" : "Contact Hierarchy"} onClose={onClose} wide footer={<Button onClick={onClose}>Close</Button>}>
       <div className="space-y-2">
         {rows.map((row) => (
-          <div key={row.id} className={cn("rounded border border-[#d8dde6] bg-white p-3", row.current && "border-brand-500 bg-brand-50")}>
+          <div key={row.id} className={cn("rounded-lg border border-[#e4e7ec] bg-white shadow-card p-3", row.current && "border-brand-500 bg-brand-50")}>
             <div className="flex items-center justify-between gap-2" style={{ paddingLeft: row.depth * 24 }}>
               <div>
                 <div className="font-semibold">{row.label}</div>
@@ -4135,20 +4254,45 @@ function PartnerModal({ account, onClose, onSave }: { account?: RecordData; onCl
   );
 }
 
-function FileDropzone({ title, action, records, onUpload }: { title: string; action: string; records: RecordData[]; onUpload: (file: RecordData) => void }) {
+function FileDropzone({ title, action, records, onUpload }: { title: string; action: string; records: RecordData[]; onUpload: (file: RecordData) => Promise<void> }) {
   const [dragging, setDragging] = useState(false);
+  const [pendingUploads, setPendingUploads] = useState<Array<{ id: string; name: string; size: number; progress: number; status: "Uploading" | "Complete" | "Error" }>>([]);
   function uploadFiles(files: FileList | null) {
     if (!files) return;
-    Array.from(files).forEach((file) => onUpload({ id: `pending-${file.name}-${Date.now()}`, name: file.name, size: file.size }));
+    Array.from(files).forEach((file) => void uploadFile(file));
+  }
+  async function uploadFile(file: File) {
+    const id = `upload-${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setPendingUploads((current) => [{ id, name: file.name, size: file.size, progress: 0, status: "Uploading" }, ...current]);
+    try {
+      for (const progress of [24, 58, 88]) {
+        await waitForUploadProgress();
+        setPendingUploads((current) => current.map((item) => (item.id === id ? { ...item, progress } : item)));
+      }
+      await onUpload({ id: `pending-${file.name}-${Date.now()}`, name: file.name, size: file.size });
+      setPendingUploads((current) => current.map((item) => (item.id === id ? { ...item, progress: 100, status: "Complete" } : item)));
+      await waitForUploadProgress(300);
+      setPendingUploads((current) => current.filter((item) => item.id !== id));
+    } catch {
+      setPendingUploads((current) => current.map((item) => (item.id === id ? { ...item, status: "Error" } : item)));
+    }
   }
   return (
-    <div className="rounded border border-[#d8dde6] bg-white">
+    <div className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
       <div className="flex items-center justify-between border-b border-[#d8dde6] px-3 py-2">
         <h3 className="font-semibold">{title}</h3>
         <label className="inline-flex cursor-pointer items-center gap-1 rounded border border-[#c9c9c9] bg-white px-3 py-1 text-xs hover:bg-[#f3f3f3]">
           <Upload size={13} />
           {action}
-          <input type="file" multiple className="hidden" onChange={(event) => uploadFiles(event.target.files)} />
+          <input
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              uploadFiles(event.target.files);
+              event.currentTarget.value = "";
+            }}
+          />
         </label>
       </div>
       <div
@@ -4167,8 +4311,19 @@ function FileDropzone({ title, action, records, onUpload }: { title: string; act
         <div className="font-semibold">Drop Files</div>
         <div>Or drop files</div>
       </div>
-      {records.length > 0 && (
+      {(pendingUploads.length > 0 || records.length > 0) && (
         <div className="border-t border-[#d8dde6] p-3">
+          {pendingUploads.map((upload) => (
+            <div key={upload.id} className="mb-2 rounded border border-brand-200 bg-brand-50 p-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span>{upload.name}</span>
+                <span className="text-xs text-[#706e6b]">{upload.status === "Error" ? "Upload failed" : `${upload.progress}%`}</span>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
+                <div className={cn("h-full rounded-full", upload.status === "Error" ? "bg-[#ba0517]" : "bg-brand-600")} style={{ width: `${upload.status === "Error" ? 100 : upload.progress}%` }} />
+              </div>
+            </div>
+          ))}
           {records.map((record) => (
             <div key={requiredId(record)} className="flex items-center justify-between py-1 text-sm">
               <span>{record.name as string}</span>
@@ -4181,7 +4336,7 @@ function FileDropzone({ title, action, records, onUpload }: { title: string; act
   );
 }
 
-function DetailsSections({ object, record, onEdit }: { object: "Account" | "Contact"; record: RecordData; onEdit: () => void }) {
+function DetailsSections({ object, record, onEdit, onChangeOwner }: { object: "Account" | "Contact"; record: RecordData; onEdit: () => void; onChangeOwner: () => void }) {
   const sections =
     object === "Account"
       ? [
@@ -4209,7 +4364,7 @@ function DetailsSections({ object, record, onEdit }: { object: "Account" | "Cont
                     <div className="text-xs text-[#706e6b]">{label}</div>
                     <div className="text-sm">{formatCell(value) || "-"}</div>
                   </div>
-                  <button className="rounded p-1 text-[#706e6b] hover:bg-brand-50 hover:text-brand-700" aria-label={label.includes("Owner") ? "Change Owner" : `Edit ${label}`} onClick={onEdit}>
+                  <button className="rounded p-1 text-[#706e6b] hover:bg-brand-50 hover:text-brand-700" aria-label={label.includes("Owner") ? "Change Owner" : `Edit ${label}`} onClick={label.includes("Owner") ? onChangeOwner : onEdit}>
                     <Edit3 size={13} />
                   </button>
                 </div>
@@ -4255,6 +4410,7 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
     return activityMatchesStatus(activity, statusFilter);
   });
   const visibleActivities = showAllActivities ? filteredActivities : filteredActivities.slice(0, 4);
+  const groupedVisibleActivities = groupTimelineActivities(visibleActivities);
   const filterSummary = `${rangeFilter} - ${statusFilter} - ${typeFilter}`;
 
   useEffect(() => {
@@ -4303,7 +4459,7 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
   }
 
   return (
-    <aside className="rounded border border-[#d8dde6] bg-white">
+    <aside className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
       <div className="border-b border-[#d8dde6] px-3 py-2 font-semibold">Activity</div>
       <div className="p-3">
         <div className="mb-3 grid grid-cols-4 gap-1">
@@ -4392,28 +4548,36 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
         {filteredActivities.length === 0 ? (
           <div className="rounded border border-dashed border-[#d8dde6] p-4 text-sm text-[#706e6b]">No activities to show. Get started by sending an email, scheduling a task, and more.</div>
         ) : (
-          <div className="space-y-2">
-            {visibleActivities.map((activity) => {
-              const id = requiredId(activity);
-              const expanded = expandedIds.includes(id);
-              return (
-                <div key={id} className="rounded border border-[#d8dde6] p-2 text-sm">
-                  <button className="flex w-full items-start justify-between gap-2 text-left" onClick={() => toggleActivity(id)}>
-                    <span>
-                      <span className="block font-medium">{activity.kind}: {String(activity.subject ?? "Activity")}</span>
-                      <span className="block text-xs text-[#706e6b]">{formatDateTime(activity.date as string)} - {activityStatusLabel(activity)}</span>
-                    </span>
-                    <ChevronDown size={14} className={cn("mt-0.5 text-[#706e6b] transition-transform", expanded && "rotate-180")} />
-                  </button>
-                  {expanded && (
-                    <div className="mt-2 rounded bg-[#f8f8f8] p-2 text-xs text-[#444]">
-                      <div>{activityDetail(activity)}</div>
-                      {activityHasInsight(activity) && <div className="mt-1 font-semibold text-brand-700">Insight: {activityInsight(activity)}</div>}
-                    </div>
-                  )}
+          <div className="space-y-3">
+            {groupedVisibleActivities.map((group) => (
+              <section key={group.label} className="space-y-2" aria-label={`${group.label} activities`}>
+                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase text-[#706e6b]">
+                  <span>{group.label}</span>
+                  <span className="h-px flex-1 bg-[#e4e7ec]" />
                 </div>
-              );
-            })}
+                {group.activities.map((activity) => {
+                  const id = requiredId(activity);
+                  const expanded = expandedIds.includes(id);
+                  return (
+                    <div key={id} className="rounded border border-[#d8dde6] p-2 text-sm">
+                      <button className="flex w-full items-start justify-between gap-2 text-left" onClick={() => toggleActivity(id)}>
+                        <span>
+                          <span className="block font-medium">{activity.kind}: {String(activity.subject ?? "Activity")}</span>
+                          <span className="block text-xs text-[#706e6b]">{formatDateTime(activity.date as string)} - {activityStatusLabel(activity)}</span>
+                        </span>
+                        <ChevronDown size={14} className={cn("mt-0.5 text-[#706e6b] transition-transform", expanded && "rotate-180")} />
+                      </button>
+                      {expanded && (
+                        <div className="mt-2 rounded bg-[#f8f8f8] p-2 text-xs text-[#444]">
+                          <div>{activityDetail(activity)}</div>
+                          {activityHasInsight(activity) && <div className="mt-1 font-semibold text-brand-700">Insight: {activityInsight(activity)}</div>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </section>
+            ))}
           </div>
         )}
         {filteredActivities.length > 4 && (
@@ -4615,7 +4779,7 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast }: { data: Boot
   }
   return (
     <div className="space-y-3">
-      <div className="rounded border border-[#d8dde6] bg-white p-4">
+      <div className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-2xl font-semibold">Welcome, Parsa</h1>
@@ -4629,7 +4793,7 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast }: { data: Boot
       </div>
       <div className="grid gap-3 lg:grid-cols-3">
         {visibleSuggestions.slice(0, 3).map((card) => (
-          <div key={card.id} className="rounded border border-[#d8dde6] bg-white p-4">
+          <div key={card.id} className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-4">
             <div className="flex items-start justify-between gap-2">
               <h2 className="font-semibold">{card.title}</h2>
               <button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label="Dismiss this suggestion" onClick={() => setDismissedSuggestions((current) => [...current, card.id])}><X size={14} /></button>
@@ -4724,7 +4888,7 @@ function MarketingPage({ data, onCreate, onActivate }: { data: BootstrapData; on
   ];
   return (
     <section className="space-y-3">
-      <div className="rounded border border-[#d8dde6] bg-white p-6">
+      <div className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-6">
         <h1 className="text-2xl font-semibold">{latestActivation ? "Marketing tools are active" : "Activate powerful marketing tools and boost sales"}</h1>
         <p className="mt-2 max-w-2xl text-sm text-[#706e6b]">
           {latestActivation ? `Default sender: ${latestActivation.senderName ?? "Configured sender"} (${latestActivation.senderEmail ?? "email configured"}).` : "Accelerate lead generation with campaigns, analytics, and list email tools."}
@@ -4802,7 +4966,7 @@ function CommercePage({ stores, onCreateStore }: { stores: RecordData[]; onCreat
   }
 
   return (
-    <section className="rounded border border-[#d8dde6] bg-white">
+    <section className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
       <div className="flex items-center justify-between border-b border-[#d8dde6] p-3">
         <div>
           <h1 className="text-xl font-semibold">Stores</h1>
@@ -4832,7 +4996,7 @@ function YourAccountPage({ checkouts, onSubscribe }: { checkouts: RecordData[]; 
 
   const checkout = checkouts[0];
   return (
-    <section className="rounded border border-[#d8dde6] bg-white p-6">
+    <section className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Subscription checkout prepared</h1>
@@ -4879,7 +5043,7 @@ function AnalyticsPage({ data, reportName, onReportBuilder, onToast }: { data: B
 
   return (
     <section className="space-y-3">
-      <div className="rounded border border-[#d8dde6] bg-white p-4">
+      <div className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.04em] text-[#706e6b]">Analytics</div>
@@ -4895,7 +5059,7 @@ function AnalyticsPage({ data, reportName, onReportBuilder, onToast }: { data: B
       </div>
 
       <div className="grid gap-3 xl:grid-cols-[300px_minmax(0,1fr)]">
-        <aside className="rounded border border-[#d8dde6] bg-white">
+        <aside className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
           <div className="border-b border-[#d8dde6] p-3">
             <div className="font-semibold">All Reports</div>
             <div className="text-xs text-[#706e6b]">{reports.length} report definitions</div>
@@ -4920,7 +5084,7 @@ function AnalyticsPage({ data, reportName, onReportBuilder, onToast }: { data: B
           </nav>
         </aside>
 
-        <section className="min-w-0 rounded border border-[#d8dde6] bg-white">
+        <section className="min-w-0 rounded-lg border border-[#e4e7ec] bg-white shadow-card">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#d8dde6] p-4">
             <div>
               <div className="text-xs font-semibold uppercase tracking-[0.04em] text-[#706e6b]">{selectedReport.objectLabel} Report</div>
@@ -5009,7 +5173,7 @@ function AnalyticsPage({ data, reportName, onReportBuilder, onToast }: { data: B
         </section>
       </div>
       {savedDashboards.length > 0 && (
-        <section className="rounded border border-[#d8dde6] bg-white">
+        <section className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#d8dde6] p-3">
             <div>
               <h2 className="font-semibold">Saved Dashboards</h2>
@@ -5260,7 +5424,7 @@ function CalendarPage({
     <>
       <div className={cn("grid gap-3", sidebarVisible && "xl:grid-cols-[280px_minmax(0,1fr)]")}>
         {sidebarVisible && (
-          <aside className="rounded border border-[#d8dde6] bg-white p-3">
+          <aside className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-3">
             <div className="mb-3 flex items-center justify-between gap-2">
               <Button onClick={() => setMiniMonth((date) => addCalendarMonths(date, -1))}><ChevronLeft size={14} /></Button>
               <div className="min-w-0 flex-1 text-center font-semibold">{monthYearLabel(miniMonth)}</div>
@@ -5303,7 +5467,7 @@ function CalendarPage({
             </div>
           </aside>
         )}
-        <section className="rounded border border-[#d8dde6] bg-white">
+        <section className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#d8dde6] p-3">
             <div>
               <h1 className="text-xl font-semibold">Calendar</h1>
@@ -5466,7 +5630,7 @@ function QuickTextPage({ data, onCreate, onCreateFolder, onDelete }: { data: Boo
 
   return (
     <div className="grid gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
-      <aside className="rounded border border-[#d8dde6] bg-white p-3">
+      <aside className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-3">
         <div className="mb-3 flex justify-between">
           <h2 className="font-semibold">QUICK TEXT</h2>
           <Popover.Root>
@@ -5497,7 +5661,7 @@ function QuickTextPage({ data, onCreate, onCreateFolder, onDelete }: { data: Boo
           </div>
         ))}
       </aside>
-      <section className="rounded border border-[#d8dde6] bg-white">
+      <section className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#d8dde6] p-3">
           <div>
             <h1 className="text-xl font-semibold">Quick Text</h1>
@@ -5696,9 +5860,51 @@ function ListActionModal({
   });
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    action: "Delete Article" | "Delete Draft";
+    title: string;
+    body: string;
+    confirmLabel: string;
+  } | null>(null);
   const selectedRecords = modal.selectedIds.length > 0 ? modal.records.filter((record) => modal.selectedIds.includes(requiredId(record))) : modal.records;
+  const effectiveSelectedIds = modal.selectedIds.length > 0 ? modal.selectedIds : selectedRecords.map(requiredId).filter(Boolean);
   const targetCount = selectedRecords.length;
   const title = `${modal.action} ${OBJECT_DEFINITIONS[modal.object].plural}`;
+
+  function openKnowledgeDeleteConfirmation(action: "Delete Article" | "Delete Draft") {
+    const targetLabel = selectedRecords.length === 1
+      ? `"${recordTitle("Knowledge__kav", selectedRecords[0])}"`
+      : `${selectedRecords.length} knowledge article${selectedRecords.length === 1 ? "" : "s"}`;
+    setConfirmAction({
+      action,
+      title: action === "Delete Draft" ? `Delete draft ${targetLabel}?` : `Delete ${targetLabel}?`,
+      body:
+        action === "Delete Draft"
+          ? "Only selected draft articles will be deleted. Published and archived articles remain untouched."
+          : "This permanently deletes the selected knowledge article records. This action can't be undone.",
+      confirmLabel: action
+    });
+  }
+
+  if (confirmAction) {
+    return (
+      <BaseDialog
+        open
+        title={confirmAction.title}
+        onClose={onClose}
+        footer={
+          <>
+            <Button onClick={() => setConfirmAction(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => onApply(confirmAction.action, modal.object, effectiveSelectedIds, values)}>
+              {confirmAction.confirmLabel}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-[#444]">{confirmAction.body}</p>
+      </BaseDialog>
+    );
+  }
 
   async function runImport() {
     setImporting(true);
@@ -5755,7 +5961,7 @@ function ListActionModal({
 
   if (modal.action === "Merge Cases") {
     return (
-      <BaseDialog open title="Merge Cases" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onApply(modal.action, modal.object, modal.selectedIds, values)}>{targetCount >= 2 ? "Merge Cases" : "Done"}</Button></>}>
+      <BaseDialog open title="Merge Cases" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onApply(modal.action, modal.object, effectiveSelectedIds, values)}>{targetCount >= 2 ? "Merge Cases" : "Done"}</Button></>}>
         {targetCount < 2 ? (
           <p className="text-sm text-[#706e6b]">Select at least two cases from the list to merge. The current list has {targetCount} selected case{targetCount === 1 ? "" : "s"}.</p>
         ) : (
@@ -5764,6 +5970,102 @@ function ListActionModal({
             <NativeSelect options={selectedRecords.map((record) => String(record.caseNumber ?? record.subject ?? record.id))} value={String(values.primaryCase ?? selectedRecords[0]?.caseNumber ?? "")} onChange={(value) => setValues({ ...values, primaryCase: value })} />
           </div>
         )}
+      </BaseDialog>
+    );
+  }
+
+  if (modal.object === "Lead" && modal.action === "Show more actions") {
+    const firstLead = selectedRecords[0] ?? {};
+    const defaultAccountName = String(firstLead.company ?? "").trim() || "Converted Lead Account";
+    const defaultOpportunityName = `${String(firstLead.company ?? contactName(firstLead) ?? "Converted Lead").trim() || "Converted Lead"} Opportunity`;
+    const accountName = String(values.accountName ?? defaultAccountName);
+    const createOpportunity = values.createOpportunity !== false;
+    const closeDate = String(values.closeDate ?? defaultLeadConversionCloseDate());
+    const stage = String(values.stage ?? "Qualify");
+    const forecastCategory = String(values.forecastCategory ?? "Pipeline");
+    const convertedStatus = String(values.convertedStatus ?? "Qualified");
+    const footer = (
+      <>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="primary"
+          onClick={() =>
+            onApply("Convert Lead", "Lead", effectiveSelectedIds, {
+              accountName,
+              createOpportunity,
+              opportunityName: String(values.opportunityName ?? defaultOpportunityName),
+              closeDate,
+              stage,
+              forecastCategory,
+              convertedStatus
+            })
+          }
+        >
+          Convert Lead
+        </Button>
+      </>
+    );
+    return (
+      <BaseDialog open title="Show More Actions: Leads" onClose={onClose} wide footer={footer}>
+        <div className="grid gap-4">
+          <div className="rounded border border-[#d8dde6] bg-[#f8f8f8] p-3 text-sm">
+            <div className="font-semibold">Convert Lead</div>
+            <div className="mt-1 text-xs text-[#706e6b]">
+              {targetCount > 0 ? `${targetCount} lead${targetCount === 1 ? "" : "s"} will be converted.` : "Select a lead before converting."}
+            </div>
+          </div>
+          {targetCount > 0 && (
+            <div className="grid gap-3 md:grid-cols-2">
+              <FieldShell label="Account Name">
+                <input
+                  className={inputClass}
+                  value={accountName}
+                  disabled={targetCount > 1}
+                  onChange={(event) => setValues({ ...values, accountName: event.target.value })}
+                />
+                {targetCount > 1 && <p className="mt-1 text-xs text-[#706e6b]">Each selected lead uses its Company value for the converted account.</p>}
+              </FieldShell>
+              <FieldShell label="Converted Status">
+                <NativeSelect options={LEAD_STATUS.filter((status) => status !== "--None--")} value={convertedStatus} onChange={(value) => setValues({ ...values, convertedStatus: value })} />
+              </FieldShell>
+              <FieldShell label="Create Opportunity">
+                <RadixCheckbox checked={createOpportunity} onCheckedChange={(value) => setValues({ ...values, createOpportunity: Boolean(value) })} />
+              </FieldShell>
+              {createOpportunity && (
+                <>
+                  <FieldShell label="Opportunity Name">
+                    <input className={inputClass} value={String(values.opportunityName ?? defaultOpportunityName)} onChange={(event) => setValues({ ...values, opportunityName: event.target.value })} />
+                  </FieldShell>
+                  <FieldShell label="Close Date">
+                    <input className={inputClass} type="date" value={closeDate} onChange={(event) => setValues({ ...values, closeDate: event.target.value })} />
+                  </FieldShell>
+                  <FieldShell label="Stage">
+                    <NativeSelect options={OPPORTUNITY_STAGE.filter((item) => item !== "--None--")} value={stage} onChange={(value) => setValues({ ...values, stage: value })} />
+                  </FieldShell>
+                  <FieldShell label="Forecast Category">
+                    <NativeSelect options={FORECAST_CATEGORY.filter((item) => item !== "--None--")} value={forecastCategory} onChange={(value) => setValues({ ...values, forecastCategory: value })} />
+                  </FieldShell>
+                </>
+              )}
+            </div>
+          )}
+          <div className="rounded border border-[#d8dde6]">
+            <div className="border-b border-[#d8dde6] bg-[#f8f8f8] px-3 py-2 text-xs font-semibold uppercase text-[#706e6b]">Selected Leads</div>
+            <div className="max-h-48 overflow-auto p-2">
+              {selectedRecords.length === 0 ? (
+                <div className="p-3 text-sm text-[#706e6b]">No leads selected.</div>
+              ) : (
+                selectedRecords.map((lead) => (
+                  <div key={requiredId(lead)} className="grid gap-1 border-b border-[#f3f3f3] px-2 py-2 text-sm last:border-b-0 md:grid-cols-[1fr_1fr_120px]">
+                    <span className="font-medium">{contactName(lead) || "Unnamed Lead"}</span>
+                    <span className="text-[#706e6b]">{String(lead.company ?? "No company")}</span>
+                    <span className="text-[#706e6b]">{String(lead.status ?? "New")}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       </BaseDialog>
     );
   }
@@ -5778,31 +6080,45 @@ function ListActionModal({
         footer={
           modal.action === "Show more actions"
             ? <><Button onClick={onClose}>Close</Button></>
-            : <><Button onClick={onClose}>Cancel</Button><Button variant={modal.action === "Delete Article" ? "destructive" : "primary"} onClick={() => onApply(modal.action, modal.object, modal.selectedIds, values)}>{modal.action}</Button></>
+            : (
+              <>
+                <Button onClick={onClose}>Cancel</Button>
+                <Button
+                  variant={modal.action === "Delete Article" ? "destructive" : "primary"}
+                  onClick={() =>
+                    modal.action === "Delete Article"
+                      ? openKnowledgeDeleteConfirmation("Delete Article")
+                      : onApply(modal.action, modal.object, effectiveSelectedIds, values)
+                  }
+                >
+                  {modal.action}
+                </Button>
+              </>
+            )
         }
       >
         <div className="space-y-3">
           <p className="text-sm text-[#706e6b]">{targetLabel} will be affected.</p>
           {modal.action === "Assign" && <FieldShell label="Assign To"><input className={inputClass} value={String(values.assignee ?? data.user.name)} onChange={(event) => setValues({ ...values, assignee: event.target.value })} /></FieldShell>}
           {modal.action === "Archive" && <FieldShell label="Archive Reason"><textarea className={inputClass} value={String(values.reason ?? "")} onChange={(event) => setValues({ ...values, reason: event.target.value })} /></FieldShell>}
-          {modal.action === "Delete Article" && <div className="rounded border border-[#ba0517] bg-[#fff1f1] p-3 text-sm text-[#8e030f]">Delete Article requires confirmation and will not run until you click Delete Article.</div>}
+          {modal.action === "Delete Article" && <div className="rounded border border-[#ba0517] bg-[#fff1f1] p-3 text-sm text-[#8e030f]">Delete Article requires a confirmation step before any records are removed.</div>}
           {modal.action === "Show more actions" && (
             <div className="space-y-3">
               <div className="rounded border border-[#d8dde6] p-3">
                 <div className="font-semibold">Delete Draft</div>
                 <p className="mt-1 text-sm text-[#706e6b]">Delete selected articles that are still drafts. Published and archived articles remain untouched.</p>
-                <div className="mt-2"><Button variant="destructive" onClick={() => onApply("Delete Draft", modal.object, modal.selectedIds, values)}>Delete Draft</Button></div>
+                <div className="mt-2"><Button variant="destructive" onClick={() => openKnowledgeDeleteConfirmation("Delete Draft")}>Delete Draft</Button></div>
               </div>
               <div className="rounded border border-[#d8dde6] p-3">
                 <div className="font-semibold">Restore</div>
                 <p className="mt-1 text-sm text-[#706e6b]">Move archived selected articles back to Draft and clear archive metadata.</p>
-                <div className="mt-2"><Button onClick={() => onApply("Restore", modal.object, modal.selectedIds, values)}>Restore</Button></div>
+                <div className="mt-2"><Button onClick={() => onApply("Restore", modal.object, effectiveSelectedIds, values)}>Restore</Button></div>
               </div>
               <div className="rounded border border-[#d8dde6] p-3">
                 <FieldShell label="New Owner">
                   <input className={inputClass} value={String(values.ownerName ?? data.user.name)} onChange={(event) => setValues({ ...values, ownerName: event.target.value })} />
                 </FieldShell>
-                <div className="mt-2"><Button onClick={() => onApply("Change Owner", modal.object, modal.selectedIds, values)}>Change Owner</Button></div>
+                <div className="mt-2"><Button onClick={() => onApply("Change Owner", modal.object, effectiveSelectedIds, values)}>Change Owner</Button></div>
               </div>
             </div>
           )}
@@ -5812,7 +6128,7 @@ function ListActionModal({
   }
 
   return (
-    <BaseDialog open title={title} onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onApply(modal.action, modal.object, modal.selectedIds, values)}>Save</Button></>}>
+    <BaseDialog open title={title} onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onApply(modal.action, modal.object, effectiveSelectedIds, values)}>Save</Button></>}>
       <div className="space-y-3">
         <p className="text-sm text-[#706e6b]">{targetCount} selected record{targetCount === 1 ? "" : "s"}; if none are selected, the current list result set is used.</p>
         {modal.action === "Add to Campaign" && (
@@ -6141,10 +6457,39 @@ function ReportBuilderModal({ reportType, data, onClose, onDataChange, onToast }
   );
 }
 
+function UnsavedChangesDialog({ onKeepEditing, onDiscard }: { onKeepEditing: () => void; onDiscard: () => void }) {
+  return (
+    <BaseDialog
+      open
+      title="Discard changes?"
+      onClose={onKeepEditing}
+      footer={<><Button onClick={onKeepEditing}>Keep Editing</Button><Button variant="destructive" onClick={onDiscard}>Discard</Button></>}
+    >
+      <p className="text-sm text-[#3e3e3c]">You have unsaved changes. Discard them and close this window?</p>
+    </BaseDialog>
+  );
+}
+
+function useUnsavedChangesGuard(isDirty: boolean, onClose: () => void) {
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  function requestClose() {
+    if (isDirty) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
+  }
+  const discardDialog = confirmDiscard ? <UnsavedChangesDialog onKeepEditing={() => setConfirmDiscard(false)} onDiscard={onClose} /> : null;
+  return { requestClose, discardDialog };
+}
+
 function GenericRecordModal({ mode, object, data, record, onClose, onSave }: { mode: "new" | "edit"; object: CrmObject; data: BootstrapData; record?: RecordData; onClose: () => void; onSave: (values: RecordData, stayOpen?: boolean) => Promise<boolean> }) {
   const definition = FORM_DEFINITIONS[object];
-  const [values, setValues] = useState<RecordData>(() => (definition ? buildInitialValues(definition, record) : {}));
+  const [initialValues, setInitialValues] = useState<RecordData>(() => (definition ? buildInitialValues(definition, record) : {}));
+  const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const isDirty = !recordDataShallowEqual(values, initialValues);
+  const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
 
   if (!definition) return null;
 
@@ -6156,16 +6501,23 @@ function GenericRecordModal({ mode, object, data, record, onClose, onSave }: { m
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
     const ok = await onSave(values, stayOpen);
-    if (ok && stayOpen) setValues(buildInitialValues(formDefinition));
+    if (ok && stayOpen) {
+      const nextInitialValues = buildInitialValues(formDefinition);
+      setInitialValues(nextInitialValues);
+      setValues(nextInitialValues);
+      setErrors({});
+    }
   }
+
+  if (discardDialog) return discardDialog;
 
   return (
     <BaseDialog
       open
       title={title}
-      onClose={onClose}
+      onClose={requestClose}
       wide
-      footer={<><Button onClick={onClose}>Cancel</Button>{mode === "new" && <Button onClick={() => void submit(true)}>Save & New</Button>}<Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}
+      footer={<><Button onClick={requestClose}>Cancel</Button>{mode === "new" && <Button onClick={() => void submit(true)}>Save & New</Button>}<Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}
     >
       <div className="mb-4 text-xs text-[#706e6b]"><span className="text-[#ba0517]">*</span> = Required Information</div>
       <FormFields fields={formDefinition.fields} values={values} errors={errors} data={data} onChange={(name, value) => setValues((current) => ({ ...current, [name]: value }))} />
@@ -6175,9 +6527,12 @@ function GenericRecordModal({ mode, object, data, record, onClose, onSave }: { m
 
 function ProductWizardModal({ data, onClose, onSave }: { data: BootstrapData; onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
   const [step, setStep] = useState(1);
-  const [values, setValues] = useState<RecordData>({ active: false, family: "--None--", currency: "USD", createPriceBookEntry: true, priceBookId: data.priceBooks[0]?.id ?? "standard-price-book", priceBookName: data.priceBooks[0]?.name ?? "Standard Price Book", entryActive: true });
+  const [initialValues] = useState<RecordData>(() => ({ active: false, family: "--None--", currency: "USD", createPriceBookEntry: true, priceBookId: data.priceBooks[0]?.id ?? "standard-price-book", priceBookName: data.priceBooks[0]?.name ?? "Standard Price Book", entryActive: true }));
+  const [values, setValues] = useState<RecordData>(() => initialValues);
   const [error, setError] = useState("");
   const [entryError, setEntryError] = useState("");
+  const isDirty = !recordDataShallowEqual(values, initialValues);
+  const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
   async function finish() {
     if (values.createPriceBookEntry !== false && !values.listPrice) {
       setEntryError("Complete this field.");
@@ -6187,8 +6542,9 @@ function ProductWizardModal({ data, onClose, onSave }: { data: BootstrapData; on
     const ok = await onSave(values);
     if (ok) onClose();
   }
+  if (discardDialog) return discardDialog;
   return (
-    <BaseDialog open title="New Product" onClose={onClose} wide footer={step === 1 ? <><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => { if (!values.name) setError("Complete this field."); else { setError(""); setStep(2); } }}>Next</Button></> : <><Button onClick={() => setStep(1)}>Back</Button><Button variant="primary" onClick={() => void finish()}>Finish</Button></>}>
+    <BaseDialog open title="New Product" onClose={requestClose} wide footer={step === 1 ? <><Button onClick={requestClose}>Cancel</Button><Button variant="primary" onClick={() => { if (!values.name) setError("Complete this field."); else { setError(""); setStep(2); } }}>Next</Button></> : <><Button onClick={() => setStep(1)}>Back</Button><Button variant="primary" onClick={() => void finish()}>Finish</Button></>}>
       <div className="mb-4 grid grid-cols-2 gap-2 text-sm">
         <div className={cn("rounded border p-2", step === 1 ? "border-brand-500 bg-brand-50" : "border-[#d8dde6]")}>New Product - {step === 1 ? "Current Stage" : "Complete"}</div>
         <div className={cn("rounded border p-2", step === 2 ? "border-brand-500 bg-brand-50" : "border-[#d8dde6]")}>New Price Book Entry - {step === 2 ? "Current Stage" : "Stage Not Started"}</div>
@@ -6249,7 +6605,7 @@ function EventModal({
   onClose: () => void;
   onSave: (values: RecordData) => Promise<boolean>;
 }) {
-  const [values, setValues] = useState<RecordData>({
+  const [initialValues] = useState<RecordData>(() => ({
     subject: "--None--",
     startDate,
     startTime,
@@ -6260,8 +6616,11 @@ function EventModal({
     attendeeIds: [CURRENT_USER.id],
     relatedObjectType: relatedObjectType ? OBJECT_DEFINITIONS[relatedObjectType].plural : "Accounts",
     relatedRecordId
-  });
+  }));
+  const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const isDirty = !recordDataShallowEqual(values, initialValues);
+  const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
   async function submit(stayOpen = false) {
     const required = ["subject", "startDate", "startTime", "endDate", "endTime", "assignedToId"];
     const nextErrors = Object.fromEntries(required.filter((key) => !values[key] || values[key] === "--None--").map((key) => [key, "Complete this field."]));
@@ -6273,10 +6632,14 @@ function EventModal({
       endAt: `${values.endDate}T${values.endTime}:00.000Z`
     };
     const ok = await onSave(payload);
-    if (ok && stayOpen) setValues({ ...values, subject: "--None--", description: "" });
+    if (ok && stayOpen) {
+      setValues(initialValues);
+      setErrors({});
+    }
   }
+  if (discardDialog) return discardDialog;
   return (
-    <BaseDialog open title="New Event" onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button onClick={() => void submit(true)}>Save & New</Button><Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}>
+    <BaseDialog open title="New Event" onClose={requestClose} wide footer={<><Button onClick={requestClose}>Cancel</Button><Button onClick={() => void submit(true)}>Save & New</Button><Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}>
       <div className="mb-4 text-xs text-[#706e6b]"><span className="text-[#ba0517]">*</span>= Required Information</div>
       <div className="grid gap-4 md:grid-cols-2">
         <FieldShell label="Subject" required error={errors.subject}><NativeSelect options={["--None--", ...EVENT_SUBJECTS]} value={String(values.subject ?? "--None--")} onChange={(value) => setValues({ ...values, subject: value })} /></FieldShell>
@@ -6299,17 +6662,25 @@ function EventModal({
 }
 
 function QuickTextModal({ data, onClose, onSave }: { data: BootstrapData; onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
-  const [values, setValues] = useState<RecordData>({ category: "Greetings", channels: ["Email"], mergeFields: [], includeInSelectedChannels: true });
+  const [initialValues] = useState<RecordData>(() => ({ category: "Greetings", channels: ["Email"], mergeFields: [], includeInSelectedChannels: true }));
+  const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [previewOpen, setPreviewOpen] = useState(false);
   const [mergeError, setMergeError] = useState("");
+  const isDirty = !recordDataShallowEqual(values, initialValues);
+  const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
   const available = ["Event", "Task", "CaseComment", "Knowledge"].filter((item) => !(values.channels as string[]).includes(item));
   async function submit(stayOpen = false) {
     const nextErrors = validateRequired(values, ["name", "message"]);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     const ok = await onSave(values);
-    if (ok && stayOpen) setValues({ category: "Greetings", channels: ["Email"], mergeFields: [], includeInSelectedChannels: true });
+    if (ok && stayOpen) {
+      setValues(initialValues);
+      setErrors({});
+      setMergeError("");
+      setPreviewOpen(false);
+    }
   }
   function insertMergeField() {
     const mergeObject = String(values.mergeObject ?? "Choose...");
@@ -6332,8 +6703,9 @@ function QuickTextModal({ data, onClose, onSave }: { data: BootstrapData; onClos
     else channels.delete(channel);
     setValues({ ...values, channels: Array.from(channels) });
   }
+  if (discardDialog) return discardDialog;
   return (
-    <BaseDialog open title="New Quick Text" onClose={onClose} wide footer={<><Button onClick={() => setPreviewOpen((open) => !open)}>Preview</Button><Button onClick={onClose}>Cancel</Button><Button onClick={() => void submit(true)}>Save & New</Button><Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}>
+    <BaseDialog open title="New Quick Text" onClose={requestClose} wide footer={<><Button onClick={() => setPreviewOpen((open) => !open)}>Preview</Button><Button onClick={requestClose}>Cancel</Button><Button onClick={() => void submit(true)}>Save & New</Button><Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}>
       <div className="mb-4 text-xs text-[#706e6b]"><span className="text-[#ba0517]">*</span>= Required Information</div>
       <div className="grid gap-4 md:grid-cols-2">
         <FieldShell label="Quick Text Name" required error={errors.name}><input className={inputClass} value={String(values.name ?? "")} onChange={(event) => setValues({ ...values, name: event.target.value })} /></FieldShell>
@@ -6384,7 +6756,7 @@ function QuickTextModal({ data, onClose, onSave }: { data: BootstrapData; onClos
 
 function QuickTextPreview({ name, message, channels, category }: { name: string; message: string; channels: string[]; category: string }) {
   return (
-    <div className="mt-4 rounded border border-[#d8dde6] bg-white">
+    <div className="mt-4 rounded-lg border border-[#e4e7ec] bg-white shadow-card">
       <div className="border-b border-[#d8dde6] bg-[#f8f8f8] px-3 py-2 text-sm font-semibold">Preview</div>
       <div className="grid gap-3 p-3 text-sm">
         <div className="flex flex-wrap items-center gap-2">
@@ -6398,32 +6770,270 @@ function QuickTextPreview({ name, message, channels, category }: { name: string;
   );
 }
 
+function stripRichTextMarkup(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|h1|h2|blockquote|li|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function richTextWordCount(value: string) {
+  const plainText = stripRichTextMarkup(value);
+  if (!plainText) return 0;
+  return plainText.split(/\s+/).filter(Boolean).length;
+}
+
+function formatWordCount(count: number) {
+  return `${count} word${count === 1 ? "" : "s"}`;
+}
+
 function KnowledgeModal({ onClose, onSave }: { onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
-  const [values, setValues] = useState<RecordData>({ visibleInInternalApp: true, visibleToCustomer: false });
+  const [initialValues] = useState<RecordData>(() => ({ visibleInInternalApp: true, visibleToCustomer: false }));
+  const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [undoStack, setUndoStack] = useState<string[]>([]);
+  const [redoStack, setRedoStack] = useState<string[]>([]);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [showMoreToolbar, setShowMoreToolbar] = useState(false);
+  const [menuNotice, setMenuNotice] = useState("");
+  const textAreaRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRichText = String(values.bodyRichText ?? "");
+  const wordCount = richTextWordCount(bodyRichText);
+  const isDirty = !recordDataShallowEqual(values, initialValues);
+  const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
+
   async function submit(stayOpen = false) {
     const nextErrors = validateRequired(values, ["title", "urlName"]);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     const ok = await onSave(values);
-    if (ok && stayOpen) setValues({ visibleInInternalApp: true, visibleToCustomer: false });
+    if (ok && stayOpen) {
+      setValues(initialValues);
+      setErrors({});
+      setUndoStack([]);
+      setRedoStack([]);
+      setMenuNotice("");
+      setFullscreen(false);
+    }
   }
+  function setBodyRichText(nextBody: string, selection?: { start: number; end: number }) {
+    if (nextBody === bodyRichText) return;
+    setUndoStack((current) => [...current.slice(-24), bodyRichText]);
+    setRedoStack([]);
+    setValues((current) => ({ ...current, bodyRichText: nextBody }));
+    if (selection) {
+      requestAnimationFrame(() => {
+        textAreaRef.current?.focus();
+        textAreaRef.current?.setSelectionRange(selection.start, selection.end);
+      });
+    }
+  }
+
+  function replaceSelection(transform: (selected: string) => string, placeholder = "text") {
+    const area = textAreaRef.current;
+    const start = area?.selectionStart ?? bodyRichText.length;
+    const end = area?.selectionEnd ?? bodyRichText.length;
+    const selected = bodyRichText.slice(start, end) || placeholder;
+    const replacement = transform(selected);
+    const nextBody = `${bodyRichText.slice(0, start)}${replacement}${bodyRichText.slice(end)}`;
+    setBodyRichText(nextBody, { start, end: start + replacement.length });
+  }
+
+  function insertAtSelection(text: string) {
+    replaceSelection(() => text, "");
+  }
+
+  function wrapSelection(prefix: string, suffix: string, placeholder: string) {
+    replaceSelection((selected) => `${prefix}${selected}${suffix}`, placeholder);
+  }
+
+  function applyBlockFormat(format: string) {
+    const tags: Record<string, [string, string, string]> = {
+      Paragraph: ["<p>", "</p>", "Paragraph text"],
+      "Heading 1": ["<h1>", "</h1>", "Heading"],
+      "Heading 2": ["<h2>", "</h2>", "Heading"],
+      Quote: ["<blockquote>", "</blockquote>", "Quote"],
+      Code: ["<pre><code>", "</code></pre>", "code"]
+    };
+    const [prefix, suffix, placeholder] = tags[format] ?? tags.Paragraph;
+    wrapSelection(prefix, suffix, placeholder);
+  }
+
+  function applyAlignment(alignment: "left" | "center" | "right" | "justify") {
+    replaceSelection((selected) => `<p style="text-align: ${alignment};">${selected}</p>`, "Aligned text");
+  }
+
+  function clearFormatting() {
+    const area = textAreaRef.current;
+    const start = area?.selectionStart ?? 0;
+    const end = area?.selectionEnd ?? 0;
+    if (start !== end) {
+      const replacement = stripRichTextMarkup(bodyRichText.slice(start, end));
+      setBodyRichText(`${bodyRichText.slice(0, start)}${replacement}${bodyRichText.slice(end)}`, { start, end: start + replacement.length });
+      return;
+    }
+    setBodyRichText(stripRichTextMarkup(bodyRichText));
+  }
+
+  function normalizeBody() {
+    setBodyRichText(bodyRichText.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim());
+    setMenuNotice("Extra spacing normalized.");
+  }
+
+  function undoEditor() {
+    const previous = undoStack.at(-1);
+    if (previous === undefined) return;
+    setUndoStack((current) => current.slice(0, -1));
+    setRedoStack((current) => [bodyRichText, ...current].slice(0, 25));
+    setValues((current) => ({ ...current, bodyRichText: previous }));
+  }
+
+  function redoEditor() {
+    const next = redoStack[0];
+    if (next === undefined) return;
+    setRedoStack((current) => current.slice(1));
+    setUndoStack((current) => [...current.slice(-24), bodyRichText]);
+    setValues((current) => ({ ...current, bodyRichText: next }));
+  }
+
+  function updateBodyFromTyping(nextBody: string) {
+    setUndoStack((current) => [...current.slice(-24), bodyRichText]);
+    setRedoStack([]);
+    setValues((current) => ({ ...current, bodyRichText: nextBody }));
+  }
+
+  const menuActions: Record<string, Array<{ label: string; action: () => void; destructive?: boolean }>> = {
+    File: [
+      { label: "Print Article", action: () => window.print() },
+      { label: "Clear Article Body", action: () => setBodyRichText(""), destructive: true }
+    ],
+    Edit: [
+      { label: "Undo", action: undoEditor },
+      { label: "Redo", action: redoEditor },
+      { label: "Clear Formatting", action: clearFormatting }
+    ],
+    Insert: [
+      { label: "Current Date", action: () => insertAtSelection(new Date().toLocaleDateString("en-US")) },
+      { label: "Horizontal Rule", action: () => insertAtSelection("\n<hr />\n") },
+      { label: "2 x 2 Table", action: () => insertAtSelection("<table><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></table>") }
+    ],
+    View: [
+      { label: fullscreen ? "Exit Fullscreen" : "Fullscreen", action: () => setFullscreen((current) => !current) },
+      { label: showMoreToolbar ? "Hide More Toolbar Items" : "Show More Toolbar Items", action: () => setShowMoreToolbar((current) => !current) }
+    ],
+    Format: [
+      { label: "Paragraph", action: () => applyBlockFormat("Paragraph") },
+      { label: "Heading 1", action: () => applyBlockFormat("Heading 1") },
+      { label: "Quote", action: () => applyBlockFormat("Quote") }
+    ],
+    Table: [
+      { label: "Insert 2 x 2 Table", action: () => insertAtSelection("<table><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></table>") }
+    ],
+    Tools: [
+      { label: "Normalize Spacing", action: normalizeBody },
+      { label: "Strip Formatting", action: clearFormatting }
+    ],
+    Help: [
+      { label: "Insert Authoring Checklist", action: () => insertAtSelection("\n<ul><li>Confirm audience.</li><li>Review visibility settings.</li><li>Save or publish when ready.</li></ul>\n") }
+    ]
+  };
+
+  if (discardDialog) return discardDialog;
+
   return (
-    <BaseDialog open title="New Knowledge" onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button onClick={() => void submit(true)}>Save & New</Button><Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}>
+    <BaseDialog open title="New Knowledge" onClose={requestClose} wide footer={<><Button onClick={requestClose}>Cancel</Button><Button onClick={() => void submit(true)}>Save & New</Button><Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}>
       <div className="grid gap-4">
         <div className="grid gap-3 md:grid-cols-2">
           <FieldShell label="Title" required error={errors.title}><input className={inputClass} value={String(values.title ?? "")} onChange={(event) => setValues({ ...values, title: event.target.value, urlName: slugify(event.target.value) })} /></FieldShell>
           <FieldShell label="URL Name" required error={errors.urlName}><input className={inputClass} value={String(values.urlName ?? "")} onChange={(event) => setValues({ ...values, urlName: event.target.value })} /></FieldShell>
         </div>
-        <div className="rounded border border-[#d8dde6]">
+        <div className={cn("rounded border border-[#d8dde6] bg-white", fullscreen && "fixed inset-4 z-[90] flex flex-col shadow-modal")}>
           <div className="flex flex-wrap gap-1 border-b border-[#d8dde6] bg-[#f8f8f8] p-2 text-xs">
-            {["File", "Edit", "Insert", "View", "Format", "Table", "Tools", "Help"].map((item) => <button key={item} className="rounded px-2 py-1 hover:bg-white">{item}</button>)}
+            {Object.entries(menuActions).map(([label, actions]) => (
+              <DropdownMenu.Root key={label}>
+                <DropdownMenu.Trigger asChild>
+                  <button type="button" className="rounded px-2 py-1 hover:bg-white">{label}</button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content className="z-[100] min-w-48 rounded border border-[#d8dde6] bg-white p-1 shadow-popover">
+                    {actions.map((item) => (
+                      <DropdownMenu.Item
+                        key={item.label}
+                        onSelect={item.action}
+                        className={cn("cursor-pointer rounded px-3 py-2 text-sm outline-none hover:bg-brand-50", item.destructive && "text-[#ba0517] hover:bg-[#fff1f1]")}
+                      >
+                        {item.label}
+                      </DropdownMenu.Item>
+                    ))}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            ))}
           </div>
-          <div className="flex flex-wrap gap-1 border-b border-[#d8dde6] p-2">
-            {["Fullscreen", "Redo", "Undo", "Paragraph", "B", "I", "U", "S", "Text color", "Background", "Clear", "Left", "Center", "Right", "Justify"].map((item) => <button key={item} className="rounded border border-[#c9c9c9] px-2 py-1 text-xs hover:bg-[#f3f3f3]">{item}</button>)}
+          <div className="flex flex-wrap items-center gap-1 border-b border-[#d8dde6] p-2">
+            <button type="button" className={knowledgeToolbarButtonClass} onClick={() => setFullscreen((current) => !current)}>{fullscreen ? "Exit Fullscreen" : "Fullscreen"}</button>
+            <button type="button" className={knowledgeToolbarButtonClass} disabled={redoStack.length === 0} onClick={redoEditor}>Redo</button>
+            <button type="button" className={knowledgeToolbarButtonClass} disabled={undoStack.length === 0} onClick={undoEditor}>Undo</button>
+            <NativeSelect className="h-8 w-36 text-xs" options={["Paragraph", "Heading 1", "Heading 2", "Quote", "Code"]} value="Paragraph" onChange={applyBlockFormat} />
+            <button type="button" aria-label="Bold" className={cn(knowledgeToolbarButtonClass, "font-bold")} onClick={() => wrapSelection("<strong>", "</strong>", "bold text")}>B</button>
+            <button type="button" aria-label="Italic" className={cn(knowledgeToolbarButtonClass, "italic")} onClick={() => wrapSelection("<em>", "</em>", "italic text")}>I</button>
+            <button type="button" aria-label="Underline" className={cn(knowledgeToolbarButtonClass, "underline")} onClick={() => wrapSelection("<u>", "</u>", "underlined text")}>U</button>
+            <button type="button" aria-label="Strikethrough" className={cn(knowledgeToolbarButtonClass, "line-through")} onClick={() => wrapSelection("<s>", "</s>", "struck text")}>S</button>
+            <NativeSelect
+              className="h-8 w-36 text-xs"
+              options={[
+                { value: "text", label: "Text color" },
+                { value: "#0176d3", label: "Blue" },
+                { value: "#2e844a", label: "Green" },
+                { value: "#ba0517", label: "Red" },
+                { value: "#181818", label: "Black" }
+              ]}
+              value="text"
+              onChange={(color) => color !== "text" && wrapSelection(`<span style="color: ${color};">`, "</span>", "colored text")}
+            />
+            <NativeSelect
+              className="h-8 w-40 text-xs"
+              options={[
+                { value: "background", label: "Background" },
+                { value: "#fff7e8", label: "Gold" },
+                { value: "#e4f6e6", label: "Green" },
+                { value: "#eef4ff", label: "Blue" },
+                { value: "#fff1f1", label: "Red" }
+              ]}
+              value="background"
+              onChange={(color) => color !== "background" && wrapSelection(`<span style="background-color: ${color};">`, "</span>", "highlighted text")}
+            />
+            <button type="button" className={knowledgeToolbarButtonClass} onClick={clearFormatting}>Clear</button>
+            <button type="button" className={knowledgeToolbarButtonClass} onClick={() => applyAlignment("left")}>Left</button>
+            <button type="button" className={knowledgeToolbarButtonClass} onClick={() => applyAlignment("center")}>Center</button>
+            <button type="button" className={knowledgeToolbarButtonClass} onClick={() => applyAlignment("right")}>Right</button>
+            <button type="button" className={knowledgeToolbarButtonClass} onClick={() => applyAlignment("justify")}>Justify</button>
+            <button type="button" className={knowledgeToolbarButtonClass} onClick={() => setShowMoreToolbar((current) => !current)}>{showMoreToolbar ? "Less" : "More"}</button>
+            {showMoreToolbar && (
+              <>
+                <button type="button" className={knowledgeToolbarButtonClass} onClick={() => insertAtSelection("\n<hr />\n")}>Rule</button>
+                <button type="button" className={knowledgeToolbarButtonClass} onClick={() => insertAtSelection("<table><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></table>")}>Table</button>
+                <button type="button" className={knowledgeToolbarButtonClass} onClick={normalizeBody}>Normalize</button>
+              </>
+            )}
           </div>
-          <textarea className={cn(inputBareClass, "h-40 p-3")} value={String(values.bodyRichText ?? "")} onChange={(event) => setValues({ ...values, bodyRichText: event.target.value })} />
-          <div className="border-t border-[#d8dde6] px-3 py-1 text-xs text-[#706e6b]">0 words</div>
+          <textarea
+            ref={textAreaRef}
+            className={cn(inputBareClass, fullscreen ? "min-h-0 flex-1 p-3" : "h-44 p-3")}
+            value={bodyRichText}
+            onChange={(event) => updateBodyFromTyping(event.target.value)}
+            aria-label="Article Body"
+          />
+          <div className="flex items-center justify-between gap-3 border-t border-[#d8dde6] px-3 py-1 text-xs text-[#706e6b]">
+            <span>{formatWordCount(wordCount)}</span>
+            {menuNotice && <span>{menuNotice}</span>}
+          </div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <FieldShell label="Visible In Internal App"><RadixCheckbox checked={Boolean(values.visibleInInternalApp)} onCheckedChange={(value) => setValues({ ...values, visibleInInternalApp: Boolean(value) })} /></FieldShell>
@@ -6441,7 +7051,8 @@ function ListEmailWizard({ data, onClose, onSave }: { data: BootstrapData; onClo
   const [layoutQuery, setLayoutQuery] = useState("");
   const [savedQuery, setSavedQuery] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [values, setValues] = useState<RecordData>({ recipientType: "Leads and Contacts", status: "Draft", recipients: [], scheduleTime: "09:00" });
+  const [initialValues] = useState<RecordData>(() => ({ recipientType: "Leads and Contacts", status: "Draft", recipients: [], scheduleTime: "09:00" }));
+  const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const recipientOptions = [
     ...data.leads.map((lead) => ({ id: String(lead.id), label: `Lead: ${contactName(lead) || lead.company || lead.id}` })),
@@ -6459,6 +7070,8 @@ function ListEmailWizard({ data, onClose, onSave }: { data: BootstrapData; onClo
   const selectedLayout = LIST_EMAIL_LAYOUTS.find((item) => item.name === layout) ?? LIST_EMAIL_LAYOUTS[0];
   const previewSubject = String(values.subject ?? defaultListEmailSubject(layout));
   const previewBody = String(values.body ?? defaultListEmailBody(layout));
+  const isDirty = layout !== "Sales" || !recordDataShallowEqual(values, initialValues);
+  const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
 
   function toggleRecipient(id: string) {
     const nextRecipients = selectedRecipients.includes(id) ? selectedRecipients.filter((item) => item !== id) : [...selectedRecipients, id];
@@ -6511,18 +7124,20 @@ function ListEmailWizard({ data, onClose, onSave }: { data: BootstrapData; onClo
     if (ok) onClose();
   }
 
+  if (discardDialog) return discardDialog;
+
   return (
     <BaseDialog
       open
       title={step === 1 ? "Select an Email Layout" : `Compose ${layout} Email`}
-      onClose={onClose}
+      onClose={requestClose}
       wide
       footer={
         step === 1 ? (
           <>
             <Button onClick={() => setPreviewOpen((open) => !open)}>Preview</Button>
             <Button variant="primary" onClick={continueToCompose}>Select & Continue</Button>
-            <Button onClick={onClose}>Cancel and close</Button>
+            <Button onClick={requestClose}>Cancel and close</Button>
           </>
         ) : (
           <>
@@ -6531,7 +7146,7 @@ function ListEmailWizard({ data, onClose, onSave }: { data: BootstrapData; onClo
             <Button onClick={() => void submit("Draft")}>Save Draft</Button>
             <Button onClick={() => void submit("Scheduled")}>Schedule</Button>
             <Button variant="primary" onClick={() => void submit("Sent")}>Send</Button>
-            <Button onClick={onClose}>Cancel</Button>
+            <Button onClick={requestClose}>Cancel</Button>
           </>
         )
       }
@@ -6587,7 +7202,7 @@ function ListEmailWizard({ data, onClose, onSave }: { data: BootstrapData; onClo
             </FieldShell>
           </div>
           <FieldShell label="Recipients" required error={errors.recipients}>
-            <div className="grid max-h-36 gap-2 overflow-auto rounded border border-[#d8dde6] bg-white p-2 md:grid-cols-2">
+            <div className="grid max-h-36 gap-2 overflow-auto rounded-lg border border-[#e4e7ec] bg-white shadow-card p-2 md:grid-cols-2">
               {availableRecipients.map((recipient) => (
                 <label key={recipient.id} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-brand-50">
                   <input type="checkbox" checked={selectedRecipients.includes(recipient.id)} onChange={() => toggleRecipient(recipient.id)}  className={checkboxClass} />
@@ -6615,7 +7230,7 @@ function ListEmailWizard({ data, onClose, onSave }: { data: BootstrapData; onClo
 
 function ListEmailPreview({ title, subject, body, recipients }: { title: string; subject: string; body: string; recipients: string[] }) {
   return (
-    <div className="mt-4 rounded border border-[#d8dde6] bg-white">
+    <div className="mt-4 rounded-lg border border-[#e4e7ec] bg-white shadow-card">
       <div className="border-b border-[#d8dde6] bg-[#f8f8f8] px-3 py-2 text-sm font-semibold">{title}</div>
       <div className="grid gap-3 p-3 text-sm">
         <div>
@@ -6736,7 +7351,7 @@ function NavEditModal({
                     moveItem(index, 1);
                   }
                 }}
-                className="flex items-center gap-2 rounded border border-[#d8dde6] bg-white p-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                className="flex items-center gap-2 rounded-lg border border-[#e4e7ec] bg-white shadow-card p-2 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
               >
                 <GripVertical size={16} className="shrink-0 text-[#706e6b]" />
                 <div className="min-w-0 flex-1">
@@ -6756,7 +7371,7 @@ function NavEditModal({
           <div className="mb-2 text-xs font-semibold uppercase text-[#706e6b]">Available Items</div>
           <div className="space-y-2 rounded border border-[#d8dde6] bg-[#f8f8f8] p-2">
             {available.map((item) => (
-              <button key={item.href} className="flex w-full items-center justify-between gap-2 rounded border border-[#d8dde6] bg-white px-2 py-2 text-left text-sm hover:border-brand-500 hover:bg-brand-50" onClick={() => addItem(item)}>
+              <button key={item.href} className="flex w-full items-center justify-between gap-2 rounded-lg border border-[#e4e7ec] bg-white shadow-card px-2 py-2 text-left text-sm hover:border-brand-500 hover:bg-brand-50" onClick={() => addItem(item)}>
                 <span className="min-w-0">
                   <span className="block truncate font-semibold">{item.label}</span>
                   <span className="block truncate text-xs text-[#706e6b]">{item.href}</span>
@@ -6822,57 +7437,166 @@ function LookupField({
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
 }) {
-  const options =
-    field.lookupObject === "Account"
-      ? data.accounts.map((account) => ({ id: requiredId(account), label: String(account.name) }))
-      : field.lookupObject === "Contact"
-        ? data.contacts.map((contact) => ({ id: requiredId(contact), label: contactName(contact) }))
-        : field.lookupObject === "User" || field.lookupObject === "People"
-          ? [{ id: data.user.id, label: data.user.name }]
-          : [];
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const generatedId = useId();
+  const inputId = id ?? generatedId;
+  const listId = `${inputId}-lookup-results`;
+  const options = lookupOptionsForField(field, data);
   const selected = options.find((option) => option.id === value);
   const invalid = Boolean(error || ariaInvalid);
+  const placeholder = lookupPlaceholder(field);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = normalizedQuery
+    ? options.filter((option) => option.label.toLowerCase().includes(normalizedQuery))
+    : options;
+
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [query, field.lookupObject]);
+
+  function closeLookup() {
+    setOpen(false);
+    setQuery("");
+    setHighlightedIndex(0);
+  }
+
+  function choose(optionId: string) {
+    onChange(optionId);
+    closeLookup();
+  }
+
   return (
     <div className="space-y-1">
       {selected && (
         <div className="inline-flex items-center gap-1 rounded-full border border-[#c9c9c9] bg-[#f8f8f8] px-2 py-1 text-xs">
           {selected.label}
-          <button type="button" aria-label="Clear selection" onClick={() => onChange("")}><X size={12} /></button>
+          <button type="button" aria-label="Clear selection" onClick={() => { onChange(""); closeLookup(); }}><X size={12} /></button>
         </div>
       )}
-      <NativeSelect
-        id={id}
-        options={[
-          {
-            value: "",
-            label: `Search ${field.lookupObject === "User" ? "People" : `${OBJECT_DEFINITIONS[field.lookupObject as CrmObject]?.plural ?? "Records"}`}...`
-          },
-          ...options.map((option) => ({ value: option.id, label: option.label }))
-        ]}
-        value={value}
-        onChange={onChange}
-        error={invalid}
-        aria-label={field.label}
-        aria-invalid={invalid || undefined}
-        aria-describedby={ariaDescribedBy}
-        placeholder={`Search ${field.lookupObject === "User" ? "People" : `${OBJECT_DEFINITIONS[field.lookupObject as CrmObject]?.plural ?? "Records"}`}...`}
-      />
+      <Popover.Root
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen);
+          if (!nextOpen) {
+            setQuery("");
+            setHighlightedIndex(0);
+          }
+        }}
+      >
+        <Popover.Anchor asChild>
+          <div className="relative">
+            <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#706e6b]" />
+            <input
+              id={inputId}
+              role="combobox"
+              aria-expanded={open}
+              aria-controls={listId}
+              aria-activedescendant={open && filteredOptions[highlightedIndex] ? `${listId}-${highlightedIndex}` : undefined}
+              aria-autocomplete="list"
+              aria-invalid={invalid || undefined}
+              aria-describedby={ariaDescribedBy}
+              aria-label={field.label}
+              value={query}
+              onFocus={() => setOpen(true)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setOpen(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setOpen(true);
+                  setHighlightedIndex((current) => (filteredOptions.length ? Math.min(filteredOptions.length - 1, current + 1) : 0));
+                }
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setHighlightedIndex((current) => Math.max(0, current - 1));
+                }
+                if (event.key === "Enter") {
+                  const option = filteredOptions[highlightedIndex] ?? filteredOptions[0];
+                  if (option) {
+                    event.preventDefault();
+                    choose(option.id);
+                  }
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  closeLookup();
+                }
+                if (event.key === "Backspace" && !query && value) onChange("");
+              }}
+              className={cn(inputClass, "pl-8", invalid && inputErrorClass)}
+              placeholder={placeholder}
+            />
+          </div>
+        </Popover.Anchor>
+        <Popover.Portal>
+          <Popover.Content
+            align="start"
+            sideOffset={4}
+            className="z-[70] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded border border-[#d8dde6] bg-white shadow-popover"
+            onOpenAutoFocus={(event) => event.preventDefault()}
+            onCloseAutoFocus={(event) => event.preventDefault()}
+          >
+            <div id={listId} role="listbox" aria-label={`${field.label} lookup results`} className="slds-scrollbar max-h-60 overflow-auto p-1">
+              {filteredOptions.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-[#706e6b]">No matches</div>
+              ) : (
+                filteredOptions.map((option, index) => {
+                  const active = index === highlightedIndex;
+                  const optionSelected = option.id === value;
+                  return (
+                    <button
+                      key={option.id}
+                      id={`${listId}-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={optionSelected}
+                      className={cn("relative flex w-full items-center rounded py-2 pl-8 pr-3 text-left text-sm outline-none hover:bg-brand-50", active && "bg-brand-50", optionSelected && "font-semibold")}
+                      onMouseEnter={() => setHighlightedIndex(index)}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => choose(option.id)}
+                    >
+                      {optionSelected && <Check size={14} className="absolute left-2 text-brand-600" />}
+                      <span className="truncate">{option.label}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
     </div>
   );
+}
+
+function lookupOptionsForField(field: FieldDefinition, data: BootstrapData) {
+  if (field.lookupObject === "Account") return data.accounts.map((account) => ({ id: requiredId(account), label: String(account.name ?? "Account") }));
+  if (field.lookupObject === "Contact") return data.contacts.map((contact) => ({ id: requiredId(contact), label: contactName(contact) }));
+  if (field.lookupObject === "User" || field.lookupObject === "People") return [{ id: data.user.id, label: data.user.name }];
+  return [];
+}
+
+function lookupPlaceholder(field: FieldDefinition) {
+  if (field.lookupObject === "User" || field.lookupObject === "People") return "Search People...";
+  return `Search ${OBJECT_DEFINITIONS[field.lookupObject as CrmObject]?.plural ?? "Records"}...`;
 }
 
 function BaseDialog({ open, title, children, footer, onClose, wide = false }: { open: boolean; title: string; children: ReactNode; footer?: ReactNode; onClose: () => void; wide?: boolean }) {
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/45" />
-        <Dialog.Content className={cn("fixed left-1/2 top-1/2 z-50 max-h-[86vh] w-[min(96vw,620px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded border border-[#d8dde6] bg-white shadow-modal", wide && "w-[min(96vw,920px)]")}>
-          <div className="flex items-center justify-between border-b border-[#d8dde6] px-4 py-3">
-            <Dialog.Title className="text-lg font-semibold">{title}</Dialog.Title>
-            <Dialog.Close asChild><button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label="Cancel and close"><X size={18} /></button></Dialog.Close>
+        <Dialog.Overlay className="crm-overlay fixed inset-0 z-50 bg-shell/45 backdrop-blur-[3px]" />
+        <Dialog.Content className={cn("crm-dialog fixed left-1/2 top-1/2 z-50 max-h-[86vh] w-[min(96vw,620px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl bg-white shadow-modal", wide && "w-[min(96vw,920px)]")}>
+          <div className="flex items-center justify-between border-b border-[#e4e7ec] px-5 py-3.5">
+            <Dialog.Title className="text-lg font-semibold tracking-[-0.01em]">{title}</Dialog.Title>
+            <Dialog.Close asChild><button className="rounded-md p-1.5 text-[#706e6b] hover:bg-[#f3f3f3] hover:text-[#181818] active:scale-90" aria-label="Cancel and close"><X size={18} /></button></Dialog.Close>
           </div>
-          <div className="slds-scrollbar max-h-[calc(86vh-120px)] overflow-auto p-4">{children}</div>
-          {footer && <div className="flex justify-end gap-2 border-t border-[#d8dde6] bg-[#f3f3f3] px-4 py-3">{footer}</div>}
+          <div className="slds-scrollbar max-h-[calc(86vh-120px)] overflow-auto p-5">{children}</div>
+          {footer && <div className="flex justify-end gap-2 border-t border-[#e4e7ec] bg-[#f8f9fb] px-5 py-3.5">{footer}</div>}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -6884,10 +7608,13 @@ function Button({ children, onClick, variant = "secondary", className }: { child
     <button
       onClick={onClick}
       className={cn(
-        "inline-flex min-h-8 items-center justify-center gap-1 rounded border px-3 py-1 text-xs font-semibold transition-colors",
-        variant === "primary" && "border-brand-600 bg-brand-600 text-white hover:bg-brand-700",
-        variant === "secondary" && "border-[#c9c9c9] bg-white text-brand-700 hover:bg-[#f3f3f3]",
-        variant === "destructive" && "border-[#ba0517] bg-[#ba0517] text-white hover:bg-[#8e030f]",
+        "inline-flex min-h-8 items-center justify-center gap-1 rounded border px-3.5 py-1 text-xs font-semibold active:scale-[0.97]",
+        variant === "primary" &&
+          "border-brand-700/60 bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(3,45,96,0.24)] hover:from-brand-600 hover:to-brand-700 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_2px_6px_rgba(3,45,96,0.3)]",
+        variant === "secondary" &&
+          "border-[#cfd4dc] bg-white text-brand-700 shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-[#b5bcc7] hover:bg-[#f8f9fb]",
+        variant === "destructive" &&
+          "border-[#8e030f] bg-gradient-to-b from-[#d40b1f] to-[#ba0517] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_1px_2px_rgba(142,3,15,0.28)] hover:from-[#ba0517] hover:to-[#8e030f]",
         className
       )}
     >
@@ -6898,28 +7625,19 @@ function Button({ children, onClick, variant = "secondary", className }: { child
 
 function ToolbarButton({ label, icon: Icon = Settings, onClick, disabled }: { label: string; icon?: ElementType; onClick?: () => void; disabled?: boolean }) {
   return (
-    <button aria-label={label} disabled={disabled} onClick={onClick} className="flex h-8 w-8 items-center justify-center rounded border border-[#c9c9c9] bg-white text-[#444] hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-45">
+    <button aria-label={label} disabled={disabled} onClick={onClick} className="flex h-8 w-8 items-center justify-center rounded border border-[#cfd4dc] bg-white text-[#444] shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-[#b5bcc7] hover:bg-[#f8f9fb] hover:text-brand-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-[#cfd4dc] disabled:hover:bg-white disabled:hover:text-[#444]">
       <Icon size={14} />
     </button>
   );
 }
 
 function ListViewControlsMenu({ object, listView, isCustom, onAction }: { object: CrmObject; listView: string; isCustom: boolean; onAction: (action: string) => void }) {
-  const items = [
-    { label: "New", enabled: true },
-    { label: "Clone", enabled: !listView.includes("Recently Viewed") },
-    { label: "Rename", enabled: isCustom },
-    { label: "Sharing Settings", enabled: !listView.includes("Recently Viewed") },
-    { label: "Select Fields to Display", enabled: !listView.includes("Recently Viewed") },
-    { label: "Delete", enabled: isCustom },
-    ...(object === "Knowledge__kav" ? [] : [{ label: "Reset Column Sorting", enabled: true }]),
-    { label: "Reset Column Widths", enabled: true }
-  ];
+  const items = listViewControlItems(object, listView, isCustom);
 
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <button aria-label="List View Controls" className="flex h-8 w-8 items-center justify-center rounded border border-[#c9c9c9] bg-white text-[#444] hover:bg-[#f3f3f3]">
+        <button aria-label="List View Controls" className="flex h-8 w-8 items-center justify-center rounded border border-[#cfd4dc] bg-white text-[#444] shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-[#b5bcc7] hover:bg-[#f8f9fb] hover:text-brand-700 active:scale-95 data-[state=open]:border-brand-500 data-[state=open]:text-brand-700">
           <Settings size={14} />
         </button>
       </DropdownMenu.Trigger>
@@ -6942,12 +7660,44 @@ function ListViewControlsMenu({ object, listView, isCustom, onAction }: { object
   );
 }
 
+type ListViewControlItem = {
+  label: string;
+  enabled: boolean;
+  description: string;
+};
+
+function listViewControlItems(object: CrmObject, listView: string, isCustom: boolean): ListViewControlItem[] {
+  const isRecentlyViewed = listView.includes("Recently Viewed");
+  return [
+    { label: "New", enabled: true, description: "Create a private list view with its own fields and filters." },
+    { label: "Clone", enabled: !isRecentlyViewed, description: "Copy this list view into a new editable custom view." },
+    { label: "Rename", enabled: isCustom, description: "Update the name of this custom list view." },
+    { label: "Sharing Settings", enabled: !isRecentlyViewed, description: "Choose who can see this list view." },
+    { label: "Select Fields to Display", enabled: !isRecentlyViewed, description: "Choose columns, display order, and saved widths." },
+    { label: "Delete", enabled: isCustom, description: "Remove this custom list view without deleting records." },
+    ...(object === "Knowledge__kav"
+      ? []
+      : [{ label: "Reset Column Sorting", enabled: true, description: "Clear the current column sort for this view." }]),
+    { label: "Reset Column Widths", enabled: true, description: "Restore default column widths for this view." }
+  ];
+}
+
 function ObjectIcon({ definition }: { definition: ObjectDefinition }) {
   const Icon = iconMap[definition.icon] ?? Box;
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-brand-500 text-white">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gradient-to-b from-brand-400 to-brand-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_1px_3px_rgba(3,45,96,0.24)]">
       <Icon size={20} />
     </div>
+  );
+}
+
+function AvatarImage({ src, className }: { src: string; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn("block shrink-0 bg-cover bg-center", className)}
+      style={{ backgroundImage: `url(${JSON.stringify(src)})` }}
+    />
   );
 }
 
@@ -7154,7 +7904,7 @@ function RadixCheckbox({ checked, onCheckedChange }: { checked: boolean; onCheck
     <Checkbox.Root
       checked={checked}
       onCheckedChange={onCheckedChange}
-      className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[#c9c9c9] bg-white outline-none transition-colors hover:border-[#a0a0a0] focus-visible:border-brand-500 focus-visible:shadow-[0_0_0_1px_#0176d3] data-[state=checked]:border-brand-600 data-[state=checked]:bg-brand-600 data-[state=checked]:hover:border-brand-600"
+      className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[#c9c9c9] bg-white outline-none transition-all hover:border-[#a0a0a0] focus-visible:border-brand-500 focus-visible:shadow-[0_0_0_3px_rgba(1,118,211,0.16)] active:scale-90 data-[state=checked]:border-brand-600 data-[state=checked]:bg-brand-600 data-[state=checked]:hover:border-brand-600"
     >
       <Checkbox.Indicator><Check size={12} className="text-white" strokeWidth={3} /></Checkbox.Indicator>
     </Checkbox.Root>
@@ -7214,7 +7964,7 @@ function enhanceFieldControl(children: ReactNode, options: { id: string; error?:
 
 function DashboardPanel({ title, action, actionHref, onAction, children }: { title: string; action?: string; actionHref?: string; onAction?: () => void; children: ReactNode }) {
   return (
-    <section className="rounded border border-[#d8dde6] bg-white p-4">
+    <section className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="font-semibold">{title}</h2>
         {action && actionHref && (
@@ -7231,7 +7981,7 @@ function DashboardPanel({ title, action, actionHref, onAction, children }: { tit
 
 function EmptyPanel({ title, body, action, onAction }: { title: string; body: string; action?: string; onAction?: () => void }) {
   return (
-    <div className="rounded border border-[#d8dde6] bg-white p-10 text-center">
+    <div className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-10 text-center">
       <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-brand-50 text-brand-600"><Cloud size={30} /></div>
       <h1 className="text-2xl font-semibold">{title}</h1>
       <p className="mx-auto mt-2 max-w-lg text-sm text-[#706e6b]">{body}</p>
@@ -7315,11 +8065,47 @@ function GuidanceCard({
   );
 }
 
+const toastToneStyles = {
+  success: { icon: CheckCircle2, bar: "bg-[#2e844a]", iconColor: "text-[#2e844a]", label: "Success" },
+  error: { icon: AlertCircle, bar: "bg-[#ba0517]", iconColor: "text-[#ba0517]", label: "Error" },
+  warning: { icon: TriangleAlert, bar: "bg-[#a86403]", iconColor: "text-[#a86403]", label: "Warning" }
+} as const;
+
 function ToastHost({ toast }: { toast: ToastState }) {
-  if (!toast) return null;
+  const [rendered, setRendered] = useState<NonNullable<ToastState> | null>(toast);
+  const [leaving, setLeaving] = useState(false);
+
+  useEffect(() => {
+    if (toast) {
+      setRendered(toast);
+      setLeaving(false);
+      return;
+    }
+    setLeaving(true);
+    const timer = window.setTimeout(() => {
+      setRendered(null);
+      setLeaving(false);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  if (!rendered) return null;
+  const tone = toastToneStyles[rendered.tone];
+  const ToneIcon = tone.icon;
   return (
-    <div className={cn("fixed right-4 top-20 z-[80] rounded px-4 py-3 text-sm text-white shadow-popover", toast.tone === "success" && "bg-[#2e844a]", toast.tone === "error" && "bg-[#ba0517]", toast.tone === "warning" && "bg-[#8a6d00]")}>
-      {toast.message}
+    <div
+      role="status"
+      className={cn(
+        "fixed right-4 top-36 z-[80] flex w-auto max-w-sm items-start gap-3 overflow-hidden rounded-lg border border-[#e4e7ec] bg-white py-3 pl-4 pr-5 text-sm shadow-modal",
+        leaving ? "crm-toast-exit" : "crm-toast-enter"
+      )}
+    >
+      <span className={cn("absolute inset-y-0 left-0 w-1", tone.bar)} aria-hidden="true" />
+      <ToneIcon size={18} className={cn("mt-0.5 shrink-0", tone.iconColor)} aria-hidden="true" />
+      <div className="min-w-0">
+        <div className="font-semibold text-[#181818]">{tone.label}</div>
+        <div className="mt-0.5 text-[#514f4d]">{rendered.message}</div>
+      </div>
     </div>
   );
 }
@@ -7329,13 +8115,16 @@ function NotFoundPanel({ title, body }: { title: string; body: string }) {
 }
 
 const inputClass =
-  "min-h-8 w-full rounded border border-[var(--control-border,#c9c9c9)] bg-[var(--control-bg,#fff)] px-2.5 py-1.5 text-sm text-[#181818] outline-none transition-[border-color,box-shadow,background-color] placeholder:text-[var(--control-placeholder,#706e6b)] hover:border-[var(--control-border-hover,#a0a0a0)] focus:border-[var(--control-border-focus,#0176d3)] focus:shadow-[0_0_0_1px_var(--control-border-focus,#0176d3)] disabled:cursor-not-allowed disabled:border-[#c9c9c9] disabled:bg-[var(--control-bg-muted,#f3f3f3)] disabled:text-[#706e6b] disabled:hover:border-[#c9c9c9] disabled:focus:shadow-none read-only:border-[#c9c9c9] read-only:bg-[var(--control-bg-muted,#f3f3f3)] read-only:text-[#444] read-only:hover:border-[#c9c9c9] read-only:focus:border-[#c9c9c9] read-only:focus:shadow-none";
+  "min-h-8 w-full rounded border border-[var(--control-border,#c9c9c9)] bg-[var(--control-bg,#fff)] px-2.5 py-1.5 text-sm text-[#181818] shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-[var(--control-placeholder,#706e6b)] hover:border-[var(--control-border-hover,#a0a0a0)] focus:border-[var(--control-border-focus,#0176d3)] focus:shadow-[0_0_0_3px_rgba(1,118,211,0.16)] disabled:cursor-not-allowed disabled:border-[#c9c9c9] disabled:bg-[var(--control-bg-muted,#f3f3f3)] disabled:text-[#706e6b] disabled:hover:border-[#c9c9c9] disabled:focus:shadow-none read-only:border-[#c9c9c9] read-only:bg-[var(--control-bg-muted,#f3f3f3)] read-only:text-[#444] read-only:hover:border-[#c9c9c9] read-only:focus:border-[#c9c9c9] read-only:focus:shadow-none";
 
 const inputErrorClass =
-  "border-[var(--control-border-error,#ba0517)] hover:border-[var(--control-border-error,#ba0517)] focus:border-[var(--control-border-error,#ba0517)] focus:shadow-[0_0_0_1px_var(--control-border-error,#ba0517)]";
+  "border-[var(--control-border-error,#ba0517)] hover:border-[var(--control-border-error,#ba0517)] focus:border-[var(--control-border-error,#ba0517)] focus:shadow-[0_0_0_3px_rgba(186,5,23,0.14)]";
 
 const inputBareClass =
   "h-full min-h-0 w-full flex-1 border-0 bg-transparent px-2 text-sm text-[#181818] outline-none placeholder:text-[var(--control-placeholder,#706e6b)]";
+
+const knowledgeToolbarButtonClass =
+  "inline-flex h-8 items-center justify-center rounded border border-[#c9c9c9] bg-white px-2 text-xs font-semibold text-[#444] hover:bg-[#f3f3f3] disabled:cursor-not-allowed disabled:opacity-45";
 
 const checkboxClass = "h-4 w-4 shrink-0 rounded border border-[#c9c9c9] accent-brand-600";
 
@@ -7629,6 +8418,14 @@ function pathMatches(pathname: string, href: string) {
   return pathname === href.split("?")[0] || (href.includes("/o/") && pathname.includes(href.split("?")[0].replace("/list", "").replace("/home", "")));
 }
 
+function consoleTabListHref(href: string) {
+  const [path] = href.split("?");
+  const segments = path.split("/").filter(Boolean);
+  if (segments[1] === "r" && isCrmObject(segments[2])) return defaultRouteForObject(segments[2]);
+  if (segments[1] === "o" && isCrmObject(segments[2])) return defaultRouteForObject(segments[2]);
+  return href;
+}
+
 function defaultRouteForObject(object: CrmObject) {
   if (object === "Event") return "/lightning/o/Event/home";
   if (object === "QuickText") return "/lightning/o/QuickText/home";
@@ -7839,6 +8636,141 @@ function campaignMembersFromData(members: RecordData[] = [], campaigns: RecordDa
   }, {});
 }
 
+function leadConversionResultFromWorkflow(result: RecordData, leads: RecordData[], data: BootstrapData, payload: RecordData) {
+  const accounts = recordArray(result.accounts);
+  const contacts = recordArray(result.contacts);
+  const opportunities = recordArray(result.opportunities);
+  const convertedLeads = recordArray(result.leads);
+  if (contacts.length > 0 || convertedLeads.length > 0) return { accounts, contacts, opportunities, leads: convertedLeads };
+  return fallbackLeadConversionRecords(leads, data, payload);
+}
+
+function fallbackLeadConversionRecords(leads: RecordData[], data: BootstrapData, payload: RecordData) {
+  const now = new Date().toISOString();
+  const status = String(payload.convertedStatus ?? "Qualified");
+  const closeDate = String(payload.closeDate ?? defaultLeadConversionCloseDate());
+  const stage = String(payload.stage ?? "Qualify");
+  const forecastCategory = String(payload.forecastCategory ?? "Pipeline");
+  const createOpportunity = payload.createOpportunity !== false;
+  const singleAccountName = leads.length === 1 ? String(payload.accountName ?? "").trim() : "";
+  const accounts: RecordData[] = [];
+  const contacts: RecordData[] = [];
+  const opportunities: RecordData[] = [];
+  const convertedLeads: RecordData[] = [];
+
+  leads.forEach((lead, index) => {
+    const leadId = requiredId(lead) || `lead-${Date.now()}-${index}`;
+    const accountName = singleAccountName || String(lead.company ?? contactName(lead) ?? "Converted Lead Account").trim() || "Converted Lead Account";
+    const existingAccount = data.accounts.find((account) => normalizedText(account.name) === normalizedText(accountName));
+    const account =
+      existingAccount ??
+      ({
+        id: `converted-account-${leadId}`,
+        name: accountName,
+        website: lead.website ?? null,
+        type: "Prospect",
+        ownerId: lead.ownerId ?? data.user.id,
+        phone: lead.phone ?? null,
+        billingCountry: lead.country ?? null,
+        billingStreet: lead.street ?? null,
+        billingPostalCode: lead.postalCode ?? null,
+        billingCity: lead.city ?? null,
+        billingState: lead.state ?? null,
+        createdById: data.user.id,
+        updatedById: data.user.id,
+        createdAt: now,
+        updatedAt: now
+      } satisfies RecordData);
+
+    const contact = {
+      id: `converted-contact-${leadId}`,
+      salutation: lead.salutation ?? null,
+      firstName: lead.firstName ?? null,
+      lastName: String(lead.lastName ?? "Converted"),
+      accountId: requiredId(account),
+      title: lead.title ?? null,
+      description: lead.description ?? null,
+      ownerId: lead.ownerId ?? data.user.id,
+      phone: lead.phone ?? null,
+      email: lead.email ?? null,
+      mailingCountry: lead.country ?? null,
+      mailingStreet: lead.street ?? null,
+      mailingPostalCode: lead.postalCode ?? null,
+      mailingCity: lead.city ?? null,
+      mailingState: lead.state ?? null,
+      createdById: data.user.id,
+      updatedById: data.user.id,
+      createdAt: now,
+      updatedAt: now
+    } satisfies RecordData;
+
+    const opportunity = createOpportunity
+      ? ({
+          id: `converted-opportunity-${leadId}`,
+          name: leads.length === 1 ? String(payload.opportunityName ?? `${accountName} Opportunity`) : `${accountName} Opportunity`,
+          accountId: requiredId(account),
+          contactId: requiredId(contact),
+          closeDate,
+          amount: null,
+          description: lead.description ?? null,
+          ownerId: lead.ownerId ?? data.user.id,
+          stage,
+          probability: stage === "Qualify" ? 10 : null,
+          forecastCategory,
+          nextStep: "Follow up after lead conversion",
+          createdById: data.user.id,
+          updatedById: data.user.id,
+          createdAt: now,
+          updatedAt: now
+        } satisfies RecordData)
+      : null;
+
+    accounts.push(account);
+    contacts.push(contact);
+    if (opportunity) opportunities.push(opportunity);
+    convertedLeads.push({
+      ...lead,
+      status,
+      convertedAccountId: requiredId(account),
+      convertedContactId: requiredId(contact),
+      convertedOpportunityId: opportunity ? requiredId(opportunity) : null,
+      updatedById: data.user.id,
+      updatedAt: now
+    });
+  });
+
+  return { accounts, contacts, opportunities, leads: convertedLeads };
+}
+
+function recordArray(value: unknown) {
+  return Array.isArray(value) ? value.filter(isRecordData) : [];
+}
+
+function upsertRecordsById(existing: RecordData[], incoming: RecordData[]) {
+  if (incoming.length === 0) return existing;
+  const incomingById = new Map<string, RecordData>();
+  incoming.forEach((record) => {
+    const id = requiredId(record);
+    if (id) incomingById.set(id, record);
+  });
+  const existingIds = new Set(existing.map(requiredId));
+  const updated = existing.map((record) => {
+    const next = incomingById.get(requiredId(record));
+    return next ? { ...record, ...next } : record;
+  });
+  const created = incoming.filter((record) => {
+    const id = requiredId(record);
+    return id && !existingIds.has(id);
+  });
+  return [...created, ...updated];
+}
+
+function defaultLeadConversionCloseDate() {
+  const date = new Date();
+  date.setDate(date.getDate() + 30);
+  return date.toISOString().slice(0, 10);
+}
+
 function enrichLocalRecord(object: CrmObject, record: RecordData): RecordData {
   const now = new Date().toISOString();
   const base: RecordData = { createdAt: now, updatedAt: now, createdById: CURRENT_USER.id, updatedById: CURRENT_USER.id, ownerId: CURRENT_USER.id, ...record };
@@ -7900,6 +8832,26 @@ function buildInitialValues(definition: FormDefinition, record?: RecordData): Re
     if (values[field.name] === undefined && field.defaultValue !== undefined) values[field.name] = field.defaultValue;
   });
   return values;
+}
+
+function recordDataShallowEqual(left: RecordData, right: RecordData) {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  for (const key of keys) {
+    if (normalizeDirtyValue(left[key]) !== normalizeDirtyValue(right[key])) return false;
+  }
+  return true;
+}
+
+function normalizeDirtyValue(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (Array.isArray(value) || typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
 }
 
 function validateFields(fields: FieldDefinition[], values: RecordData) {
@@ -8030,6 +8982,10 @@ function activityTab(active: boolean) {
   return cn("rounded border border-[#c9c9c9] px-2 py-1 text-xs hover:bg-[#f3f3f3]", active && "border-brand-500 bg-brand-50 text-brand-700");
 }
 
+function waitForUploadProgress(delay = 160) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, delay));
+}
+
 function activityDateValue(activity: TimelineActivity) {
   const parsed = Date.parse(String(activity.date ?? ""));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -8040,6 +8996,30 @@ function activityWithinRange(activity: TimelineActivity, range: string) {
   const days = range === "Within 7 days" ? 7 : 62;
   const age = Math.abs(Date.now() - activityDateValue(activity));
   return age <= days * 24 * 60 * 60 * 1000;
+}
+
+function groupTimelineActivities(activities: TimelineActivity[]) {
+  const groups: Array<{ label: string; activities: TimelineActivity[] }> = [];
+  activities.forEach((activity) => {
+    const label = timelineGroupLabel(activity);
+    const existingGroup = groups.find((group) => group.label === label);
+    if (existingGroup) existingGroup.activities.push(activity);
+    else groups.push({ label, activities: [activity] });
+  });
+  return groups;
+}
+
+function timelineGroupLabel(activity: TimelineActivity) {
+  const timestamp = activityDateValue(activity);
+  if (!timestamp) return "No Date";
+  const activityDay = startOfDay(new Date(timestamp));
+  const today = startOfDay(new Date());
+  const yesterday = addCalendarDays(today, -1);
+  const tomorrow = addCalendarDays(today, 1);
+  if (sameDate(activityDay, today)) return "Today";
+  if (sameDate(activityDay, tomorrow)) return "Tomorrow";
+  if (sameDate(activityDay, yesterday)) return "Yesterday";
+  return formatDate(activityDay.toISOString());
 }
 
 function activityMatchesStatus(activity: TimelineActivity, status: string) {

@@ -4,7 +4,7 @@
 
 :root {
   color-scheme: light;
-  --background: #f3f3f3;
+  --background: #f2f4f7;
   --foreground: #181818;
   --control-border: #c9c9c9;
   --control-border-hover: #a0a0a0;
@@ -14,6 +14,8 @@
   --control-bg-muted: #f3f3f3;
   --control-placeholder: #706e6b;
   --control-label: #444444;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 * {
@@ -26,12 +28,11 @@ body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family:
-    Arial,
-    "Helvetica Neue",
-    Helvetica,
-    sans-serif;
-  font-size: 14px;
+  font-family: var(--font-sans), "Source Sans 3", system-ui, sans-serif;
+  font-size: 15px;
+  font-feature-settings: "kern" 1, "liga" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 button,
@@ -39,6 +40,26 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+::selection {
+  background: rgba(1, 118, 211, 0.18);
+}
+
+/* Smooth hover/press feedback on every interactive element. */
+button,
+a,
+[role="button"],
+[role="menuitem"],
+[role="option"],
+[role="tab"] {
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease,
+    opacity 150ms ease,
+    transform 150ms var(--ease-out-expo);
 }
 
 button:focus-visible,
@@ -49,6 +70,7 @@ textarea:focus-visible,
 [role="button"]:focus-visible {
   outline: 2px solid #0176d3;
   outline-offset: 2px;
+  border-radius: 4px;
 }
 
 /* Left app rail sits on navy; keep focus rings readable without fighting item styles. */
@@ -58,21 +80,234 @@ aside.bg-shell a:focus-visible {
 
 .slds-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #c9c9c9 transparent;
+  scrollbar-color: #c4cbd4 transparent;
 }
 
 .slds-scrollbar::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
 }
 
 .slds-scrollbar::-webkit-scrollbar-thumb {
-  background: #c9c9c9;
+  background: #c4cbd4;
   border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color 150ms ease;
+}
+
+.slds-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9aa4b2;
   border: 2px solid transparent;
   background-clip: content-box;
 }
 
 .grid-resize-handle {
   cursor: col-resize;
+}
+
+/* ---------------------------------------------------------------------------
+ * Motion system
+ * ------------------------------------------------------------------------ */
+
+@keyframes crm-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes crm-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes crm-dialog-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.94) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) translateY(0);
+  }
+}
+
+@keyframes crm-dialog-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.97) translateY(6px);
+  }
+}
+
+@keyframes crm-pop-from-top {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes crm-pop-from-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes crm-pop-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes crm-pop-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(-6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes crm-pop-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes crm-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes crm-toast-out {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(16px) scale(0.97);
+  }
+}
+
+@keyframes crm-screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dialog overlay + panel (classes applied by BaseDialog). */
+.crm-overlay[data-state="open"] {
+  animation: crm-overlay-in 250ms var(--ease-out-expo);
+}
+
+.crm-overlay[data-state="closed"] {
+  animation: crm-overlay-out 180ms ease-in forwards;
+}
+
+.crm-dialog[data-state="open"] {
+  animation: crm-dialog-in 280ms var(--ease-spring);
+}
+
+.crm-dialog[data-state="closed"] {
+  animation: crm-dialog-out 160ms ease-in forwards;
+}
+
+/* Every Radix popper surface (dropdown menus, popovers, selects) animates in
+ * from the side it opens toward and fades out on close — no per-call-site
+ * classes needed. */
+[data-radix-popper-content-wrapper] > [data-side] {
+  border-radius: 10px;
+  will-change: transform, opacity;
+}
+
+[data-side="bottom"][data-state="open"] {
+  animation: crm-pop-from-bottom 190ms var(--ease-out-expo);
+}
+
+[data-side="top"][data-state="open"] {
+  animation: crm-pop-from-top 190ms var(--ease-out-expo);
+}
+
+[data-side="left"][data-state="open"] {
+  animation: crm-pop-from-left 190ms var(--ease-out-expo);
+}
+
+[data-side="right"][data-state="open"] {
+  animation: crm-pop-from-right 190ms var(--ease-out-expo);
+}
+
+[data-side][data-state="closed"] {
+  animation: crm-pop-out 130ms ease-in forwards;
+}
+
+/* Keyboard navigation parity for all Radix menus and options. */
+[role="menuitem"][data-highlighted],
+[role="option"][data-highlighted] {
+  background-color: #eef6ff;
+  outline: none;
+}
+
+.crm-toast-enter {
+  animation: crm-toast-in 260ms var(--ease-spring);
+}
+
+.crm-toast-exit {
+  animation: crm-toast-out 200ms ease-in forwards;
+}
+
+.crm-screen-enter {
+  animation: crm-screen-in 260ms var(--ease-out-expo);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

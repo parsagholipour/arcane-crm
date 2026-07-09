@@ -71,6 +71,10 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
     return { ownerName, records };
   }
 
+  if (action === "Convert Lead") {
+    return convertLeads(selectedIds, values);
+  }
+
   if (action === "New Folder") {
     const folder = await prisma.quickTextFolder.create({
       data: {
@@ -182,6 +186,107 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
   return {};
 }
 
+async function convertLeads(ids: string[], values: Record<string, unknown>) {
+  if (ids.length === 0) return { accounts: [], contacts: [], opportunities: [], leads: [] };
+  return prisma.$transaction(async (tx) => {
+    const leads = await tx.lead.findMany({ where: { id: { in: ids } } });
+    const accounts = [];
+    const contacts = [];
+    const opportunities = [];
+    const convertedLeads = [];
+    const status = String(values.convertedStatus ?? "Qualified");
+    const closeDate = values.closeDate ? new Date(String(values.closeDate)) : daysFromNow(30);
+    const stage = String(values.stage ?? "Qualify");
+    const forecastCategory = String(values.forecastCategory ?? "Pipeline");
+    const createOpportunity = values.createOpportunity !== false;
+    const singleAccountName = leads.length === 1 ? String(values.accountName ?? "").trim() : "";
+
+    for (const lead of leads) {
+      const accountName = singleAccountName || lead.company || [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "Converted Lead Account";
+      let account = await tx.account.findFirst({ where: { name: accountName } });
+      if (!account) {
+        account = await tx.account.create({
+          data: {
+            name: accountName,
+            website: lead.website,
+            type: "Prospect",
+            ownerId: lead.ownerId,
+            phone: lead.phone,
+            billingCountry: lead.country,
+            billingStreet: lead.street,
+            billingPostalCode: lead.postalCode,
+            billingCity: lead.city,
+            billingState: lead.state,
+            createdById: CURRENT_USER.id,
+            updatedById: CURRENT_USER.id
+          }
+        });
+      }
+
+      const contact = await tx.contact.create({
+        data: {
+          salutation: lead.salutation,
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          accountId: account.id,
+          title: lead.title,
+          description: lead.description,
+          ownerId: lead.ownerId,
+          phone: lead.phone,
+          email: lead.email,
+          mailingCountry: lead.country,
+          mailingStreet: lead.street,
+          mailingPostalCode: lead.postalCode,
+          mailingCity: lead.city,
+          mailingState: lead.state,
+          createdById: CURRENT_USER.id,
+          updatedById: CURRENT_USER.id
+        }
+      });
+
+      const opportunity = createOpportunity
+        ? await tx.opportunity.create({
+            data: {
+              name: leads.length === 1 ? String(values.opportunityName ?? `${accountName} Opportunity`) : `${accountName} Opportunity`,
+              accountId: account.id,
+              contactId: contact.id,
+              closeDate,
+              amount: null,
+              description: lead.description,
+              ownerId: lead.ownerId,
+              stage,
+              probability: stage === "Qualify" ? 10 : null,
+              forecastCategory,
+              nextStep: "Follow up after lead conversion",
+              createdById: CURRENT_USER.id,
+              updatedById: CURRENT_USER.id
+            }
+          })
+        : null;
+
+      const convertedLead = await tx.lead.update({
+        where: { id: lead.id },
+        data: {
+          status,
+          updatedById: CURRENT_USER.id
+        }
+      });
+
+      accounts.push(account);
+      contacts.push(contact);
+      if (opportunity) opportunities.push(opportunity);
+      convertedLeads.push({
+        ...convertedLead,
+        convertedAccountId: account.id,
+        convertedContactId: contact.id,
+        convertedOpportunityId: opportunity?.id ?? null
+      });
+    }
+
+    return { accounts, contacts, opportunities, leads: convertedLeads };
+  });
+}
+
 async function changeOwner(object: string, ids: string[], ownerId: string) {
   if (ids.length === 0) return [];
   switch (object) {
@@ -212,6 +317,12 @@ async function changeOwner(object: string, ids: string[], ownerId: string) {
     default:
       return [];
   }
+}
+
+function daysFromNow(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date;
 }
 
 async function mergeCases(ids: string[], values: Record<string, unknown>) {
