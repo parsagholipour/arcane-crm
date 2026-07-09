@@ -99,21 +99,21 @@ async function main() {
   });
 
   await prisma.notification.upsert({
-    where: { id: "not-trial-start" },
+    where: { id: "not-welcome" },
     update: {
-      title: "1 new notifications",
-      body: "Your Starter trial has 30 days left. Use code STARTER70 to save 70%.",
-      href: "/lightning/app/your-account",
-      category: "Trial",
+      title: "Welcome to your workspace",
+      body: "Create records, manage activities, and explore CRM tools from the app launcher.",
+      href: "/lightning/page/home",
+      category: "Records",
       read: false,
       userId: user.id
     },
     create: {
-      id: "not-trial-start",
-      title: "1 new notifications",
-      body: "Your Starter trial has 30 days left. Use code STARTER70 to save 70%.",
-      href: "/lightning/app/your-account",
-      category: "Trial",
+      id: "not-welcome",
+      title: "Welcome to your workspace",
+      body: "Create records, manage activities, and explore CRM tools from the app launcher.",
+      href: "/lightning/page/home",
+      category: "Records",
       read: false,
       userId: user.id
     }

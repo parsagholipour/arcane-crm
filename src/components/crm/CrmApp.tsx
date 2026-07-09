@@ -107,7 +107,6 @@ type ModalState =
   | { type: "quickTextFolder" }
   | { type: "marketingActivation" }
   | { type: "store" }
-  | { type: "subscription" }
   | { type: "reportBuilder"; reportType?: string }
   | { type: "navEdit"; app: AppKey }
   | { type: "confirm"; title: string; body: string; onConfirm: () => void };
@@ -275,7 +274,7 @@ const appRail: Array<{ key: AppKey; label: string; href: string; icon: ElementTy
   { key: "your-account", label: "Your Account", href: "/lightning/app/your-account", icon: Receipt }
 ];
 
-const notificationCategories = ["Records", "Workflow", "Marketing", "Billing", "Activity", "Files", "Trial", "Email"] as const;
+const notificationCategories = ["Records", "Workflow", "Marketing", "Activity", "Files", "Email"] as const;
 
 const helpArticleCatalog: HelpArticle[] = [
   {
@@ -675,7 +674,6 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
     <div className={cn("flex h-screen overflow-hidden bg-canvas text-[#181818]", compactDensity && "text-[13px]")}>
       <LeftAppRail activeApp={screen.activeApp} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <TrialBanner />
         <GlobalHeader
           data={data}
           onNavigate={(href) => router.push(href)}
@@ -713,7 +711,6 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
             onQuickTextFolder={() => setModal({ type: "quickTextFolder" })}
             onMarketingActivation={() => setModal({ type: "marketingActivation" })}
             onCreateStore={() => setModal({ type: "store" })}
-            onSubscribe={() => setModal({ type: "subscription" })}
             onReportBuilder={(reportType) => setModal({ type: "reportBuilder", reportType })}
             onSaveRecord={saveRecord}
             onDataChange={(updater) => setData((previous) => decorateBootstrap(updater(previous)))}
@@ -915,22 +912,6 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
       return;
     }
 
-    if (action === "Buy Now") {
-      setData((previous) => ({
-        ...previous,
-        subscriptionCheckouts: isRecordData(workflowResult.checkout) ? [workflowResult.checkout, ...previous.subscriptionCheckouts] : previous.subscriptionCheckouts
-      }));
-      void createAppNotification({
-        title: "Subscription checkout prepared",
-        body: `${payload.plan ?? "Starter Suite"} checkout is ready for review.`,
-        href: "/lightning/app/your-account",
-        category: "Billing"
-      });
-      showToast({ tone: "success", message: `Subscription checkout prepared for ${payload.plan ?? "Starter Suite"}.` });
-      closeModal();
-      return;
-    }
-
     if (["Publish", "Assign", "Archive", "Delete Article", "Delete Draft", "Restore"].includes(action)) {
       setData((previous) => {
         if (action === "Delete Article" || action === "Delete Draft") {
@@ -1055,7 +1036,6 @@ function ScreenRenderer({
   onQuickTextFolder,
   onMarketingActivation,
   onCreateStore,
-  onSubscribe,
   onReportBuilder,
   onSaveRecord,
   onDataChange,
@@ -1078,7 +1058,6 @@ function ScreenRenderer({
   onQuickTextFolder: () => void;
   onMarketingActivation: () => void;
   onCreateStore: () => void;
-  onSubscribe: () => void;
   onReportBuilder: (reportType?: string) => void;
   onSaveRecord: SaveRecordHandler;
   onDataChange: BootstrapDataUpdater;
@@ -1088,7 +1067,7 @@ function ScreenRenderer({
   if (screen.kind === "home") return <HomePage data={data} onReportBuilder={onReportBuilder} onDataChange={onDataChange} onToast={onToast} />;
   if (screen.kind === "marketing") return <MarketingPage data={data} onCreate={onCreate} onActivate={onMarketingActivation} />;
   if (screen.kind === "commerce") return <CommercePage stores={data.stores} onCreateStore={onCreateStore} />;
-  if (screen.kind === "account") return <YourAccountPage checkouts={data.subscriptionCheckouts} onSubscribe={onSubscribe} />;
+  if (screen.kind === "account") return <YourAccountPage user={data.user} />;
   if (screen.kind === "analytics") return <AnalyticsPage data={data} reportName={analyticsReportName} onReportBuilder={onReportBuilder} onToast={onToast} />;
   if (screen.kind === "calendar") return <CalendarPage data={data} events={data.events} onCreate={(startDate, startTime, endTime) => onOpenEvent("Event", "", startDate, startTime, endTime)} onDataChange={onDataChange} onToast={onToast} />;
   if (screen.kind === "quickText") return <QuickTextPage data={data} onCreate={() => onCreate("QuickText")} onCreateFolder={onQuickTextFolder} onDelete={(record) => onDelete("QuickText", record)} />;
@@ -1118,18 +1097,6 @@ function ScreenRenderer({
   }
 
   return <ListViewPage object={screen.object} data={data} records={getRecords(screen.object)} recordLabels={recordLabels} campaignMembers={campaignMembers} initialQuery={listSearchQuery} onCreate={onCreate} onEdit={onEdit} onDelete={onDelete} onToast={onToast} onListAction={onListAction} onSaveRecord={onSaveRecord} onDataChange={onDataChange} />;
-}
-
-function TrialBanner() {
-  return (
-    <div className="flex h-10 shrink-0 items-center justify-center gap-4 border-b border-[#b7d6b8] bg-[#e4f6e6] px-4 text-sm text-[#194f25]">
-      <span>Don&apos;t wait: Save 70% now with code STARTER70 | Terms apply.</span>
-      <Link href="/lightning/app/your-account" className="rounded border border-[#2e844a] bg-white px-3 py-1 text-xs font-semibold text-[#2e844a] hover:bg-[#f6fff7]">
-        Buy Now
-      </Link>
-      <span className="font-semibold">Days left in your Trial: 30</span>
-    </div>
-  );
 }
 
 function LeftAppRail({ activeApp }: { activeApp: AppKey }) {
@@ -2208,25 +2175,6 @@ function HeaderUtility({
     }
   }
 
-  async function createTrialReminder() {
-    const response = await postUtility("createNotification", undefined, {
-      title: "Trial reminder",
-      body: "Your Starter trial still has time left. Review subscription options before it ends.",
-      href: "/lightning/app/your-account",
-      category: "Trial"
-    });
-    if (response?.skipped) {
-      onToast({ tone: "warning", message: "Trial notifications are turned off." });
-      return;
-    }
-    const notification = response?.notification as RecordData | undefined;
-    if (notification?.id) {
-      setNotifications((items) => [notification, ...items]);
-      onDataChange((previous) => ({ ...previous, notifications: [notification, ...previous.notifications] }));
-      onToast({ tone: "success", message: "Trial reminder notification created." });
-    }
-  }
-
   async function updateNotificationPreference(category: string, enabled: boolean) {
     setNotificationPreferences((current) => ({ ...current, [category]: enabled }));
     const response = await postUtility("updateNotificationPreference", undefined, { category, enabled });
@@ -2599,7 +2547,6 @@ function HeaderUtility({
                 <Button onClick={() => void markAllNotificationsRead()}>Mark all read</Button>
                 <Button onClick={() => void clearReadNotifications()}>Clear read</Button>
                 <Button onClick={() => void clearAllNotifications()}>Clear all</Button>
-                <Button onClick={() => void createTrialReminder()}>New reminder</Button>
               </div>
               <div className="mb-3 rounded border border-[#d8dde6] p-2">
                 <div className="mb-1 text-xs font-semibold uppercase text-[#706e6b]">Notification Settings</div>
@@ -2644,7 +2591,7 @@ function HeaderUtility({
                 )}
                 <div className="min-w-0">
                   <div className="truncate font-semibold">{data.user.name}</div>
-                  <div className="text-xs text-[#706e6b]">{data.user.alias} - Salesforce Starter Trial</div>
+                  <div className="text-xs text-[#706e6b]">{data.user.alias}</div>
                   <div className="mt-1 text-xs text-[#706e6b]">{locale} - {timezone} - {density}</div>
                 </div>
               </div>
@@ -5006,25 +4953,16 @@ function CommercePage({ stores, onCreateStore }: { stores: RecordData[]; onCreat
   );
 }
 
-function YourAccountPage({ checkouts, onSubscribe }: { checkouts: RecordData[]; onSubscribe: () => void }) {
-  if (checkouts.length === 0) {
-    return <EmptyPanel title="You haven't subscribed yet" body="After subscribing, you can manage your plan, licenses, and billing information here." action="Buy Now" onAction={onSubscribe} />;
-  }
-
-  const checkout = checkouts[0];
+function YourAccountPage({ user }: { user: BootstrapData["user"] }) {
   return (
     <section className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Subscription checkout prepared</h1>
-          <p className="mt-1 text-sm text-[#706e6b]">Plan, licenses, and billing can be completed from here.</p>
-        </div>
-        <Button variant="primary" onClick={onSubscribe}>Buy Now</Button>
+      <div>
+        <h1 className="text-2xl font-semibold">Your Account</h1>
+        <p className="mt-1 text-sm text-[#706e6b]">Workspace profile and account details for this CRM clone.</p>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
-        <div className="rounded border border-[#d8dde6] p-3"><div className="text-xs text-[#706e6b]">Plan</div><div className="font-semibold">{checkout.plan as string}</div></div>
-        <div className="rounded border border-[#d8dde6] p-3"><div className="text-xs text-[#706e6b]">Licenses</div><div className="font-semibold">{String(checkout.seats ?? 1)}</div></div>
-        <div className="rounded border border-[#d8dde6] p-3"><div className="text-xs text-[#706e6b]">Status</div><div className="font-semibold">{String(checkout.status ?? "Prepared")}</div></div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded border border-[#d8dde6] p-3"><div className="text-xs text-[#706e6b]">Name</div><div className="font-semibold">{user.name}</div></div>
+        <div className="rounded border border-[#d8dde6] p-3"><div className="text-xs text-[#706e6b]">Alias</div><div className="font-semibold">{user.alias}</div></div>
       </div>
     </section>
   );
@@ -5847,7 +5785,6 @@ function ModalHost({
   if (modal.type === "quickTextFolder") return <QuickTextFolderModal onClose={onClose} onSave={(values) => onApplyListAction("New Folder", "QuickText", [], values)} />;
   if (modal.type === "marketingActivation") return <MarketingActivationModal onClose={onClose} onSave={(values) => onApplyListAction("Activate Marketing", "ListEmail", [], values)} />;
   if (modal.type === "store") return <StoreModal onClose={onClose} onSave={(values) => onApplyListAction("Create Store", "ListEmail", [], values)} />;
-  if (modal.type === "subscription") return <SubscriptionModal onClose={onClose} onSave={(values) => onApplyListAction("Buy Now", "ListEmail", [], values)} />;
   if (modal.type === "reportBuilder") return <ReportBuilderModal reportType={modal.reportType} data={data} onClose={onClose} onDataChange={onDataChange} onToast={onToast} />;
   return <GenericRecordModal mode={modal.mode} object={modal.object} data={data} record={modal.record} onClose={onClose} onSave={(values, stayOpen) => onSaveRecord(modal.object, values, { id: modal.record?.id, stayOpen })} />;
 }
@@ -6201,19 +6138,6 @@ function StoreModal({ onClose, onSave }: { onClose: () => void; onSave: (values:
         <FieldShell label="Store Name" required><input className={inputClass} value={String(values.name ?? "")} onChange={(event) => setValues({ ...values, name: event.target.value })} /></FieldShell>
         <FieldShell label="Currency"><NativeSelect options={["USD", "AED", "EUR", "GBP"]} value={String(values.currency ?? "USD")} onChange={(value) => setValues({ ...values, currency: value })} /></FieldShell>
         <FieldShell label="Launch Status"><NativeSelect options={["Draft", "Preview", "Active"]} value={String(values.status ?? "Draft")} onChange={(value) => setValues({ ...values, status: value })} /></FieldShell>
-      </div>
-    </BaseDialog>
-  );
-}
-
-function SubscriptionModal({ onClose, onSave }: { onClose: () => void; onSave: (values: RecordData) => void }) {
-  const [values, setValues] = useState<RecordData>({ plan: "Starter Suite", seats: 1, code: "STARTER70" });
-  return (
-    <BaseDialog open title="Buy Now" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onSave(values)}>Continue to Checkout</Button></>}>
-      <div className="space-y-3">
-        <FieldShell label="Plan"><NativeSelect options={["Starter Suite", "Sales Suite", "Service Suite"]} value={String(values.plan ?? "Starter Suite")} onChange={(value) => setValues({ ...values, plan: value })} /></FieldShell>
-        <FieldShell label="Licenses"><input className={inputClass} type="number" min={1} value={String(values.seats ?? 1)} onChange={(event) => setValues({ ...values, seats: event.target.value })} /></FieldShell>
-        <FieldShell label="Promo Code"><input className={inputClass} value={String(values.code ?? "")} onChange={(event) => setValues({ ...values, code: event.target.value })} /></FieldShell>
       </div>
     </BaseDialog>
   );

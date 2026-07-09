@@ -110,19 +110,6 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
     return { activation };
   }
 
-  if (action === "Buy Now") {
-    const checkout = await prisma.subscriptionCheckout.create({
-      data: {
-        plan: String(values.plan ?? "Starter Suite"),
-        seats: Number(values.seats ?? 1),
-        code: values.code ? String(values.code) : null,
-        status: "Prepared",
-        userId: CURRENT_USER.id
-      }
-    });
-    return { checkout };
-  }
-
   if (action === "Publish") {
     await prisma.knowledgeArticle.updateMany({
       where: selectedIds.length ? { id: { in: selectedIds } } : undefined,
