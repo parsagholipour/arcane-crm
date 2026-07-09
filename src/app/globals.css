@@ -6,6 +6,14 @@
   color-scheme: light;
   --background: #f3f3f3;
   --foreground: #181818;
+  --control-border: #c9c9c9;
+  --control-border-hover: #a0a0a0;
+  --control-border-focus: #0176d3;
+  --control-border-error: #ba0517;
+  --control-bg: #ffffff;
+  --control-bg-muted: #f3f3f3;
+  --control-placeholder: #706e6b;
+  --control-label: #444444;
 }
 
 * {
@@ -41,6 +49,11 @@ textarea:focus-visible,
 [role="button"]:focus-visible {
   outline: 2px solid #0176d3;
   outline-offset: 2px;
+}
+
+/* Left app rail sits on navy; keep focus rings readable without fighting item styles. */
+aside.bg-shell a:focus-visible {
+  outline: none;
 }
 
 .slds-scrollbar {

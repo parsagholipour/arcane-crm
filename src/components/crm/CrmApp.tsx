@@ -4,7 +4,6 @@ import * as Checkbox from "@radix-ui/react-checkbox";
 import * as Dialog from "@radix-ui/react-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import * as Popover from "@radix-ui/react-popover";
-import * as Select from "@radix-ui/react-select";
 import * as Tabs from "@radix-ui/react-tabs";
 import {
   Activity,
@@ -57,11 +56,21 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState, type ElementType, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
-  ACCOUNT_TYPES,
+  cloneElement,
+  isValidElement,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ElementType,
+  type PointerEvent as ReactPointerEvent,
+  type ReactElement,
+  type ReactNode
+} from "react";
+import {
   APP_NAV,
-  CASE_PRIORITY,
   CASE_STATUS,
   CURRENT_USER,
   EVENT_SUBJECTS,
@@ -1064,7 +1073,7 @@ function ScreenRenderer({
 function TrialBanner() {
   return (
     <div className="flex h-10 shrink-0 items-center justify-center gap-4 border-b border-[#b7d6b8] bg-[#e4f6e6] px-4 text-sm text-[#194f25]">
-      <span>Don't wait: Save 70% now with code STARTER70 | Terms apply.</span>
+      <span>Don&apos;t wait: Save 70% now with code STARTER70 | Terms apply.</span>
       <Link href="/lightning/app/your-account" className="rounded border border-[#2e844a] bg-white px-3 py-1 text-xs font-semibold text-[#2e844a] hover:bg-[#f6fff7]">
         Buy Now
       </Link>
@@ -1076,10 +1085,10 @@ function TrialBanner() {
 function LeftAppRail({ activeApp }: { activeApp: AppKey }) {
   return (
     <aside className="flex w-[86px] shrink-0 flex-col items-center bg-shell py-3 text-white">
-      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded bg-white text-brand-600">
+      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded bg-white text-brand-600 shadow-sm">
         <Cloud size={24} fill="currentColor" />
       </div>
-      <nav className="flex w-full flex-1 flex-col items-stretch gap-1 px-1">
+      <nav className="flex w-full flex-1 flex-col items-stretch gap-0.5 px-1.5" aria-label="App launcher">
         {appRail.map((item) => {
           const Icon = item.icon;
           const active = item.key === activeApp;
@@ -1087,12 +1096,17 @@ function LeftAppRail({ activeApp }: { activeApp: AppKey }) {
             <Link
               key={item.key}
               href={item.href}
+              aria-current={active ? "page" : undefined}
               className={cn(
-                "flex min-h-14 flex-col items-center justify-center gap-1 rounded px-1 text-[11px] leading-tight text-white/86 hover:bg-white/12",
-                active && "bg-white/20 text-white"
+                "group relative flex min-h-[3.5rem] flex-col items-center justify-center gap-1 rounded-md px-1 py-1.5 text-[11px] leading-tight text-[#c9e0f5] outline-none transition-[background-color,color,box-shadow] duration-150",
+                "hover:bg-[#1b4f81] hover:text-white hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]",
+                "focus-visible:bg-[#1b4f81] focus-visible:text-white focus-visible:shadow-[inset_0_0_0_2px_#ffffff]",
+                "active:bg-[#163a5f]",
+                active && "bg-[#1b4f81] font-semibold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.28)]"
               )}
             >
-              <Icon size={18} />
+              {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-white" aria-hidden="true" />}
+              <Icon size={18} className={cn("transition-transform duration-150 group-hover:scale-105", active && "scale-105")} />
               <span className="text-center">{item.label}</span>
             </Link>
           );
@@ -1190,7 +1204,7 @@ function SearchOverlay({
               autoFocus
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="h-9 flex-1 border-0 outline-none"
+              className={cn(inputBareClass, "h-9")}
               placeholder="Search records, reports, and list views..."
               onKeyDown={(event) => {
                 if (event.key === "Enter" && results[0]) void openSearchResult(results[0]);
@@ -2288,7 +2302,7 @@ function HeaderUtility({
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
-        <button aria-label={label} className="relative flex h-8 w-8 items-center justify-center rounded text-[#444] hover:bg-[#f3f3f3]">
+        <button aria-label={label} className="relative flex h-8 w-8 items-center justify-center rounded text-[#444] transition-colors duration-150 hover:bg-[#f3f3f3] hover:text-brand-700 focus-visible:bg-[#f3f3f3] focus-visible:text-brand-700 active:bg-[#e5e5e5]">
           <Icon size={17} />
           {effectiveBadge && <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#ba0517] px-1 text-[10px] text-white">{effectiveBadge}</span>}
         </button>
@@ -2467,11 +2481,11 @@ function HeaderUtility({
                 <div className="mt-2 grid gap-2 md:grid-cols-2">
                   <label className="flex items-center justify-between rounded border border-[#d8dde6] bg-white p-2 text-sm">
                     Guidance cards
-                    <input type="checkbox" checked={guidanceEnabled} onChange={(event) => { setGuidanceEnabled(event.target.checked); void savePreferences({ guidanceEnabled: event.target.checked }); }} />
+                    <input type="checkbox" checked={guidanceEnabled} onChange={(event) => { setGuidanceEnabled(event.target.checked); void savePreferences({ guidanceEnabled: event.target.checked }); }}  className={checkboxClass} />
                   </label>
                   <label className="flex items-center justify-between rounded border border-[#d8dde6] bg-white p-2 text-sm">
                     Console tabs
-                    <input type="checkbox" checked={consoleTabsEnabled} onChange={(event) => { setConsoleTabsEnabled(event.target.checked); void savePreferences({ consoleTabsEnabled: event.target.checked }); }} />
+                    <input type="checkbox" checked={consoleTabsEnabled} onChange={(event) => { setConsoleTabsEnabled(event.target.checked); void savePreferences({ consoleTabsEnabled: event.target.checked }); }}  className={checkboxClass} />
                   </label>
                 </div>
               </div>
@@ -2543,7 +2557,7 @@ function HeaderUtility({
                   {notificationCategories.map((category) => (
                     <label key={category} className="flex items-center justify-between gap-2 rounded px-2 py-1 text-xs hover:bg-[#f8f8f8]">
                       <span>{category}</span>
-                      <input type="checkbox" checked={notificationPreferences[category] !== false} onChange={(event) => void updateNotificationPreference(category, event.target.checked)} />
+                      <input type="checkbox" checked={notificationPreferences[category] !== false} onChange={(event) => void updateNotificationPreference(category, event.target.checked)}  className={checkboxClass} />
                     </label>
                   ))}
                 </div>
@@ -2626,11 +2640,11 @@ function HeaderUtility({
                       </FieldShell>
                       <label className="flex items-center justify-between rounded border border-[#d8dde6] p-2 text-sm">
                         Guidance cards
-                        <input type="checkbox" checked={guidanceEnabled} onChange={(event) => { setGuidanceEnabled(event.target.checked); void savePreferences({ guidanceEnabled: event.target.checked }); }} />
+                        <input type="checkbox" checked={guidanceEnabled} onChange={(event) => { setGuidanceEnabled(event.target.checked); void savePreferences({ guidanceEnabled: event.target.checked }); }}  className={checkboxClass} />
                       </label>
                       <label className="flex items-center justify-between rounded border border-[#d8dde6] p-2 text-sm">
                         Console tabs
-                        <input type="checkbox" checked={consoleTabsEnabled} onChange={(event) => { setConsoleTabsEnabled(event.target.checked); void savePreferences({ consoleTabsEnabled: event.target.checked }); }} />
+                        <input type="checkbox" checked={consoleTabsEnabled} onChange={(event) => { setConsoleTabsEnabled(event.target.checked); void savePreferences({ consoleTabsEnabled: event.target.checked }); }}  className={checkboxClass} />
                       </label>
                     </div>
                   </div>
@@ -2660,23 +2674,28 @@ function AppNavBar({ data, activeApp, pathname, onEditNav }: { data: BootstrapDa
         <AppIcon size={18} className="text-brand-600" />
         <span>{app.label}</span>
       </div>
-      <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-        {visible.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-sm text-[#181818] hover:border-brand-500 hover:text-brand-700",
-              pathMatches(pathname, item.href) && "border-brand-500 font-semibold text-brand-700"
-            )}
-          >
-            {item.label}
-          </Link>
-        ))}
+      <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden" aria-label={`${app.label} navigation`}>
+        {visible.map((item) => {
+          const active = pathMatches(pathname, item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-sm text-[#181818] transition-colors duration-150 hover:border-brand-500 hover:bg-brand-50/60 hover:text-brand-700",
+                "focus-visible:border-brand-500 focus-visible:bg-brand-50/60 focus-visible:text-brand-700",
+                active && "border-brand-500 bg-brand-50/40 font-semibold text-brand-700"
+              )}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
         {overflow.length > 0 && (
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-              <button className="flex items-center gap-1 rounded px-3 py-2 hover:bg-[#f3f3f3]">
+              <button className="flex items-center gap-1 rounded px-3 py-2 text-sm transition-colors duration-150 hover:bg-[#f3f3f3] hover:text-brand-700 focus-visible:bg-[#f3f3f3]">
                 More <ChevronDown size={14} />
               </button>
             </DropdownMenu.Trigger>
@@ -2694,7 +2713,7 @@ function AppNavBar({ data, activeApp, pathname, onEditNav }: { data: BootstrapDa
           </DropdownMenu.Root>
         )}
       </nav>
-      <button onClick={onEditNav} className="flex items-center gap-1 rounded px-2 py-1 text-xs text-brand-700 hover:bg-brand-50">
+      <button onClick={onEditNav} className="flex items-center gap-1 rounded px-2 py-1 text-xs text-brand-700 transition-colors duration-150 hover:bg-brand-50 focus-visible:bg-brand-50 active:bg-brand-100">
         <Edit3 size={14} />
         Edit nav items
       </button>
@@ -2987,7 +3006,7 @@ function ListViewPage({
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
                     <DropdownMenu.Content className="z-50 w-72 rounded border border-[#d8dde6] bg-white p-2 shadow-popover">
-                      <input className="mb-2 h-8 w-full rounded border border-[#c9c9c9] px-2 text-sm" placeholder="Search lists..." />
+                      <input className={cn(inputClass, "mb-2")} placeholder="Search lists..." />
                       <div className="px-2 py-1 text-xs font-semibold uppercase text-[#706e6b]">Recent List Views</div>
                       {listViews.slice(0, 2).map((view) => (
                         <DropdownMenu.Item key={view} onSelect={() => setListView(view)} className="cursor-pointer rounded px-2 py-2 text-sm hover:bg-brand-50">
@@ -3023,7 +3042,7 @@ function ListViewPage({
           <div className="flex items-center gap-2">
             <div className="flex h-8 items-center rounded border border-[#c9c9c9] bg-white px-2">
               <Search size={14} className="text-[#706e6b]" />
-              <input name={definition.searchInputName} value={query} onChange={(event) => setQuery(event.target.value)} className="h-7 w-56 border-0 px-2 text-sm outline-none" placeholder="Search this list..." />
+              <input name={definition.searchInputName} value={query} onChange={(event) => setQuery(event.target.value)} className={cn(inputBareClass, "w-56")} placeholder="Search this list..." />
             </div>
             <ListViewControlsMenu object={object} listView={listView} isCustom={isCustomListView} onAction={handleListViewControl} />
             <DropdownMenu.Root>
@@ -3217,16 +3236,22 @@ function ListViewPreferenceModal({
         <div className="space-y-3">
           {filters.map((filter, index) => (
             <div key={index} className="grid gap-2 rounded border border-[#d8dde6] p-3 md:grid-cols-[1fr_160px_1fr_auto]">
-              <select className={inputClass} value={String(filter.field ?? "")} onChange={(event) => setFilters((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, field: event.target.value } : item)))}>
-                {definition.columns.map((column) => <option key={column.key} value={column.key}>{column.label}</option>)}
-              </select>
-              <select className={inputClass} value={String(filter.operator ?? "contains")} onChange={(event) => setFilters((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, operator: event.target.value } : item)))}>
-                <option value="contains">Contains</option>
-                <option value="equals">Equals</option>
-                <option value="not-equals">Not equal to</option>
-                <option value="starts-with">Starts with</option>
-                <option value="is-empty">Is empty</option>
-              </select>
+              <NativeSelect
+                options={definition.columns.map((column) => ({ value: column.key, label: column.label }))}
+                value={String(filter.field ?? "")}
+                onChange={(next) => setFilters((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, field: next } : item)))}
+              />
+              <NativeSelect
+                options={[
+                  { value: "contains", label: "Contains" },
+                  { value: "equals", label: "Equals" },
+                  { value: "not-equals", label: "Not equal to" },
+                  { value: "starts-with", label: "Starts with" },
+                  { value: "is-empty", label: "Is empty" }
+                ]}
+                value={String(filter.operator ?? "contains")}
+                onChange={(next) => setFilters((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, operator: next } : item)))}
+              />
               <input className={inputClass} value={String(filter.value ?? "")} disabled={filter.operator === "is-empty"} onChange={(event) => setFilters((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, value: event.target.value } : item)))} placeholder="Filter value" />
               <button className="rounded p-2 text-[#706e6b] hover:bg-[#f3f3f3] hover:text-[#ba0517]" aria-label="Remove filter" onClick={() => setFilters((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
                 <Trash2 size={16} />
@@ -3300,7 +3325,7 @@ function ListViewPreferenceModal({
             <div className="grid gap-2 md:grid-cols-2">
               {definition.columns.map((column) => (
                 <label key={column.key} className="flex items-center gap-2 rounded border border-[#d8dde6] p-2 text-sm">
-                  <input type="checkbox" checked={columns.includes(column.key)} onChange={() => toggleColumn(column.key)} />
+                  <input type="checkbox" checked={columns.includes(column.key)} onChange={() => toggleColumn(column.key)}  className={checkboxClass} />
                   {column.label}
                 </label>
               ))}
@@ -3378,7 +3403,7 @@ function DataGrid({
         <thead className="bg-[#f3f3f3] text-xs text-[#514f4d]">
           <tr>
             <th className="w-10 border-r border-[#d8dde6] px-3 py-2 text-left">
-              <input
+              <input className={checkboxClass}
                 type="checkbox"
                 checked={allSelected}
                 onChange={(event) => onSelect(event.target.checked ? records.map((record) => requiredId(record)) : [])}
@@ -3424,7 +3449,7 @@ function DataGrid({
           {records.map((record) => (
             <tr key={requiredId(record)} className="border-t border-[#d8dde6] bg-white hover:bg-brand-50/40">
               <td className="border-r border-[#eef1f6] px-3 py-2">
-                <input
+                <input className={checkboxClass}
                   type="checkbox"
                   checked={selected.includes(requiredId(record))}
                   onChange={(event) => onSelect(event.target.checked ? [...selected, requiredId(record)] : selected.filter((id) => id !== requiredId(record)))}
@@ -3641,20 +3666,17 @@ function KanbanBoard({
                     </div>
                     <label className="mt-3 block text-xs text-[#706e6b]">
                       {config.label}
-                      <select
-                        className="mt-1 h-8 w-full rounded border border-[#c9c9c9] bg-white px-2 text-sm text-[#181818] outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+                      <NativeSelect
+                        className="mt-1"
                         value={currentValue}
                         disabled={isMoving}
-                        onChange={(event) => void commitMove(record, event.target.value)}
+                        options={[
+                          ...(!config.values.includes(currentValue) ? [{ value: currentValue, label: currentValue || `No ${config.label}` }] : []),
+                          ...config.values
+                        ]}
+                        onChange={(next) => void commitMove(record, next)}
                         aria-label={`Move ${recordTitle(definition.object, record)} by ${config.label}`}
-                      >
-                        {!config.values.includes(currentValue) && <option value={currentValue}>{currentValue || `No ${config.label}`}</option>}
-                        {config.values.map((value) => (
-                          <option key={value} value={value}>
-                            {value}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </label>
                   </article>
                 );
@@ -4318,20 +4340,20 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
         </div>
         <div className="space-y-2 rounded border border-[#d8dde6] p-2">
           {mode === "email" && (
-            <input value={recipient} onChange={(event) => setRecipient(event.target.value)} className="h-8 w-full rounded border border-[#c9c9c9] px-2" placeholder="To" />
+            <input value={recipient} onChange={(event) => setRecipient(event.target.value)} className={inputClass} placeholder="To" />
           )}
           {mode === "call" && (
             <NativeSelect options={["Connected", "Left Voicemail", "No Answer", "Wrong Number"]} value={callResult} onChange={setCallResult} />
           )}
           {mode === "task" && (
             <div className="grid gap-2 sm:grid-cols-3">
-              <input type="date" value={taskDueDate} onChange={(event) => setTaskDueDate(event.target.value)} className="h-8 rounded border border-[#c9c9c9] px-2 text-sm" aria-label="Task due date" />
+              <input type="date" value={taskDueDate} onChange={(event) => setTaskDueDate(event.target.value)} className={inputClass} aria-label="Task due date" />
               <NativeSelect options={["Not Started", "In Progress", "Completed", "Deferred"]} value={taskStatus} onChange={setTaskStatus} />
               <NativeSelect options={["Low", "Normal", "High"]} value={taskPriority} onChange={setTaskPriority} />
             </div>
           )}
-          <input value={subject} onChange={(event) => setSubject(event.target.value)} className="h-8 w-full rounded border border-[#c9c9c9] px-2" placeholder={mode === "email" ? "Subject" : mode === "call" ? "Call subject" : "Task subject"} />
-          <textarea value={body} onChange={(event) => setBody(event.target.value)} className="h-20 w-full rounded border border-[#c9c9c9] px-2 py-1" placeholder={mode === "email" ? "Email body" : "Comments"} />
+          <input value={subject} onChange={(event) => setSubject(event.target.value)} className={inputClass} placeholder={mode === "email" ? "Subject" : mode === "call" ? "Call subject" : "Task subject"} />
+          <textarea value={body} onChange={(event) => setBody(event.target.value)} className={cn(inputClass, "h-20")} placeholder={mode === "email" ? "Email body" : "Comments"} />
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-[#706e6b]">{mode === "email" ? (emailAction === "send" ? "Send and log on timeline" : "Log an existing email") : mode === "call" ? "Completed call activity" : "Task will appear in Upcoming & Overdue"}</span>
             <Button variant="primary" onClick={submit}>{mode === "email" ? (emailAction === "send" ? "Send" : "Log Email") : "Save"}</Button>
@@ -4340,7 +4362,7 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
       </div>
       <div className="border-t border-[#d8dde6] p-3">
         <div className="mb-2 flex items-center gap-1 text-xs text-[#706e6b]">
-          <input type="checkbox" checked={insightsOnly} onChange={(event) => setInsightsOnly(event.target.checked)} /> Only show activities with insights
+          <input type="checkbox" checked={insightsOnly} onChange={(event) => setInsightsOnly(event.target.checked)}  className={checkboxClass} /> Only show activities with insights
         </div>
         <div className="mb-2 flex flex-wrap items-center gap-1 text-xs text-[#706e6b]">
           <span>{filterSummary}</span>
@@ -4514,7 +4536,7 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast }: { data: Boot
         </DashboardPanel>
         <DashboardPanel title="Today's Events" action="View Calendar" actionHref="/lightning/o/Event/home">
           {todayEvents.length === 0 ? (
-            <p className="text-sm text-[#706e6b]">You're free and clear for the day.</p>
+            <p className="text-sm text-[#706e6b]">You&apos;re free and clear for the day.</p>
           ) : (
             <ul className="space-y-2 text-sm">
               {todayEvents.slice(0, 4).map((event) => (
@@ -4621,9 +4643,7 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast }: { data: Boot
       <div className="grid gap-3 lg:grid-cols-4">
         {homeReportCards.map((item) => (
           <DashboardPanel key={item.objectLabel} title={`${item.objectLabel} report`}>
-            <select className="mb-3 h-8 w-full rounded border border-[#c9c9c9] px-2 text-sm">
-              <option>{item.reportTitle}</option>
-            </select>
+            <NativeSelect className="mb-3" options={[item.reportTitle]} value={item.reportTitle} onChange={() => undefined} />
             <div className="flex justify-between">
               <Button onClick={() => onReportBuilder(item.objectLabel)}>New</Button>
               <Link href={reportHref(item.reportTitle)} className="inline-flex min-h-8 items-center justify-center gap-1 rounded border border-[#c9c9c9] bg-white px-3 py-1 text-xs font-semibold text-brand-700 transition-colors hover:bg-[#f3f3f3]">
@@ -5208,7 +5228,7 @@ function CalendarPage({
     return (
       <div key={sourceId} className="flex items-center justify-between gap-2 rounded px-1 py-1 text-sm hover:bg-brand-50">
         <label className="flex min-w-0 flex-1 items-center gap-2">
-          <input type="checkbox" checked={visible} onChange={(event) => void setCalendarSourceVisibility(source, event.target.checked)} />
+          <input type="checkbox" checked={visible} onChange={(event) => void setCalendarSourceVisibility(source, event.target.checked)}  className={checkboxClass} />
           <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: String(source.color ?? "#0176d3") }} />
           <span className={cn("truncate", !visible && "text-[#706e6b] line-through")}>{String(source.name ?? "Calendar")}</span>
         </label>
@@ -5456,8 +5476,8 @@ function QuickTextPage({ data, onCreate, onCreateFolder, onDelete }: { data: Boo
             <Popover.Portal>
               <Popover.Content align="start" className="z-50 w-72 rounded border border-[#d8dde6] bg-white p-3 text-sm shadow-popover">
                 <div className="mb-3 font-semibold">List Display Settings</div>
-                <label className="mb-2 flex items-center gap-2"><input type="checkbox" checked={showPreviewText} onChange={(event) => setShowPreviewText(event.target.checked)} /> Show message preview</label>
-                <label className="mb-3 flex items-center gap-2"><input type="checkbox" checked={showFolderColumn} onChange={(event) => setShowFolderColumn(event.target.checked)} /> Show folder column</label>
+                <label className="mb-2 flex items-center gap-2"><input type="checkbox" className={checkboxClass} checked={showPreviewText} onChange={(event) => setShowPreviewText(event.target.checked)} /> Show message preview</label>
+                <label className="mb-3 flex items-center gap-2"><input type="checkbox" className={checkboxClass} checked={showFolderColumn} onChange={(event) => setShowFolderColumn(event.target.checked)} /> Show folder column</label>
                 <FieldShell label="Sort">
                   <NativeSelect options={["Newest first", "Oldest first"]} value={sortDirection === "desc" ? "Newest first" : "Oldest first"} onChange={(value) => setSortDirection(value === "Newest first" ? "desc" : "asc")} />
                 </FieldShell>
@@ -5491,7 +5511,7 @@ function QuickTextPage({ data, onCreate, onCreateFolder, onDelete }: { data: Boo
         <div className="p-3">
           <div className="mb-3 flex h-8 max-w-sm items-center rounded border border-[#c9c9c9] px-2">
             <Search size={14} className="text-[#706e6b]" />
-            <input className="h-7 flex-1 border-0 px-2 outline-none" placeholder="Search recent quick text..." value={query} onChange={(event) => setQuery(event.target.value)} />
+            <input className={inputBareClass} placeholder="Search recent quick text..." value={query} onChange={(event) => setQuery(event.target.value)} />
           </div>
           {visibleFolders.length > 0 && (
             <div className="mb-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -5834,7 +5854,7 @@ function MarketingActivationModal({ onClose, onSave }: { onClose: () => void; on
       <div className="space-y-3">
         <FieldShell label="Default Sender Name"><input className={inputClass} value={String(values.senderName ?? "")} onChange={(event) => setValues({ ...values, senderName: event.target.value })} /></FieldShell>
         <FieldShell label="Default Sender Email"><input className={inputClass} type="email" value={String(values.senderEmail ?? "")} onChange={(event) => setValues({ ...values, senderEmail: event.target.value })} /></FieldShell>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(values.tracking)} onChange={(event) => setValues({ ...values, tracking: event.target.checked })} /> Enable email tracking and analytics</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" className={checkboxClass} checked={Boolean(values.tracking)} onChange={(event) => setValues({ ...values, tracking: event.target.checked })} /> Enable email tracking and analytics</label>
       </div>
     </BaseDialog>
   );
@@ -5966,7 +5986,7 @@ function ReportBuilderModal({ reportType, data, onClose, onDataChange, onToast }
             <div className="space-y-1">
               {analyticsReports.map((report) => (
                 <label key={report.id} className="flex cursor-pointer items-start gap-2 rounded px-2 py-2 text-sm hover:bg-brand-50">
-                  <input type="checkbox" checked={dashboardReportIds.includes(report.id)} onChange={() => toggleDashboardReport(report.id)} className="mt-1" />
+                  <input type="checkbox" checked={dashboardReportIds.includes(report.id)} onChange={() => toggleDashboardReport(report.id)} className={cn(checkboxClass, "mt-1")} />
                   <span>
                     <span className="block font-medium">{report.title}</span>
                     <span className="block text-xs text-[#706e6b]">{report.objectLabel}</span>
@@ -6041,7 +6061,7 @@ function ReportBuilderModal({ reportType, data, onClose, onDataChange, onToast }
             <div className="space-y-1">
               {config.columns.map((column) => (
                 <label key={column} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-brand-50">
-                  <input type="checkbox" checked={selectedColumns.includes(column)} onChange={() => toggleColumn(column)} />
+                  <input type="checkbox" checked={selectedColumns.includes(column)} onChange={() => toggleColumn(column)}  className={checkboxClass} />
                   <span>{reportBuilderFieldLabel(config.object, column)}</span>
                 </label>
               ))}
@@ -6123,10 +6143,12 @@ function ReportBuilderModal({ reportType, data, onClose, onDataChange, onToast }
 
 function GenericRecordModal({ mode, object, data, record, onClose, onSave }: { mode: "new" | "edit"; object: CrmObject; data: BootstrapData; record?: RecordData; onClose: () => void; onSave: (values: RecordData, stayOpen?: boolean) => Promise<boolean> }) {
   const definition = FORM_DEFINITIONS[object];
-  if (!definition) return null;
-  const formDefinition = definition;
-  const [values, setValues] = useState<RecordData>(() => buildInitialValues(formDefinition, record));
+  const [values, setValues] = useState<RecordData>(() => (definition ? buildInitialValues(definition, record) : {}));
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  if (!definition) return null;
+
+  const formDefinition = definition;
   const title = mode === "edit" && record ? `Edit ${recordTitle(object, record)}` : formDefinition.title;
 
   async function submit(stayOpen = false) {
@@ -6316,10 +6338,15 @@ function QuickTextModal({ data, onClose, onSave }: { data: BootstrapData; onClos
       <div className="grid gap-4 md:grid-cols-2">
         <FieldShell label="Quick Text Name" required error={errors.name}><input className={inputClass} value={String(values.name ?? "")} onChange={(event) => setValues({ ...values, name: event.target.value })} /></FieldShell>
         <FieldShell label="Folder">
-          <select className={inputClass} value={String(values.folderId ?? "")} onChange={(event) => setValues({ ...values, folderId: event.target.value || null })}>
-            <option value="">Select Folder</option>
-            {data.quickTextFolders.map((folder) => <option key={String(folder.id)} value={String(folder.id)}>{String(folder.name)}</option>)}
-          </select>
+          <NativeSelect
+            options={[
+              { value: "", label: "Select Folder" },
+              ...data.quickTextFolders.map((folder) => ({ value: String(folder.id), label: String(folder.name) }))
+            ]}
+            value={String(values.folderId ?? "")}
+            onChange={(next) => setValues({ ...values, folderId: next || null })}
+            placeholder="Select Folder"
+          />
         </FieldShell>
         <FieldShell label="Message" required error={errors.message}><textarea className={cn(inputClass, "h-28")} value={String(values.message ?? "")} onChange={(event) => setValues({ ...values, message: event.target.value })} /></FieldShell>
         <div className="rounded border border-[#d8dde6] p-3">
@@ -6337,17 +6364,17 @@ function QuickTextModal({ data, onClose, onSave }: { data: BootstrapData; onClos
           <div className="mb-1 text-xs font-semibold text-[#444]">Channel</div>
           <p className="mb-2 text-xs text-[#706e6b]">Use Ctrl/Cmd plus arrow keys to move items between lists.</p>
           <div className="grid grid-cols-[1fr_auto_1fr] gap-2">
-            <select multiple className="h-28 rounded border border-[#c9c9c9] p-2 text-sm">
+            <select multiple className={cn(inputClass, "h-28 p-2")}>
               {available.map((item) => <option key={item}>{item}</option>)}
             </select>
             <div className="flex flex-col justify-center gap-1">
               {available.map((item) => <button key={item} className="rounded border border-[#c9c9c9] px-2 py-1 text-xs" onClick={() => moveChannel(item, true)} aria-label="Move selection to Selected">›</button>)}
             </div>
-            <select multiple className="h-28 rounded border border-[#c9c9c9] p-2 text-sm">
+            <select multiple className={cn(inputClass, "h-28 p-2")}>
               {(values.channels as string[]).map((item) => <option key={item}>{item}</option>)}
             </select>
           </div>
-          <label className="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(values.includeInSelectedChannels)} onChange={(event) => setValues({ ...values, includeInSelectedChannels: event.target.checked })} /> Include in selected channels</label>
+          <label className="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" className={checkboxClass} checked={Boolean(values.includeInSelectedChannels)} onChange={(event) => setValues({ ...values, includeInSelectedChannels: event.target.checked })} /> Include in selected channels</label>
         </div>
       </div>
       {previewOpen && <QuickTextPreview name={String(values.name ?? "Untitled Quick Text")} message={String(values.message ?? "")} channels={(values.channels as string[]) ?? []} category={String(values.category ?? "Greetings")} />}
@@ -6395,7 +6422,7 @@ function KnowledgeModal({ onClose, onSave }: { onClose: () => void; onSave: (val
           <div className="flex flex-wrap gap-1 border-b border-[#d8dde6] p-2">
             {["Fullscreen", "Redo", "Undo", "Paragraph", "B", "I", "U", "S", "Text color", "Background", "Clear", "Left", "Center", "Right", "Justify"].map((item) => <button key={item} className="rounded border border-[#c9c9c9] px-2 py-1 text-xs hover:bg-[#f3f3f3]">{item}</button>)}
           </div>
-          <textarea className="h-40 w-full border-0 p-3 outline-none" value={String(values.bodyRichText ?? "")} onChange={(event) => setValues({ ...values, bodyRichText: event.target.value })} />
+          <textarea className={cn(inputBareClass, "h-40 p-3")} value={String(values.bodyRichText ?? "")} onChange={(event) => setValues({ ...values, bodyRichText: event.target.value })} />
           <div className="border-t border-[#d8dde6] px-3 py-1 text-xs text-[#706e6b]">0 words</div>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -6563,7 +6590,7 @@ function ListEmailWizard({ data, onClose, onSave }: { data: BootstrapData; onClo
             <div className="grid max-h-36 gap-2 overflow-auto rounded border border-[#d8dde6] bg-white p-2 md:grid-cols-2">
               {availableRecipients.map((recipient) => (
                 <label key={recipient.id} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-brand-50">
-                  <input type="checkbox" checked={selectedRecipients.includes(recipient.id)} onChange={() => toggleRecipient(recipient.id)} />
+                  <input type="checkbox" checked={selectedRecipients.includes(recipient.id)} onChange={() => toggleRecipient(recipient.id)}  className={checkboxClass} />
                   <span>{recipient.label}</span>
                 </label>
               ))}
@@ -6755,7 +6782,7 @@ function FormFields({ fields, values, errors, data, onChange }: { fields: FieldD
           <div className="grid gap-3 md:grid-cols-2">
             {sectionFields.map((field) => (
               <FieldShell key={field.name} label={field.label} required={field.required} error={errors[field.name]}>
-                <FieldInput field={field} values={values} data={data} onChange={onChange} />
+                <FieldInput field={field} values={values} data={data} error={errors[field.name]} onChange={onChange} />
               </FieldShell>
             ))}
           </div>
@@ -6765,17 +6792,36 @@ function FormFields({ fields, values, errors, data, onChange }: { fields: FieldD
   );
 }
 
-function FieldInput({ field, values, data, onChange }: { field: FieldDefinition; values: RecordData; data: BootstrapData; onChange: (name: string, value: unknown) => void }) {
+function FieldInput({ field, values, data, error, onChange }: { field: FieldDefinition; values: RecordData; data: BootstrapData; error?: string; onChange: (name: string, value: unknown) => void }) {
   const value = values[field.name] ?? field.defaultValue ?? "";
-  if (field.type === "textarea") return <textarea className={cn(inputClass, "h-20")} value={String(value ?? "")} onChange={(event) => onChange(field.name, event.target.value)} />;
-  if (field.type === "picklist") return <NativeSelect options={field.options ?? ["--None--"]} value={String(value ?? "--None--")} onChange={(next) => onChange(field.name, next)} />;
+  const controlClass = cn(inputClass, error && inputErrorClass);
+  if (field.type === "textarea") return <textarea className={cn(controlClass, "h-20")} value={String(value ?? "")} onChange={(event) => onChange(field.name, event.target.value)} />;
+  if (field.type === "picklist") return <NativeSelect options={field.options ?? ["--None--"]} value={String(value ?? "--None--")} error={Boolean(error)} onChange={(next) => onChange(field.name, next)} />;
   if (field.type === "checkbox") return <RadixCheckbox checked={Boolean(value)} onCheckedChange={(checked) => onChange(field.name, Boolean(checked))} />;
-  if (field.type === "lookup") return <LookupField field={field} value={String(value ?? "")} data={data} onChange={(next) => onChange(field.name, next)} />;
-  if (field.type === "readonly") return <input className={inputClass} readOnly value={String(value ?? "")} />;
-  return <input className={inputClass} type={field.type === "currency" || field.type === "number" ? "number" : field.type} value={String(value ?? "")} onChange={(event) => onChange(field.name, event.target.value)} />;
+  if (field.type === "lookup") return <LookupField field={field} value={String(value ?? "")} data={data} error={Boolean(error)} onChange={(next) => onChange(field.name, next)} />;
+  if (field.type === "readonly") return <input className={controlClass} readOnly value={String(value ?? "")} />;
+  return <input className={controlClass} type={field.type === "currency" || field.type === "number" ? "number" : field.type} value={String(value ?? "")} onChange={(event) => onChange(field.name, event.target.value)} />;
 }
 
-function LookupField({ field, value, data, onChange }: { field: FieldDefinition; value: string; data: BootstrapData; onChange: (value: string) => void }) {
+function LookupField({
+  field,
+  value,
+  data,
+  error,
+  onChange,
+  id,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy
+}: {
+  field: FieldDefinition;
+  value: string;
+  data: BootstrapData;
+  error?: boolean;
+  onChange: (value: string) => void;
+  id?: string;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
+}) {
   const options =
     field.lookupObject === "Account"
       ? data.accounts.map((account) => ({ id: requiredId(account), label: String(account.name) }))
@@ -6785,18 +6831,32 @@ function LookupField({ field, value, data, onChange }: { field: FieldDefinition;
           ? [{ id: data.user.id, label: data.user.name }]
           : [];
   const selected = options.find((option) => option.id === value);
+  const invalid = Boolean(error || ariaInvalid);
   return (
     <div className="space-y-1">
       {selected && (
         <div className="inline-flex items-center gap-1 rounded-full border border-[#c9c9c9] bg-[#f8f8f8] px-2 py-1 text-xs">
           {selected.label}
-          <button aria-label="Clear selection" onClick={() => onChange("")}><X size={12} /></button>
+          <button type="button" aria-label="Clear selection" onClick={() => onChange("")}><X size={12} /></button>
         </div>
       )}
-      <select className={inputClass} value={value} onChange={(event) => onChange(event.target.value)} aria-label={field.label}>
-        <option value="">{`Search ${field.lookupObject === "User" ? "People" : `${OBJECT_DEFINITIONS[field.lookupObject as CrmObject]?.plural ?? "Records"}`}...`}</option>
-        {options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-      </select>
+      <NativeSelect
+        id={id}
+        options={[
+          {
+            value: "",
+            label: `Search ${field.lookupObject === "User" ? "People" : `${OBJECT_DEFINITIONS[field.lookupObject as CrmObject]?.plural ?? "Records"}`}...`
+          },
+          ...options.map((option) => ({ value: option.id, label: option.label }))
+        ]}
+        value={value}
+        onChange={onChange}
+        error={invalid}
+        aria-label={field.label}
+        aria-invalid={invalid || undefined}
+        aria-describedby={ariaDescribedBy}
+        placeholder={`Search ${field.lookupObject === "User" ? "People" : `${OBJECT_DEFINITIONS[field.lookupObject as CrmObject]?.plural ?? "Records"}`}...`}
+      />
     </div>
   );
 }
@@ -6891,42 +6951,265 @@ function ObjectIcon({ definition }: { definition: ObjectDefinition }) {
   );
 }
 
-function NativeSelect({ options, value, onChange }: { options: string[]; value: string; onChange: (value: string) => void }) {
+type NativeSelectOption = string | { value: string; label: string };
+
+function normalizeSelectOptions(options: NativeSelectOption[]) {
+  return options.map((option) => (typeof option === "string" ? { value: option, label: option } : option));
+}
+
+function NativeSelect({
+  options,
+  value,
+  onChange,
+  error,
+  className,
+  id,
+  disabled,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy,
+  "aria-label": ariaLabel,
+  placeholder = "Select..."
+}: {
+  options: NativeSelectOption[];
+  value: string;
+  onChange: (value: string) => void;
+  error?: boolean;
+  className?: string;
+  id?: string;
+  disabled?: boolean;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
+  "aria-label"?: string;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const panelRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const searchId = useId();
+  const listId = `${searchId}-list`;
+  const normalizedOptions = normalizeSelectOptions(options);
+  const selectedOption = normalizedOptions.find((option) => option.value === value);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = normalizedQuery
+    ? normalizedOptions.filter((option) => option.label.toLowerCase().includes(normalizedQuery) || option.value.toLowerCase().includes(normalizedQuery))
+    : normalizedOptions;
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    let detach: (() => void) | undefined;
+    let frame = 0;
+
+    const scrollList = (event: Event) => {
+      const panel = panelRef.current;
+      const list = listRef.current;
+      if (!panel || !list || !panel.contains(event.target as Node)) return;
+
+      const maxScroll = list.scrollHeight - list.clientHeight;
+      if (maxScroll <= 0) return;
+
+      const deltaY = "deltaY" in event ? (event as WheelEvent).deltaY : 0;
+      if (!deltaY && event.type !== "wheel") return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.type === "wheel") {
+        list.scrollTop = Math.min(maxScroll, Math.max(0, list.scrollTop + deltaY));
+      }
+    };
+
+    const attach = () => {
+      if (cancelled) return;
+      if (!panelRef.current || !listRef.current) {
+        frame = requestAnimationFrame(attach);
+        return;
+      }
+      // Capture on document so this runs before Dialog's react-remove-scroll lock.
+      document.addEventListener("wheel", scrollList, { passive: false, capture: true });
+      detach = () => {
+        document.removeEventListener("wheel", scrollList, true);
+      };
+    };
+
+    attach();
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      detach?.();
+    };
+  }, [open]);
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (disabled) return;
+    setOpen(nextOpen);
+    if (!nextOpen) setQuery("");
+  }
+
+  function choose(optionValue: string) {
+    onChange(optionValue);
+    setOpen(false);
+    setQuery("");
+  }
+
   return (
-    <Select.Root value={value} onValueChange={onChange}>
-      <Select.Trigger className={cn(inputClass, "flex items-center justify-between")}><Select.Value /><Select.Icon><ChevronDown size={14} /></Select.Icon></Select.Trigger>
-      <Select.Portal>
-        <Select.Content className="z-[70] max-h-72 overflow-hidden rounded border border-[#d8dde6] bg-white shadow-popover">
-          <Select.Viewport className="p-1">
-            {options.map((option) => (
-              <Select.Item key={option} value={option} className="relative cursor-pointer rounded py-2 pl-8 pr-3 text-sm outline-none data-[highlighted]:bg-brand-50">
-                <Select.ItemIndicator className="absolute left-2 top-2.5"><Check size={14} /></Select.ItemIndicator>
-                <Select.ItemText>{option}</Select.ItemText>
-              </Select.Item>
-            ))}
-          </Select.Viewport>
-        </Select.Content>
-      </Select.Portal>
-    </Select.Root>
+    <Popover.Root modal open={open} onOpenChange={handleOpenChange}>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          id={id}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
+          aria-label={ariaLabel}
+          disabled={disabled}
+          className={cn(inputClass, "flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60", (error || ariaInvalid) && inputErrorClass, className)}
+        >
+          <span className={cn("min-w-0 truncate", !selectedOption?.label && "text-[#706e6b]")}>{selectedOption?.label || placeholder}</span>
+          <ChevronDown size={14} className="shrink-0 text-[#706e6b]" />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          align="start"
+          sideOffset={4}
+          className="z-[70] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded border border-[#d8dde6] bg-white shadow-popover"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+          onWheel={(event) => event.stopPropagation()}
+        >
+          <div ref={panelRef}>
+            <div className="border-b border-[#d8dde6] p-2">
+              <div className="relative">
+                <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#706e6b]" />
+                <input
+                  id={searchId}
+                  autoFocus
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  className={cn(inputBareClass, "h-8 w-full pl-8 pr-2 text-sm")}
+                  placeholder="Search..."
+                  aria-label="Search options"
+                  aria-controls={listId}
+                  aria-autocomplete="list"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && filteredOptions[0]) {
+                      event.preventDefault();
+                      choose(filteredOptions[0].value);
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      handleOpenChange(false);
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <div
+              ref={listRef}
+              id={listId}
+              role="listbox"
+              aria-label="Options"
+              tabIndex={-1}
+              className="slds-scrollbar max-h-60 overflow-y-auto overscroll-contain p-1"
+              style={{ WebkitOverflowScrolling: "touch" }}
+            >
+              {filteredOptions.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-[#706e6b]">No matches</div>
+              ) : (
+                filteredOptions.map((option) => {
+                  const selected = option.value === value;
+                  return (
+                    <div
+                      key={option.value}
+                      role="option"
+                      aria-selected={selected}
+                      tabIndex={-1}
+                      className={cn(
+                        "relative flex w-full cursor-pointer items-center rounded py-2 pl-8 pr-3 text-left text-sm outline-none hover:bg-brand-50 focus-visible:bg-brand-50",
+                        selected && "font-semibold"
+                      )}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => choose(option.value)}
+                    >
+                      {selected && <Check size={14} className="absolute left-2 text-brand-600" />}
+                      <span className="truncate">{option.label}</span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
 function RadixCheckbox({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: (checked: boolean | "indeterminate") => void }) {
   return (
-    <Checkbox.Root checked={checked} onCheckedChange={onCheckedChange} className="flex h-5 w-5 items-center justify-center rounded border border-[#c9c9c9] bg-white data-[state=checked]:border-brand-600 data-[state=checked]:bg-brand-600">
-      <Checkbox.Indicator><Check size={14} className="text-white" /></Checkbox.Indicator>
+    <Checkbox.Root
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[#c9c9c9] bg-white outline-none transition-colors hover:border-[#a0a0a0] focus-visible:border-brand-500 focus-visible:shadow-[0_0_0_1px_#0176d3] data-[state=checked]:border-brand-600 data-[state=checked]:bg-brand-600 data-[state=checked]:hover:border-brand-600"
+    >
+      <Checkbox.Indicator><Check size={12} className="text-white" strokeWidth={3} /></Checkbox.Indicator>
     </Checkbox.Root>
   );
 }
 
 function FieldShell({ label, required, error, children }: { label: string; required?: boolean; error?: string; children: ReactNode }) {
+  const fieldId = useId();
+  const errorId = `${fieldId}-error`;
+  const control = enhanceFieldControl(children, { id: fieldId, error, errorId });
+
   return (
-    <label className="block text-sm">
-      <span className="mb-1 block text-xs font-semibold text-[#444]">{required && <span className="text-[#ba0517]">*</span>} {label}</span>
-      {children}
-      {error && <span className="mt-1 block text-xs text-[#ba0517]">{error}</span>}
+    <label className="block text-sm" htmlFor={fieldId}>
+      <span className="mb-1 block text-xs font-semibold text-[var(--control-label,#444)]">
+        {required && <span className="mr-0.5 text-[#ba0517]" aria-hidden="true">*</span>}
+        {label}
+        {required && <span className="sr-only"> (required)</span>}
+      </span>
+      {control}
+      {error && (
+        <span id={errorId} role="alert" className="mt-1 block text-xs text-[#ba0517]">
+          {error}
+        </span>
+      )}
     </label>
   );
+}
+
+function enhanceFieldControl(children: ReactNode, options: { id: string; error?: string; errorId: string }): ReactNode {
+  if (!isValidElement(children)) return children;
+
+  const element = children as ReactElement<{
+    id?: string;
+    className?: string;
+    error?: boolean;
+    "aria-invalid"?: boolean;
+    "aria-describedby"?: string;
+  }>;
+  const isNativeControl = typeof element.type === "string";
+
+  if (!isNativeControl) {
+    return cloneElement(element, {
+      id: element.props.id ?? options.id,
+      error: element.props.error || Boolean(options.error),
+      "aria-invalid": options.error ? true : element.props["aria-invalid"],
+      "aria-describedby": options.error ? options.errorId : element.props["aria-describedby"]
+    });
+  }
+
+  return cloneElement(element, {
+    id: element.props.id ?? options.id,
+    className: cn(element.props.className, options.error && inputErrorClass),
+    "aria-invalid": options.error ? true : undefined,
+    "aria-describedby": options.error ? options.errorId : undefined
+  });
 }
 
 function DashboardPanel({ title, action, actionHref, onAction, children }: { title: string; action?: string; actionHref?: string; onAction?: () => void; children: ReactNode }) {
@@ -7045,7 +7328,17 @@ function NotFoundPanel({ title, body }: { title: string; body: string }) {
   return <EmptyPanel title={title} body={body} />;
 }
 
-const inputClass = "min-h-8 w-full rounded border border-[#c9c9c9] bg-white px-2 py-1 text-sm outline-none focus:border-brand-500";
+const inputClass =
+  "min-h-8 w-full rounded border border-[var(--control-border,#c9c9c9)] bg-[var(--control-bg,#fff)] px-2.5 py-1.5 text-sm text-[#181818] outline-none transition-[border-color,box-shadow,background-color] placeholder:text-[var(--control-placeholder,#706e6b)] hover:border-[var(--control-border-hover,#a0a0a0)] focus:border-[var(--control-border-focus,#0176d3)] focus:shadow-[0_0_0_1px_var(--control-border-focus,#0176d3)] disabled:cursor-not-allowed disabled:border-[#c9c9c9] disabled:bg-[var(--control-bg-muted,#f3f3f3)] disabled:text-[#706e6b] disabled:hover:border-[#c9c9c9] disabled:focus:shadow-none read-only:border-[#c9c9c9] read-only:bg-[var(--control-bg-muted,#f3f3f3)] read-only:text-[#444] read-only:hover:border-[#c9c9c9] read-only:focus:border-[#c9c9c9] read-only:focus:shadow-none";
+
+const inputErrorClass =
+  "border-[var(--control-border-error,#ba0517)] hover:border-[var(--control-border-error,#ba0517)] focus:border-[var(--control-border-error,#ba0517)] focus:shadow-[0_0_0_1px_var(--control-border-error,#ba0517)]";
+
+const inputBareClass =
+  "h-full min-h-0 w-full flex-1 border-0 bg-transparent px-2 text-sm text-[#181818] outline-none placeholder:text-[var(--control-placeholder,#706e6b)]";
+
+const checkboxClass = "h-4 w-4 shrink-0 rounded border border-[#c9c9c9] accent-brand-600";
+
 
 function parseScreen(pathname: string, searchParams: SearchParamsLike): ScreenState {
   const segments = pathname.split("/").filter(Boolean);
