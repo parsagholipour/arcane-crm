@@ -16,6 +16,10 @@ export async function POST(request: NextRequest) {
   const values = payload.values ?? {};
   const selectedIds = payload.selectedIds ?? [];
 
+  if (payload.action === "Buy Now") {
+    return NextResponse.json({ error: "Purchase, plan, and checkout workflows are out of scope for this CRM clone." }, { status: 400 });
+  }
+
   if (!process.env.DATABASE_URL) {
     return NextResponse.json({ ok: true, fallback: true, action: payload.action });
   }
