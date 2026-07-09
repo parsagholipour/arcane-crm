@@ -188,8 +188,14 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData) 
           active: payload.active === undefined ? undefined : Boolean(payload.active),
           description: payload.description as string | null | undefined,
           isStandard: payload.isStandard === undefined ? undefined : Boolean(payload.isStandard),
-          validFrom: payload.validFrom ? new Date(String(payload.validFrom)) : payload.validFrom === null ? null : undefined,
-          validTo: payload.validTo ? new Date(String(payload.validTo)) : payload.validTo === null ? null : undefined
+          validFrom:
+            payload.validFrom !== undefined || payload.validFromTime !== undefined
+              ? combineDateAndTime(payload.validFrom, payload.validFromTime)
+              : undefined,
+          validTo:
+            payload.validTo !== undefined || payload.validToTime !== undefined
+              ? combineDateAndTime(payload.validTo, payload.validToTime)
+              : undefined
         }
       });
     case "Event":
@@ -285,4 +291,13 @@ async function deleteRecord(object: CrmObject, id: string) {
     default:
       throw new Error(`Delete is not supported for ${object}`);
   }
+}
+
+function combineDateAndTime(dateValue: unknown, timeValue: unknown) {
+  if (dateValue === null) return null;
+  if (!dateValue) return null;
+  const date = String(dateValue);
+  if (date.includes("T")) return new Date(date);
+  const time = String(timeValue || "00:00").slice(0, 5);
+  return new Date(`${date}T${time}:00.000Z`);
 }

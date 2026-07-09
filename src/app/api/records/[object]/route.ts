@@ -224,8 +224,8 @@ async function createRecord(object: CrmObject, payload: RecordData) {
           active: Boolean(payload.active),
           description: payload.description as string | null,
           isStandard: Boolean(payload.isStandard),
-          validFrom: payload.validFrom ? new Date(String(payload.validFrom)) : null,
-          validTo: payload.validTo ? new Date(String(payload.validTo)) : null
+          validFrom: combineDateAndTime(payload.validFrom, payload.validFromTime),
+          validTo: combineDateAndTime(payload.validTo, payload.validToTime)
         }
       });
     case "Event":
@@ -294,4 +294,12 @@ async function createRecord(object: CrmObject, payload: RecordData) {
     default:
       throw new Error(`Create is not supported for ${object}`);
   }
+}
+
+function combineDateAndTime(dateValue: unknown, timeValue: unknown) {
+  if (!dateValue) return null;
+  const date = String(dateValue);
+  if (date.includes("T")) return new Date(date);
+  const time = String(timeValue || "00:00").slice(0, 5);
+  return new Date(`${date}T${time}:00.000Z`);
 }

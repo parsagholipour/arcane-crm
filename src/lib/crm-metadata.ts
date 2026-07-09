@@ -174,6 +174,31 @@ export const COUNTRIES = [
 
 export const US_STATES = ["--None--", "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "District of Columbia", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming"];
 
+export const CA_PROVINCES = ["--None--", "Alberta", "British Columbia", "Manitoba", "New Brunswick", "Newfoundland and Labrador", "Northwest Territories", "Nova Scotia", "Nunavut", "Ontario", "Prince Edward Island", "Quebec", "Saskatchewan", "Yukon"];
+
+export const AU_STATES = ["--None--", "Australian Capital Territory", "New South Wales", "Northern Territory", "Queensland", "South Australia", "Tasmania", "Victoria", "Western Australia"];
+
+export const GB_COUNTIES = ["--None--", "England", "Northern Ireland", "Scotland", "Wales"];
+
+export const AE_EMIRATES = ["--None--", "Abu Dhabi", "Ajman", "Dubai", "Fujairah", "Ras Al Khaimah", "Sharjah", "Umm Al Quwain"];
+
+export const IN_STATES = ["--None--", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Delhi", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"];
+
+/** Dependent state/province options keyed by country. Missing countries yield only `--None--`. */
+export const STATES_BY_COUNTRY: Record<string, string[]> = {
+  "United States": US_STATES,
+  Canada: CA_PROVINCES,
+  Australia: AU_STATES,
+  "United Kingdom": GB_COUNTIES,
+  "United Arab Emirates": AE_EMIRATES,
+  India: IN_STATES
+};
+
+export function stateOptionsForCountry(country?: string | null) {
+  if (!country || country === "--None--") return ["--None--"];
+  return STATES_BY_COUNTRY[country] ?? ["--None--"];
+}
+
 export const TIME_SLOTS = Array.from({ length: 96 }, (_, index) => {
   const hours = Math.floor(index / 4).toString().padStart(2, "0");
   const minutes = ((index % 4) * 15).toString().padStart(2, "0");
@@ -492,11 +517,19 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
 };
 
 const addressFields = (prefix: string, section: string) => [
-  { name: `${prefix}Country`, label: `${section.replace(" Address", "")} Country`, section, type: "picklist" as const, options: COUNTRIES },
+  { name: `${prefix}Country`, label: `${section.replace(" Address", "")} Country`, section, type: "picklist" as const, options: COUNTRIES, defaultValue: "--None--" },
   { name: `${prefix}Street`, label: `${section.replace(" Address", "")} Street`, section, type: "textarea" as const },
   { name: `${prefix}PostalCode`, label: `${section.replace(" Address", "")} Zip/Postal Code`, section, type: "text" as const },
   { name: `${prefix}City`, label: `${section.replace(" Address", "")} City`, section, type: "text" as const },
-  { name: `${prefix}State`, label: `${section.replace(" Address", "")} State/Province`, section, type: "picklist" as const, options: US_STATES }
+  {
+    name: `${prefix}State`,
+    label: `${section.replace(" Address", "")} State/Province`,
+    section,
+    type: "picklist" as const,
+    options: ["--None--"],
+    dependsOn: `${prefix}Country`,
+    defaultValue: "--None--"
+  }
 ];
 
 export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
@@ -552,7 +585,7 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
       { name: "street", label: "Street", section: "Address", type: "textarea" },
       { name: "postalCode", label: "Zip/Postal Code", section: "Address", type: "text" },
       { name: "city", label: "City", section: "Address", type: "text" },
-      { name: "state", label: "State/Province", section: "Address", type: "picklist", options: US_STATES },
+      { name: "state", label: "State/Province", section: "Address", type: "picklist", options: ["--None--"], dependsOn: "country", defaultValue: "--None--" },
       { name: "numberOfEmployees", label: "No. of Employees", section: "Segment", type: "number" },
       { name: "annualRevenue", label: "Annual Revenue", section: "Segment", type: "currency" },
       { name: "leadSource", label: "Lead Source", section: "Segment", type: "picklist", options: LEAD_SOURCE, defaultValue: "--None--" },
@@ -599,7 +632,9 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
       { name: "description", label: "Description", section: "Price Book Information", type: "textarea" },
       { name: "isStandard", label: "Is Standard Price Book", section: "Price Book Information", type: "readonly", defaultValue: "False" },
       { name: "validFrom", label: "Valid From", section: "Price Book Information", type: "date" },
-      { name: "validTo", label: "Valid To", section: "Price Book Information", type: "date" }
+      { name: "validFromTime", label: "Valid From Time", section: "Price Book Information", type: "picklist", options: TIME_SLOTS, defaultValue: "00:00" },
+      { name: "validTo", label: "Valid To", section: "Price Book Information", type: "date" },
+      { name: "validToTime", label: "Valid To Time", section: "Price Book Information", type: "picklist", options: TIME_SLOTS, defaultValue: "00:00" }
     ]
   }
 };

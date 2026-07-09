@@ -120,6 +120,8 @@ export type FieldDefinition = {
   type: FieldType;
   required?: boolean;
   options?: string[];
+  /** When set, picklist options are resolved from the controlling field's value (e.g. country → state). */
+  dependsOn?: string;
   lookupObject?: CrmObject | "User" | "People";
   defaultValue?: string | boolean | number;
   readOnly?: boolean;

@@ -69,6 +69,7 @@ import {
   useRef,
   useState,
   type ElementType,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
   type ReactNode
@@ -88,6 +89,7 @@ import {
   PRODUCT_FAMILY,
   RELATED_OBJECT_TYPES,
   SHOW_TIME_AS,
+  stateOptionsForCountry,
   TIME_SLOTS
 } from "@/lib/crm-metadata";
 import { contactName, dataKeyForObject, decorateBootstrap, recordTitle, routeForRecord } from "@/lib/crm-data";
@@ -3147,7 +3149,13 @@ function ListViewPage({
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
             <ToolbarButton label="Refresh" icon={RefreshCw} onClick={() => onToast({ tone: "success", message: "List refreshed." })} />
-            <ToolbarButton label="Column sort" icon={ChevronsUpDown} onClick={() => sortColumn(activeColumns[0]?.key ?? "name")} />
+            <ToolbarButton
+              label="Column sort"
+              icon={ChevronsUpDown}
+              disabled={visibleRecords.length < 1 || activeColumns.length < 2}
+              disabledReason="Column sort is disabled. To sort columns, a list view needs at least one row and two columns."
+              onClick={() => sortColumn(activeColumns[0]?.key ?? "name")}
+            />
             <ToolbarButton label="Edit List" icon={Edit3} onClick={() => setControlDialog("Select Fields to Display")} />
             <ToolbarButton label="Charts" icon={LayoutDashboard} onClick={() => setControlDialog("Charts")} />
             <ToolbarButton label="Filters" icon={Filter} onClick={() => setControlDialog("Filters")} />
@@ -4401,7 +4409,16 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
     ...data.emailActivities.filter((item) => item.relatedObjectType === object && item.relatedRecordId === record.id).map((item) => ({ ...item, kind: "Email" as const, date: item.sentAt })),
     ...data.callActivities.filter((item) => item.relatedObjectType === object && item.relatedRecordId === record.id).map((item) => ({ ...item, kind: "Call" as const, date: item.completedAt })),
     ...data.tasks.filter((item) => item.relatedObjectType === object && item.relatedRecordId === record.id).map((item) => ({ ...item, kind: "Task" as const, date: item.dueDate ?? item.createdAt })),
-    ...data.events.filter((item) => relatedTypes.includes(String(item.relatedObjectType)) && item.relatedRecordId === record.id).map((item) => ({ ...item, kind: "Event" as const, date: item.startAt }))
+    ...data.events
+      .filter((item) => {
+        const relatedMatch = relatedTypes.includes(String(item.relatedObjectType)) && String(item.relatedRecordId) === String(record.id);
+        const nameMatch =
+          (object === "Contact" || object === "Lead") &&
+          String(item.nameRecordId) === String(record.id) &&
+          (String(item.nameObjectType) === OBJECT_DEFINITIONS[object].plural || String(item.nameObjectType) === object);
+        return relatedMatch || nameMatch;
+      })
+      .map((item) => ({ ...item, kind: "Event" as const, date: item.startAt }))
   ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const filteredActivities = activities.filter((activity) => {
     if (insightsOnly && !activityHasInsight(activity)) return false;
@@ -6520,7 +6537,25 @@ function GenericRecordModal({ mode, object, data, record, onClose, onSave }: { m
       footer={<><Button onClick={requestClose}>Cancel</Button>{mode === "new" && <Button onClick={() => void submit(true)}>Save & New</Button>}<Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}
     >
       <div className="mb-4 text-xs text-[#706e6b]"><span className="text-[#ba0517]">*</span> = Required Information</div>
-      <FormFields fields={formDefinition.fields} values={values} errors={errors} data={data} onChange={(name, value) => setValues((current) => ({ ...current, [name]: value }))} />
+      <FormFields
+        fields={formDefinition.fields}
+        values={values}
+        errors={errors}
+        data={data}
+        onChange={(name, value) =>
+          setValues((current) => {
+            const next = { ...current, [name]: value };
+            for (const field of formDefinition.fields) {
+              if (field.dependsOn === name) {
+                const options = picklistOptionsForField(field, next);
+                const currentDependent = String(next[field.name] ?? "--None--");
+                if (!options.includes(currentDependent)) next[field.name] = "--None--";
+              }
+            }
+            return next;
+          })
+        }
+      />
     </BaseDialog>
   );
 }
@@ -6605,6 +6640,28 @@ function EventModal({
   onClose: () => void;
   onSave: (values: RecordData) => Promise<boolean>;
 }) {
+  const relatedPlural = relatedObjectType && relatedObjectType !== "Event"
+    ? OBJECT_DEFINITIONS[relatedObjectType]?.plural
+    : undefined;
+  const relatedTypeDefault = relatedPlural && RELATED_OBJECT_TYPES.includes(relatedPlural)
+    ? relatedPlural
+    : relatedObjectType === "Contact" || relatedObjectType === "Lead"
+      ? "Accounts"
+      : "Accounts";
+  const nameTypeDefault =
+    relatedObjectType === "Lead" ? "Leads" : relatedObjectType === "Contact" ? "Contacts" : "Contacts";
+  const nameRecordDefault =
+    relatedObjectType === "Contact" || relatedObjectType === "Lead" ? relatedRecordId : undefined;
+  const relatedRecordDefault =
+    relatedObjectType && relatedObjectType !== "Contact" && relatedObjectType !== "Lead" && relatedObjectType !== "Event"
+      ? relatedRecordId
+      : relatedObjectType === "Contact"
+        ? (() => {
+            const contact = data.contacts.find((item) => item.id === relatedRecordId);
+            return contact?.accountId ? String(contact.accountId) : undefined;
+          })()
+        : undefined;
+
   const [initialValues] = useState<RecordData>(() => ({
     subject: "--None--",
     startDate,
@@ -6614,13 +6671,34 @@ function EventModal({
     assignedToId: CURRENT_USER.id,
     showTimeAs: "Busy",
     attendeeIds: [CURRENT_USER.id],
-    relatedObjectType: relatedObjectType ? OBJECT_DEFINITIONS[relatedObjectType].plural : "Accounts",
-    relatedRecordId
+    nameObjectType: nameTypeDefault,
+    nameRecordId: nameRecordDefault ?? "",
+    relatedObjectType: relatedTypeDefault,
+    relatedRecordId: relatedRecordDefault ?? ""
   }));
   const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const isDirty = !recordDataShallowEqual(values, initialValues);
   const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
+
+  const nameLookupField: FieldDefinition = {
+    name: "nameRecordId",
+    label: "Name",
+    section: "Related Records",
+    type: "lookup",
+    lookupObject: String(values.nameObjectType ?? "Contacts") === "Leads" ? "Lead" : "Contact"
+  };
+  const relatedLookupObject = relatedPluralToCrmObject(String(values.relatedObjectType ?? "Accounts"));
+  const relatedLookupField: FieldDefinition | null = relatedLookupObject
+    ? {
+        name: "relatedRecordId",
+        label: "Related To",
+        section: "Related Records",
+        type: "lookup",
+        lookupObject: relatedLookupObject
+      }
+    : null;
+
   async function submit(stayOpen = false) {
     const required = ["subject", "startDate", "startTime", "endDate", "endTime", "assignedToId"];
     const nextErrors = Object.fromEntries(required.filter((key) => !values[key] || values[key] === "--None--").map((key) => [key, "Complete this field."]));
@@ -6628,6 +6706,8 @@ function EventModal({
     if (Object.keys(nextErrors).length) return;
     const payload = {
       ...values,
+      nameRecordId: values.nameRecordId || null,
+      relatedRecordId: values.relatedRecordId || null,
       startAt: `${values.startDate}T${values.startTime}:00.000Z`,
       endAt: `${values.endDate}T${values.endTime}:00.000Z`
     };
@@ -6649,8 +6729,46 @@ function EventModal({
         <FieldShell label="End Date" required error={errors.endDate}><input className={inputClass} type="date" value={String(values.endDate)} onChange={(event) => setValues({ ...values, endDate: event.target.value })} /></FieldShell>
         <FieldShell label="End Time" required error={errors.endTime}><NativeSelect options={TIME_SLOTS} value={String(values.endTime)} onChange={(value) => setValues({ ...values, endTime: value })} /></FieldShell>
         <FieldShell label="Attendees"><input className={inputClass} placeholder="Search People..." value={data.user.name} readOnly /></FieldShell>
-        <FieldShell label="Name"><div className="grid grid-cols-[120px_1fr] gap-2"><NativeSelect options={NAME_OBJECT_TYPES} value={String(values.nameObjectType ?? "Contacts")} onChange={(value) => setValues({ ...values, nameObjectType: value })} /><input className={inputClass} placeholder="Search..." /></div></FieldShell>
-        <FieldShell label="Related To"><div className="grid grid-cols-[160px_1fr] gap-2"><NativeSelect options={RELATED_OBJECT_TYPES} value={String(values.relatedObjectType ?? "Accounts")} onChange={(value) => setValues({ ...values, relatedObjectType: value })} /><input className={inputClass} placeholder="Search..." /></div></FieldShell>
+        <FieldShell label="Name">
+          <div className="grid grid-cols-[120px_1fr] gap-2">
+            <NativeSelect
+              options={NAME_OBJECT_TYPES}
+              value={String(values.nameObjectType ?? "Contacts")}
+              onChange={(value) => setValues({ ...values, nameObjectType: value, nameRecordId: "" })}
+            />
+            <LookupField
+              field={nameLookupField}
+              value={String(values.nameRecordId ?? "")}
+              data={data}
+              onChange={(next) => setValues({ ...values, nameRecordId: next })}
+            />
+          </div>
+        </FieldShell>
+        <FieldShell label="Related To">
+          <div className="grid grid-cols-[160px_1fr] gap-2">
+            <NativeSelect
+              options={RELATED_OBJECT_TYPES}
+              value={String(values.relatedObjectType ?? "Accounts")}
+              onChange={(value) => setValues({ ...values, relatedObjectType: value, relatedRecordId: "" })}
+            />
+            {relatedLookupField ? (
+              <LookupField
+                field={relatedLookupField}
+                value={String(values.relatedRecordId ?? "")}
+                data={data}
+                onChange={(next) => setValues({ ...values, relatedRecordId: next })}
+              />
+            ) : (
+              <input
+                className={cn(inputClass, "opacity-70")}
+                readOnly
+                placeholder="No searchable records for this type"
+                value=""
+                aria-label="Related To search unavailable"
+              />
+            )}
+          </div>
+        </FieldShell>
         <FieldShell label="Assigned To" required error={errors.assignedToId}><input className={inputClass} value={data.user.name} readOnly /></FieldShell>
         <FieldShell label="Location"><input className={inputClass} value={String(values.location ?? "")} onChange={(event) => setValues({ ...values, location: event.target.value })} /></FieldShell>
         <FieldShell label="Show Time As"><NativeSelect options={SHOW_TIME_AS} value={String(values.showTimeAs)} onChange={(value) => setValues({ ...values, showTimeAs: value })} /></FieldShell>
@@ -6659,6 +6777,11 @@ function EventModal({
       </div>
     </BaseDialog>
   );
+}
+
+function relatedPluralToCrmObject(plural: string): CrmObject | null {
+  const match = (Object.keys(OBJECT_DEFINITIONS) as CrmObject[]).find((object) => OBJECT_DEFINITIONS[object].plural === plural);
+  return match ?? null;
 }
 
 function QuickTextModal({ data, onClose, onSave }: { data: BootstrapData; onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
@@ -7411,11 +7534,31 @@ function FieldInput({ field, values, data, error, onChange }: { field: FieldDefi
   const value = values[field.name] ?? field.defaultValue ?? "";
   const controlClass = cn(inputClass, error && inputErrorClass);
   if (field.type === "textarea") return <textarea className={cn(controlClass, "h-20")} value={String(value ?? "")} onChange={(event) => onChange(field.name, event.target.value)} />;
-  if (field.type === "picklist") return <NativeSelect options={field.options ?? ["--None--"]} value={String(value ?? "--None--")} error={Boolean(error)} onChange={(next) => onChange(field.name, next)} />;
+  if (field.type === "picklist") {
+    const options = picklistOptionsForField(field, values);
+    const countryUnset = Boolean(field.dependsOn) && (!values[field.dependsOn!] || values[field.dependsOn!] === "--None--");
+    return (
+      <NativeSelect
+        options={options}
+        value={String(value ?? "--None--")}
+        error={Boolean(error)}
+        disabled={countryUnset}
+        placeholder={countryUnset ? "Select a country first" : "Select..."}
+        onChange={(next) => onChange(field.name, next)}
+      />
+    );
+  }
   if (field.type === "checkbox") return <RadixCheckbox checked={Boolean(value)} onCheckedChange={(checked) => onChange(field.name, Boolean(checked))} />;
   if (field.type === "lookup") return <LookupField field={field} value={String(value ?? "")} data={data} error={Boolean(error)} onChange={(next) => onChange(field.name, next)} />;
   if (field.type === "readonly") return <input className={controlClass} readOnly value={String(value ?? "")} />;
   return <input className={controlClass} type={field.type === "currency" || field.type === "number" ? "number" : field.type} value={String(value ?? "")} onChange={(event) => onChange(field.name, event.target.value)} />;
+}
+
+function picklistOptionsForField(field: FieldDefinition, values: RecordData) {
+  if (field.dependsOn) {
+    return stateOptionsForCountry(String(values[field.dependsOn] ?? ""));
+  }
+  return field.options ?? ["--None--"];
 }
 
 function LookupField({
@@ -7576,6 +7719,14 @@ function LookupField({
 function lookupOptionsForField(field: FieldDefinition, data: BootstrapData) {
   if (field.lookupObject === "Account") return data.accounts.map((account) => ({ id: requiredId(account), label: String(account.name ?? "Account") }));
   if (field.lookupObject === "Contact") return data.contacts.map((contact) => ({ id: requiredId(contact), label: contactName(contact) }));
+  if (field.lookupObject === "Lead") return data.leads.map((lead) => ({ id: requiredId(lead), label: contactName(lead) || String(lead.company ?? "Lead") }));
+  if (field.lookupObject === "Opportunity") return data.opportunities.map((opportunity) => ({ id: requiredId(opportunity), label: String(opportunity.name ?? "Opportunity") }));
+  if (field.lookupObject === "Case") return data.cases.map((caseRecord) => ({ id: requiredId(caseRecord), label: String(caseRecord.caseNumber ?? caseRecord.subject ?? "Case") }));
+  if (field.lookupObject === "Product2") return data.products.map((product) => ({ id: requiredId(product), label: String(product.name ?? "Product") }));
+  if (field.lookupObject === "Pricebook2") return data.priceBooks.map((book) => ({ id: requiredId(book), label: String(book.name ?? "Price Book") }));
+  if (field.lookupObject === "ListEmail") return data.listEmails.map((email) => ({ id: requiredId(email), label: String(email.subject ?? email.name ?? "List Email") }));
+  if (field.lookupObject === "Invoice") return data.invoices.map((invoice) => ({ id: requiredId(invoice), label: String(invoice.name ?? invoice.invoiceNumber ?? "Invoice") }));
+  if (field.lookupObject === "Knowledge__kav") return data.knowledgeArticles.map((article) => ({ id: requiredId(article), label: String(article.title ?? "Article") }));
   if (field.lookupObject === "User" || field.lookupObject === "People") return [{ id: data.user.id, label: data.user.name }];
   return [];
 }
@@ -7623,9 +7774,16 @@ function Button({ children, onClick, variant = "secondary", className }: { child
   );
 }
 
-function ToolbarButton({ label, icon: Icon = Settings, onClick, disabled }: { label: string; icon?: ElementType; onClick?: () => void; disabled?: boolean }) {
+function ToolbarButton({ label, icon: Icon = Settings, onClick, disabled, disabledReason }: { label: string; icon?: ElementType; onClick?: () => void; disabled?: boolean; disabledReason?: string }) {
+  const reason = disabled ? disabledReason || `${label} is unavailable for this list.` : undefined;
   return (
-    <button aria-label={label} disabled={disabled} onClick={onClick} className="flex h-8 w-8 items-center justify-center rounded border border-[#cfd4dc] bg-white text-[#444] shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-[#b5bcc7] hover:bg-[#f8f9fb] hover:text-brand-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-[#cfd4dc] disabled:hover:bg-white disabled:hover:text-[#444]">
+    <button
+      aria-label={label}
+      title={reason || label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-8 w-8 items-center justify-center rounded border border-[#cfd4dc] bg-white text-[#444] shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-[#b5bcc7] hover:bg-[#f8f9fb] hover:text-brand-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-[#cfd4dc] disabled:hover:bg-white disabled:hover:text-[#444]"
+    >
       <Icon size={14} />
     </button>
   );
@@ -7648,10 +7806,12 @@ function ListViewControlsMenu({ object, listView, isCustom, onAction }: { object
             <DropdownMenu.Item
               key={item.label}
               disabled={!item.enabled}
+              title={!item.enabled ? item.description : undefined}
               onSelect={() => onAction(item.label)}
               className="cursor-pointer rounded px-3 py-2 text-sm outline-none hover:bg-brand-50 data-[disabled]:cursor-not-allowed data-[disabled]:text-[#a8a8a8] data-[disabled]:hover:bg-white"
             >
-              {item.label}
+              <div className="font-medium">{item.label}</div>
+              {!item.enabled && <div className="mt-0.5 text-xs leading-snug text-[#a8a8a8]">{item.description}</div>}
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>
@@ -7734,6 +7894,7 @@ function NativeSelect({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchId = useId();
@@ -7744,6 +7905,11 @@ function NativeSelect({
   const filteredOptions = normalizedQuery
     ? normalizedOptions.filter((option) => option.label.toLowerCase().includes(normalizedQuery) || option.value.toLowerCase().includes(normalizedQuery))
     : normalizedOptions;
+
+  const optionsKey = normalizedOptions.map((option) => option.value).join("\u0001");
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [query, optionsKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -7791,16 +7957,51 @@ function NativeSelect({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const active = listRef.current.querySelector<HTMLElement>(`[data-option-index="${highlightedIndex}"]`);
+    active?.scrollIntoView({ block: "nearest" });
+  }, [highlightedIndex, open]);
+
   function handleOpenChange(nextOpen: boolean) {
     if (disabled) return;
     setOpen(nextOpen);
-    if (!nextOpen) setQuery("");
+    if (!nextOpen) {
+      setQuery("");
+      setHighlightedIndex(0);
+    } else {
+      const selectedIndex = filteredOptions.findIndex((option) => option.value === value);
+      setHighlightedIndex(selectedIndex >= 0 ? selectedIndex : 0);
+    }
   }
 
   function choose(optionValue: string) {
     onChange(optionValue);
     setOpen(false);
     setQuery("");
+    setHighlightedIndex(0);
+  }
+
+  function onSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlightedIndex((current) => (filteredOptions.length ? Math.min(filteredOptions.length - 1, current + 1) : 0));
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlightedIndex((current) => Math.max(0, current - 1));
+    }
+    if (event.key === "Enter") {
+      const option = filteredOptions[highlightedIndex] ?? filteredOptions[0];
+      if (option) {
+        event.preventDefault();
+        choose(option.value);
+      }
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      handleOpenChange(false);
+    }
   }
 
   return (
@@ -7812,9 +8013,11 @@ function NativeSelect({
           role="combobox"
           aria-expanded={open}
           aria-controls={listId}
+          aria-activedescendant={open && filteredOptions[highlightedIndex] ? `${listId}-${highlightedIndex}` : undefined}
           aria-invalid={ariaInvalid}
           aria-describedby={ariaDescribedBy}
           aria-label={ariaLabel}
+          title={disabled ? placeholder : undefined}
           disabled={disabled}
           className={cn(inputClass, "flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60", (error || ariaInvalid) && inputErrorClass, className)}
         >
@@ -7845,16 +8048,7 @@ function NativeSelect({
                   aria-label="Search options"
                   aria-controls={listId}
                   aria-autocomplete="list"
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && filteredOptions[0]) {
-                      event.preventDefault();
-                      choose(filteredOptions[0].value);
-                    }
-                    if (event.key === "Escape") {
-                      event.preventDefault();
-                      handleOpenChange(false);
-                    }
-                  }}
+                  onKeyDown={onSearchKeyDown}
                 />
               </div>
             </div>
@@ -7870,18 +8064,23 @@ function NativeSelect({
               {filteredOptions.length === 0 ? (
                 <div className="px-3 py-2 text-sm text-[#706e6b]">No matches</div>
               ) : (
-                filteredOptions.map((option) => {
+                filteredOptions.map((option, index) => {
                   const selected = option.value === value;
+                  const active = index === highlightedIndex;
                   return (
                     <div
                       key={option.value}
+                      id={`${listId}-${index}`}
+                      data-option-index={index}
                       role="option"
                       aria-selected={selected}
                       tabIndex={-1}
                       className={cn(
                         "relative flex w-full cursor-pointer items-center rounded py-2 pl-8 pr-3 text-left text-sm outline-none hover:bg-brand-50 focus-visible:bg-brand-50",
+                        active && "bg-brand-50",
                         selected && "font-semibold"
                       )}
+                      onMouseEnter={() => setHighlightedIndex(index)}
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => choose(option.value)}
                     >
@@ -8828,10 +9027,20 @@ function importPayloadForObject(object: CrmObject, row: string, data: BootstrapD
 
 function buildInitialValues(definition: FormDefinition, record?: RecordData): RecordData {
   const values: RecordData = { ...(record ?? {}) };
+  splitDateTimeField(values, "validFrom", "validFromTime");
+  splitDateTimeField(values, "validTo", "validToTime");
   definition.fields.forEach((field) => {
     if (values[field.name] === undefined && field.defaultValue !== undefined) values[field.name] = field.defaultValue;
   });
   return values;
+}
+
+function splitDateTimeField(values: RecordData, dateField: string, timeField: string) {
+  const raw = values[dateField];
+  if (typeof raw !== "string" || !raw.includes("T")) return;
+  const [datePart, timePart = "00:00"] = raw.split("T");
+  values[dateField] = datePart;
+  if (values[timeField] === undefined) values[timeField] = timePart.slice(0, 5);
 }
 
 function recordDataShallowEqual(left: RecordData, right: RecordData) {
