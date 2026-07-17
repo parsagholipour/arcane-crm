@@ -6,8 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "test:usecases": "node scripts/crm-usecase-check.mjs",
     "lint": "next lint",
     "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:reset": "prisma migrate reset --force",
     "prisma:push": "prisma db push",
     "prisma:seed": "tsx prisma/seed.ts"
   },
@@ -26,6 +30,7 @@
     "date-fns": "^4.1.0",
     "lucide-react": "^0.468.0",
     "next": "^15.4.1",
+    "next-auth": "^5.0.0-beta.30",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwind-merge": "^2.6.0"

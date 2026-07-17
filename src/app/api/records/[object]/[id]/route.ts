@@ -1,4 +1,4 @@
-import { CURRENT_USER } from "@/lib/crm-metadata";
+import { AppAuthorizationError, assertOrganizationRecord, assertOrganizationUser, assertRelatedOrganizationRecord, authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
 import { prisma } from "@/lib/prisma";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 import { NextRequest, NextResponse } from "next/server";
@@ -8,40 +8,35 @@ type Params = Promise<{ object: string; id: string }>;
 export const dynamic = "force-dynamic";
 
 export async function PATCH(request: NextRequest, context: { params: Params }) {
-  const { object, id } = await context.params;
-  if (!isCrmObject(object)) {
-    return NextResponse.json({ error: "Unknown object." }, { status: 404 });
-  }
-  const payload = normalizePayload(await request.json());
-
-  if (!process.env.DATABASE_URL) {
-    return NextResponse.json({ record: { ...payload, id, updatedAt: new Date().toISOString(), updatedById: CURRENT_USER.id } });
-  }
-
   try {
-    const record = await updateRecord(object, id, payload);
+    const authContext = await requireOrganizationContext();
+    const { object, id } = await context.params;
+    if (!isCrmObject(object)) return NextResponse.json({ error: "Unknown object." }, { status: 404 });
+    await assertScopedRecord(object, id, authContext.organizationId);
+    const payload = normalizePayload(await request.json());
+    await validateReferences(payload, authContext.organizationId);
+    const record = await updateRecord(object, id, payload, authContext.userId);
     return NextResponse.json({ record: JSON.parse(JSON.stringify(record)) });
   } catch (error) {
     console.error(error);
+    const response = authorizationErrorResponse(error);
+    if (response) return response;
     return NextResponse.json({ error: "Unable to update record." }, { status: 500 });
   }
 }
 
 export async function DELETE(_request: NextRequest, context: { params: Params }) {
-  const { object, id } = await context.params;
-  if (!isCrmObject(object)) {
-    return NextResponse.json({ error: "Unknown object." }, { status: 404 });
-  }
-
-  if (!process.env.DATABASE_URL) {
-    return NextResponse.json({ ok: true });
-  }
-
   try {
+    const authContext = await requireOrganizationContext();
+    const { object, id } = await context.params;
+    if (!isCrmObject(object)) return NextResponse.json({ error: "Unknown object." }, { status: 404 });
+    await assertScopedRecord(object, id, authContext.organizationId);
     await deleteRecord(object, id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error(error);
+    const response = authorizationErrorResponse(error);
+    if (response) return response;
     return NextResponse.json({ error: "Unable to delete record." }, { status: 500 });
   }
 }
@@ -59,7 +54,34 @@ function normalizePayload(payload: RecordData) {
   ) as RecordData;
 }
 
-async function updateRecord(object: CrmObject, id: string, payload: RecordData) {
+async function validateReferences(payload: RecordData, organizationId: string) {
+  if (payload.ownerId) await assertOrganizationUser(organizationId, String(payload.ownerId));
+  if (payload.assignedToId) await assertOrganizationUser(organizationId, String(payload.assignedToId));
+  if (payload.accountId) await assertOrganizationRecord(organizationId, "account", String(payload.accountId));
+  if (payload.contactId) await assertOrganizationRecord(organizationId, "contact", String(payload.contactId));
+  if (payload.parentAccountId) await assertOrganizationRecord(organizationId, "account", String(payload.parentAccountId));
+  if (payload.reportsToContactId) await assertOrganizationRecord(organizationId, "contact", String(payload.reportsToContactId));
+  await assertRelatedOrganizationRecord(organizationId, payload.nameObjectType, payload.nameRecordId);
+  await assertRelatedOrganizationRecord(organizationId, payload.relatedObjectType, payload.relatedRecordId);
+}
+
+async function assertScopedRecord(object: CrmObject, id: string, organizationId: string) {
+  const row =
+    object === "Account" ? await prisma.account.findFirst({ where: { id, organizationId }, select: { id: true } }) :
+    object === "Contact" ? await prisma.contact.findFirst({ where: { id, organizationId }, select: { id: true } }) :
+    object === "Lead" ? await prisma.lead.findFirst({ where: { id, organizationId }, select: { id: true } }) :
+    object === "Opportunity" ? await prisma.opportunity.findFirst({ where: { id, organizationId }, select: { id: true } }) :
+    object === "Case" ? await prisma.caseRecord.findFirst({ where: { id, organizationId }, select: { id: true } }) :
+    object === "Product2" ? await prisma.product.findFirst({ where: { id, organizationId }, select: { id: true } }) :
+    object === "Pricebook2" ? await prisma.priceBook.findFirst({ where: { id, organizationId }, select: { id: true } }) :
+    object === "Event" ? await prisma.event.findFirst({ where: { id, organizationId }, select: { id: true } }) :
+    object === "QuickText" ? await prisma.quickText.findFirst({ where: { id, organizationId }, select: { id: true } }) :
+    object === "Knowledge__kav" ? await prisma.knowledgeArticle.findFirst({ where: { id, organizationId }, select: { id: true } }) :
+    object === "ListEmail" ? await prisma.listEmail.findFirst({ where: { id, organizationId }, select: { id: true } }) : null;
+  if (!row) throw new AppAuthorizationError("Record not found.", 404);
+}
+
+async function updateRecord(object: CrmObject, id: string, payload: RecordData, userId: string) {
   switch (object) {
     case "Account":
       return prisma.account.update({
@@ -81,7 +103,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData) 
           shippingPostalCode: payload.shippingPostalCode as string | null | undefined,
           shippingCity: payload.shippingCity as string | null | undefined,
           shippingState: payload.shippingState as string | null | undefined,
-          updatedById: CURRENT_USER.id
+          updatedById: userId
         }
       });
     case "Contact":
@@ -102,7 +124,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData) 
           mailingPostalCode: payload.mailingPostalCode as string | null | undefined,
           mailingCity: payload.mailingCity as string | null | undefined,
           mailingState: payload.mailingState as string | null | undefined,
-          updatedById: CURRENT_USER.id
+          updatedById: userId
         }
       });
     case "Lead":
@@ -130,7 +152,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData) 
           annualRevenue: payload.annualRevenue === undefined ? undefined : payload.annualRevenue === null ? null : String(payload.annualRevenue),
           leadSource: payload.leadSource as string | null | undefined,
           industry: payload.industry as string | null | undefined,
-          updatedById: CURRENT_USER.id
+          updatedById: userId
         }
       });
     case "Opportunity":
@@ -148,7 +170,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData) 
           probability: payload.probability === undefined ? undefined : payload.probability === null ? null : Number(payload.probability),
           forecastCategory: payload.forecastCategory ? String(payload.forecastCategory) : undefined,
           nextStep: payload.nextStep as string | null | undefined,
-          updatedById: CURRENT_USER.id
+          updatedById: userId
         }
       });
     case "Case":
@@ -165,7 +187,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData) 
           description: payload.description as string | null | undefined,
           sendNotificationEmailToContact: payload.sendNotificationEmailToContact === undefined ? undefined : Boolean(payload.sendNotificationEmailToContact),
           closedAt: payload.status === "Closed" ? new Date() : undefined,
-          updatedById: CURRENT_USER.id
+          updatedById: userId
         }
       });
     case "Product2":
@@ -176,6 +198,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData) 
           family: payload.family as string | null | undefined,
           productCode: payload.productCode as string | null | undefined,
           sku: payload.sku as string | null | undefined,
+          category: payload.category as string | null | undefined,
           active: payload.active === undefined ? undefined : Boolean(payload.active),
           description: payload.description as string | null | undefined
         }
@@ -256,7 +279,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData) 
           bodyRichText: payload.bodyRichText as string | null | undefined,
           visibleInInternalApp: payload.visibleInInternalApp === undefined ? undefined : Boolean(payload.visibleInInternalApp),
           visibleToCustomer: payload.visibleToCustomer === undefined ? undefined : Boolean(payload.visibleToCustomer),
-          updatedById: CURRENT_USER.id
+          updatedById: userId
         }
       });
     default:

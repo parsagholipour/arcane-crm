@@ -23,11 +23,24 @@ export type UserRecord = {
   id: string;
   name: string;
   alias: string;
+  email?: string | null;
   avatarUrl?: string | null;
+};
+
+export type OrganizationSummary = {
+  id: string;
+  name: string;
+  slug: string;
+  role?: "ADMIN" | "MEMBER";
 };
 
 export type BootstrapData = {
   user: UserRecord;
+  users: UserRecord[];
+  organization: OrganizationSummary;
+  organizations: OrganizationSummary[];
+  organizationRole: "ADMIN" | "MEMBER";
+  isSuperAdmin: boolean;
   accounts: RecordData[];
   contacts: RecordData[];
   leads: RecordData[];

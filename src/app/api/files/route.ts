@@ -1,24 +1,22 @@
-import { CURRENT_USER } from "@/lib/crm-metadata";
+import { assertRelatedOrganizationRecord, authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const payload = await request.json();
-  const attachment = Boolean(payload.attachment);
-
-  if (!process.env.DATABASE_URL) {
-    return NextResponse.json({ record: { ...payload, id: `file-${Date.now()}`, uploadedAt: new Date().toISOString() } }, { status: 201 });
-  }
-
   try {
+    const context = await requireOrganizationContext();
+    const payload = await request.json();
+    const attachment = Boolean(payload.attachment);
+    await assertRelatedOrganizationRecord(context.organizationId, payload.relatedObjectType, payload.relatedRecordId);
     const data = {
+      organizationId: context.organizationId,
       name: String(payload.name ?? "Uploaded File"),
       size: payload.size ? Number(payload.size) : null,
       relatedObjectType: payload.relatedObjectType,
       relatedRecordId: payload.relatedRecordId,
-      uploadedById: CURRENT_USER.id
+      uploadedById: context.userId
     };
 
     const record = attachment
@@ -28,6 +26,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ record: JSON.parse(JSON.stringify(record)) }, { status: 201 });
   } catch (error) {
     console.error(error);
+    const response = authorizationErrorResponse(error);
+    if (response) return response;
     return NextResponse.json({ error: "Unable to upload file." }, { status: 500 });
   }
 }

@@ -1,10 +1,10 @@
-import { CURRENT_USER } from "@/lib/crm-metadata";
 import type { BootstrapData, CrmObject, RecordData } from "@/lib/crm-types";
 
 export function decorateBootstrap(data: BootstrapData): BootstrapData {
   const accountsById = new Map(data.accounts.map((account) => [String(account.id), account]));
   const contactsById = new Map(data.contacts.map((contact) => [String(contact.id), contact]));
   const priceBooksById = new Map(data.priceBooks.map((priceBook) => [String(priceBook.id), priceBook]));
+  const usersById = new Map(data.users.map((user) => [user.id, user]));
   const priceBookEntriesByProductId = new Map<string, RecordData[]>();
 
   data.priceBookEntries.forEach((entry) => {
@@ -13,8 +13,8 @@ export function decorateBootstrap(data: BootstrapData): BootstrapData {
     priceBookEntriesByProductId.set(productId, [...(priceBookEntriesByProductId.get(productId) ?? []), entry]);
   });
 
-  const ownerAlias = (ownerId?: unknown) => (ownerId === data.user.id || !ownerId ? data.user.alias : String(ownerId));
-  const ownerName = (ownerId?: unknown) => (ownerId === data.user.id || !ownerId ? data.user.name : String(ownerId));
+  const ownerAlias = (ownerId?: unknown) => usersById.get(String(ownerId || data.user.id))?.alias ?? String(ownerId || data.user.alias);
+  const ownerName = (ownerId?: unknown) => usersById.get(String(ownerId || data.user.id))?.name ?? String(ownerId || data.user.name);
 
   return {
     ...data,
@@ -116,8 +116,4 @@ export function recordTitle(object: CrmObject, record: RecordData) {
 
 export function routeForRecord(object: CrmObject, id: string) {
   return `/lightning/r/${object}/${id}/view`;
-}
-
-export function currentUserRecord() {
-  return { ...CURRENT_USER };
 }

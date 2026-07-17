@@ -5,22 +5,33 @@ const prisma = new PrismaClient();
 async function main() {
   const now = new Date("2026-07-08T08:00:00.000Z");
 
+  const organization = await prisma.organization.upsert({
+    where: { id: "org-robert" },
+    update: { name: "Robert", slug: "robert", status: "ACTIVE" },
+    create: { id: "org-robert", name: "Robert", slug: "robert", status: "ACTIVE" }
+  });
+
   const user = await prisma.user.upsert({
     where: { id: "usr-parsa" },
     update: {
       name: "Parsa Gholipourjamnani",
-      alias: "PGhol"
+      alias: "PGhol",
+      keycloakSub: null,
+      email: null,
+      status: "SUSPENDED"
     },
     create: {
       id: "usr-parsa",
       name: "Parsa Gholipourjamnani",
-      alias: "PGhol"
+      alias: "PGhol",
+      status: "SUSPENDED"
     }
   });
 
   const account = await prisma.account.upsert({
     where: { id: "acc-robert" },
     update: {
+      organizationId: organization.id,
       name: "Robert",
       type: "Customer",
       ownerId: user.id,
@@ -29,6 +40,7 @@ async function main() {
     },
     create: {
       id: "acc-robert",
+      organizationId: organization.id,
       name: "Robert",
       type: "Customer",
       ownerId: user.id,
@@ -42,6 +54,7 @@ async function main() {
   await prisma.contact.upsert({
     where: { id: "con-rober-antonio" },
     update: {
+      organizationId: organization.id,
       salutation: "Mr.",
       firstName: "Rober",
       lastName: "Antonio",
@@ -52,6 +65,7 @@ async function main() {
     },
     create: {
       id: "con-rober-antonio",
+      organizationId: organization.id,
       salutation: "Mr.",
       firstName: "Rober",
       lastName: "Antonio",
@@ -67,12 +81,14 @@ async function main() {
   await prisma.quickTextFolder.upsert({
     where: { id: "qtf-personal" },
     update: {
+      organizationId: organization.id,
       name: "Personal Quick Text",
       ownerId: user.id,
       sharing: "Private"
     },
     create: {
       id: "qtf-personal",
+      organizationId: organization.id,
       name: "Personal Quick Text",
       ownerId: user.id,
       sharing: "Private"
@@ -80,7 +96,7 @@ async function main() {
   });
 
   await prisma.userPreference.upsert({
-    where: { userId: user.id },
+    where: { organizationId_userId: { organizationId: organization.id, userId: user.id } },
     update: {
       displayDensity: "Comfy",
       guidanceEnabled: true,
@@ -89,6 +105,7 @@ async function main() {
       locale: "en-US"
     },
     create: {
+      organizationId: organization.id,
       userId: user.id,
       displayDensity: "Comfy",
       guidanceEnabled: true,
@@ -101,6 +118,7 @@ async function main() {
   await prisma.notification.upsert({
     where: { id: "not-welcome" },
     update: {
+      organizationId: organization.id,
       title: "Welcome to your workspace",
       body: "Create records, manage activities, and explore CRM tools from the app launcher.",
       href: "/lightning/page/home",
@@ -110,6 +128,7 @@ async function main() {
     },
     create: {
       id: "not-welcome",
+      organizationId: organization.id,
       title: "Welcome to your workspace",
       body: "Create records, manage activities, and explore CRM tools from the app launcher.",
       href: "/lightning/page/home",
@@ -150,21 +169,23 @@ async function main() {
       create: item
     });
     await prisma.userGuidanceState.upsert({
-      where: { userId_itemId: { userId: user.id, itemId: item.id } },
+      where: { organizationId_userId_itemId: { organizationId: organization.id, userId: user.id, itemId: item.id } },
       update: { status: "ACTIVE", snoozedUntil: null },
-      create: { userId: user.id, itemId: item.id, status: "ACTIVE" }
+      create: { organizationId: organization.id, userId: user.id, itemId: item.id, status: "ACTIVE" }
     });
   }
 
   await prisma.agentforceMessage.upsert({
     where: { id: "agent-welcome" },
     update: {
+      organizationId: organization.id,
       role: "assistant",
       text: "I can summarize CRM records, draft follow-up email copy, or suggest next actions from the current workspace.",
       userId: user.id
     },
     create: {
       id: "agent-welcome",
+      organizationId: organization.id,
       role: "assistant",
       text: "I can summarize CRM records, draft follow-up email copy, or suggest next actions from the current workspace.",
       userId: user.id

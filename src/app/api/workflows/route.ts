@@ -1,4 +1,4 @@
-import { CURRENT_USER } from "@/lib/crm-metadata";
+import { AppAuthorizationError, authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -12,37 +12,33 @@ type WorkflowPayload = {
 };
 
 export async function POST(request: NextRequest) {
-  const payload = (await request.json()) as WorkflowPayload;
-  const values = payload.values ?? {};
-  const selectedIds = payload.selectedIds ?? [];
-
-  if (payload.action === "Buy Now") {
-    return NextResponse.json({ error: "Purchase, plan, and checkout workflows are out of scope for this CRM clone." }, { status: 400 });
-  }
-
-  if (!process.env.DATABASE_URL) {
-    return NextResponse.json({ ok: true, fallback: true, action: payload.action });
-  }
-
   try {
-    const result = await runWorkflow(payload.action, payload.object, selectedIds, values);
+    const context = await requireOrganizationContext();
+    const payload = (await request.json()) as WorkflowPayload;
+    const values = payload.values ?? {};
+    const selectedIds = payload.selectedIds ?? [];
+    if (payload.action === "Buy Now") return NextResponse.json({ error: "Purchase, plan, and checkout workflows are out of scope for this CRM clone." }, { status: 400 });
+    const result = await runWorkflow(payload.action, payload.object, selectedIds, values, context.organizationId, context.userId, context.user.name);
     return NextResponse.json({ ok: true, ...JSON.parse(JSON.stringify(result)) });
   } catch (error) {
     console.error(error);
+    const response = authorizationErrorResponse(error);
+    if (response) return response;
     return NextResponse.json({ error: "Unable to complete workflow." }, { status: 500 });
   }
 }
 
-async function runWorkflow(action: string, object: string, selectedIds: string[], values: Record<string, unknown>) {
+async function runWorkflow(action: string, object: string, selectedIds: string[], values: Record<string, unknown>, organizationId: string, userId: string, userName: string) {
+  await assertSelectedRecords(object, selectedIds, organizationId);
   if (action === "Assign Label") {
     const label = String(values.label ?? "Important");
     const color = String(values.color ?? "blue");
     const labels = await Promise.all(
       selectedIds.map((recordId) =>
         prisma.recordLabel.upsert({
-          where: { objectType_recordId_label: { objectType: object, recordId, label } },
+          where: { organizationId_objectType_recordId_label: { organizationId, objectType: object, recordId, label } },
           update: { color },
-          create: { objectType: object, recordId, label, color, createdById: CURRENT_USER.id }
+          create: { organizationId, objectType: object, recordId, label, color, createdById: userId }
         })
       )
     );
@@ -53,16 +49,16 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
     const campaignName = String(values.campaign ?? "Starter Outreach");
     const status = String(values.status ?? "Sent");
     const campaign = await prisma.campaign.upsert({
-      where: { name: campaignName },
-      update: { status: "In Progress", ownerId: CURRENT_USER.id },
-      create: { name: campaignName, status: "In Progress", ownerId: CURRENT_USER.id }
+      where: { organizationId_name: { organizationId, name: campaignName } },
+      update: { status: "In Progress", ownerId: userId },
+      create: { organizationId, name: campaignName, status: "In Progress", ownerId: userId }
     });
     const campaignMembers = await Promise.all(
       selectedIds.map((recordId) =>
         prisma.campaignMember.upsert({
-          where: { campaignId_objectType_recordId: { campaignId: campaign.id, objectType: object, recordId } },
+          where: { organizationId_campaignId_objectType_recordId: { organizationId, campaignId: campaign.id, objectType: object, recordId } },
           update: { status },
-          create: { campaignId: campaign.id, objectType: object, recordId, status }
+          create: { organizationId, campaignId: campaign.id, objectType: object, recordId, status }
         })
       )
     );
@@ -70,20 +66,30 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
   }
 
   if (action === "Change Owner") {
-    const ownerName = String(values.ownerName ?? CURRENT_USER.name);
-    const records = await changeOwner(object, selectedIds, ownerName);
-    return { ownerName, records };
+    const owner = await resolveOwner(organizationId, String(values.ownerId ?? values.ownerName ?? userId));
+    const records = await changeOwner(object, selectedIds, owner.id, organizationId, userId);
+    return { ownerName: owner.name, ownerId: owner.id, records };
+  }
+
+  if (action === "Add to Category" && object === "Product2") {
+    const category = String(values.category ?? "Products").trim() || "Products";
+    const records = await prisma.product.updateManyAndReturn({
+      where: { organizationId, ...(selectedIds.length ? { id: { in: selectedIds } } : {}) },
+      data: { category }
+    });
+    return { category, records };
   }
 
   if (action === "Convert Lead") {
-    return convertLeads(selectedIds, values);
+    return convertLeads(selectedIds, values, organizationId, userId);
   }
 
   if (action === "New Folder") {
     const folder = await prisma.quickTextFolder.create({
       data: {
+        organizationId,
         name: String(values.name ?? "Personal Quick Text"),
-        ownerId: CURRENT_USER.id,
+        ownerId: userId,
         sharing: String(values.sharing ?? "Private")
       }
     });
@@ -93,6 +99,7 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
   if (action === "Create Store") {
     const store = await prisma.marketingStore.create({
       data: {
+        organizationId,
         name: String(values.name ?? "Starter Store"),
         currency: String(values.currency ?? "USD"),
         status: String(values.status ?? "Draft")
@@ -104,11 +111,12 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
   if (action === "Activate Marketing") {
     const activation = await prisma.marketingActivation.create({
       data: {
-        senderName: String(values.senderName ?? CURRENT_USER.name),
-        senderEmail: String(values.senderEmail ?? "parsa@example.com"),
+        organizationId,
+        senderName: String(values.senderName ?? userName),
+        senderEmail: String(values.senderEmail ?? "crm@example.com"),
         tracking: values.tracking !== false,
         active: true,
-        activatedById: CURRENT_USER.id
+        activatedById: userId
       }
     });
     return { activation };
@@ -116,31 +124,32 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
 
   if (action === "Publish") {
     await prisma.knowledgeArticle.updateMany({
-      where: selectedIds.length ? { id: { in: selectedIds } } : undefined,
+      where: { organizationId, ...(selectedIds.length ? { id: { in: selectedIds } } : {}) },
       data: { publicationStatus: "Published", publishedAt: new Date(), validationStatus: "Validated" }
     });
     return {};
   }
 
   if (action === "Assign") {
+    const assignee = await resolveOwner(organizationId, String(values.assigneeId ?? values.assignee ?? userId));
     await prisma.knowledgeArticle.updateMany({
-      where: selectedIds.length ? { id: { in: selectedIds } } : undefined,
-      data: { updatedById: String(values.assignee ?? CURRENT_USER.id) }
+      where: { organizationId, ...(selectedIds.length ? { id: { in: selectedIds } } : {}) },
+      data: { updatedById: assignee.id }
     });
     return {};
   }
 
   if (action === "Archive") {
     await prisma.knowledgeArticle.updateMany({
-      where: selectedIds.length ? { id: { in: selectedIds } } : undefined,
-      data: { publicationStatus: "Archived", archivedAt: new Date(), archivedById: CURRENT_USER.id }
+      where: { organizationId, ...(selectedIds.length ? { id: { in: selectedIds } } : {}) },
+      data: { publicationStatus: "Archived", archivedAt: new Date(), archivedById: userId }
     });
     return {};
   }
 
   if (action === "Delete Article") {
     await prisma.knowledgeArticle.deleteMany({
-      where: selectedIds.length ? { id: { in: selectedIds } } : undefined
+      where: { organizationId, ...(selectedIds.length ? { id: { in: selectedIds } } : {}) }
     });
     return {};
   }
@@ -148,6 +157,7 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
   if (action === "Delete Draft") {
     await prisma.knowledgeArticle.deleteMany({
       where: {
+        organizationId,
         ...(selectedIds.length ? { id: { in: selectedIds } } : {}),
         publicationStatus: "Draft"
       }
@@ -157,30 +167,48 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
 
   if (action === "Restore") {
     await prisma.knowledgeArticle.updateMany({
-      where: selectedIds.length ? { id: { in: selectedIds } } : { publicationStatus: "Archived" },
+      where: { organizationId, ...(selectedIds.length ? { id: { in: selectedIds } } : { publicationStatus: "Archived" }) },
       data: {
         publicationStatus: "Draft",
         validationStatus: "Not Validated",
         archivedAt: null,
         archivedById: null,
-        updatedById: CURRENT_USER.id
+        updatedById: userId
       }
     });
     return {};
   }
 
   if (action === "Merge Cases") {
-    await mergeCases(selectedIds, values);
+    await mergeCases(selectedIds, values, organizationId, userId);
     return {};
   }
 
   return {};
 }
 
-async function convertLeads(ids: string[], values: Record<string, unknown>) {
+async function assertSelectedRecords(object: string, ids: string[], organizationId: string) {
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0) return;
+  const count =
+    object === "Account" ? await prisma.account.count({ where: { organizationId, id: { in: uniqueIds } } }) :
+    object === "Contact" ? await prisma.contact.count({ where: { organizationId, id: { in: uniqueIds } } }) :
+    object === "Lead" ? await prisma.lead.count({ where: { organizationId, id: { in: uniqueIds } } }) :
+    object === "Opportunity" ? await prisma.opportunity.count({ where: { organizationId, id: { in: uniqueIds } } }) :
+    object === "Case" ? await prisma.caseRecord.count({ where: { organizationId, id: { in: uniqueIds } } }) :
+    object === "Product2" ? await prisma.product.count({ where: { organizationId, id: { in: uniqueIds } } }) :
+    object === "Pricebook2" ? await prisma.priceBook.count({ where: { organizationId, id: { in: uniqueIds } } }) :
+    object === "Event" ? await prisma.event.count({ where: { organizationId, id: { in: uniqueIds } } }) :
+    object === "QuickText" ? await prisma.quickText.count({ where: { organizationId, id: { in: uniqueIds } } }) :
+    object === "Knowledge__kav" ? await prisma.knowledgeArticle.count({ where: { organizationId, id: { in: uniqueIds } } }) :
+    object === "ListEmail" ? await prisma.listEmail.count({ where: { organizationId, id: { in: uniqueIds } } }) : uniqueIds.length;
+  if (count !== uniqueIds.length) throw new AppAuthorizationError("One or more selected records were not found.", 404);
+}
+
+async function convertLeads(ids: string[], values: Record<string, unknown>, organizationId: string, userId: string) {
   if (ids.length === 0) return { accounts: [], contacts: [], opportunities: [], leads: [] };
   return prisma.$transaction(async (tx) => {
-    const leads = await tx.lead.findMany({ where: { id: { in: ids } } });
+    const leads = await tx.lead.findMany({ where: { organizationId, id: { in: ids } } });
     const accounts = [];
     const contacts = [];
     const opportunities = [];
@@ -194,10 +222,11 @@ async function convertLeads(ids: string[], values: Record<string, unknown>) {
 
     for (const lead of leads) {
       const accountName = singleAccountName || lead.company || [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "Converted Lead Account";
-      let account = await tx.account.findFirst({ where: { name: accountName } });
+      let account = await tx.account.findFirst({ where: { organizationId, name: accountName } });
       if (!account) {
         account = await tx.account.create({
           data: {
+            organizationId,
             name: accountName,
             website: lead.website,
             type: "Prospect",
@@ -208,14 +237,15 @@ async function convertLeads(ids: string[], values: Record<string, unknown>) {
             billingPostalCode: lead.postalCode,
             billingCity: lead.city,
             billingState: lead.state,
-            createdById: CURRENT_USER.id,
-            updatedById: CURRENT_USER.id
+            createdById: userId,
+            updatedById: userId
           }
         });
       }
 
       const contact = await tx.contact.create({
         data: {
+          organizationId,
           salutation: lead.salutation,
           firstName: lead.firstName,
           lastName: lead.lastName,
@@ -230,14 +260,15 @@ async function convertLeads(ids: string[], values: Record<string, unknown>) {
           mailingPostalCode: lead.postalCode,
           mailingCity: lead.city,
           mailingState: lead.state,
-          createdById: CURRENT_USER.id,
-          updatedById: CURRENT_USER.id
+          createdById: userId,
+          updatedById: userId
         }
       });
 
       const opportunity = createOpportunity
         ? await tx.opportunity.create({
             data: {
+              organizationId,
               name: leads.length === 1 ? String(values.opportunityName ?? `${accountName} Opportunity`) : `${accountName} Opportunity`,
               accountId: account.id,
               contactId: contact.id,
@@ -249,8 +280,8 @@ async function convertLeads(ids: string[], values: Record<string, unknown>) {
               probability: stage === "Qualify" ? 10 : null,
               forecastCategory,
               nextStep: "Follow up after lead conversion",
-              createdById: CURRENT_USER.id,
-              updatedById: CURRENT_USER.id
+              createdById: userId,
+              updatedById: userId
             }
           })
         : null;
@@ -259,7 +290,7 @@ async function convertLeads(ids: string[], values: Record<string, unknown>) {
         where: { id: lead.id },
         data: {
           status,
-          updatedById: CURRENT_USER.id
+          updatedById: userId
         }
       });
 
@@ -278,32 +309,45 @@ async function convertLeads(ids: string[], values: Record<string, unknown>) {
   });
 }
 
-async function changeOwner(object: string, ids: string[], ownerId: string) {
+async function resolveOwner(organizationId: string, value: string) {
+  const membership = await prisma.organizationMembership.findFirst({
+    where: {
+      organizationId,
+      status: "ACTIVE",
+      user: { status: "ACTIVE", OR: [{ id: value }, { name: { equals: value, mode: "insensitive" } }, { alias: { equals: value, mode: "insensitive" } }] }
+    },
+    include: { user: true }
+  });
+  if (!membership) throw new AppAuthorizationError("The selected owner is not an active organization member.", 404);
+  return membership.user;
+}
+
+async function changeOwner(object: string, ids: string[], ownerId: string, organizationId: string, userId: string) {
   if (ids.length === 0) return [];
   switch (object) {
     case "Account": {
-      await prisma.account.updateMany({ where: { id: { in: ids } }, data: { ownerId, updatedById: CURRENT_USER.id } });
-      return prisma.account.findMany({ where: { id: { in: ids } } });
+      await prisma.account.updateMany({ where: { organizationId, id: { in: ids } }, data: { ownerId, updatedById: userId } });
+      return prisma.account.findMany({ where: { organizationId, id: { in: ids } } });
     }
     case "Contact": {
-      await prisma.contact.updateMany({ where: { id: { in: ids } }, data: { ownerId, updatedById: CURRENT_USER.id } });
-      return prisma.contact.findMany({ where: { id: { in: ids } }, include: { account: true } });
+      await prisma.contact.updateMany({ where: { organizationId, id: { in: ids } }, data: { ownerId, updatedById: userId } });
+      return prisma.contact.findMany({ where: { organizationId, id: { in: ids } }, include: { account: true } });
     }
     case "Lead": {
-      await prisma.lead.updateMany({ where: { id: { in: ids } }, data: { ownerId, updatedById: CURRENT_USER.id } });
-      return prisma.lead.findMany({ where: { id: { in: ids } } });
+      await prisma.lead.updateMany({ where: { organizationId, id: { in: ids } }, data: { ownerId, updatedById: userId } });
+      return prisma.lead.findMany({ where: { organizationId, id: { in: ids } } });
     }
     case "Opportunity": {
-      await prisma.opportunity.updateMany({ where: { id: { in: ids } }, data: { ownerId, updatedById: CURRENT_USER.id } });
-      return prisma.opportunity.findMany({ where: { id: { in: ids } }, include: { account: true, contact: true } });
+      await prisma.opportunity.updateMany({ where: { organizationId, id: { in: ids } }, data: { ownerId, updatedById: userId } });
+      return prisma.opportunity.findMany({ where: { organizationId, id: { in: ids } }, include: { account: true, contact: true } });
     }
     case "Case": {
-      await prisma.caseRecord.updateMany({ where: { id: { in: ids } }, data: { ownerId, updatedById: CURRENT_USER.id } });
-      return prisma.caseRecord.findMany({ where: { id: { in: ids } }, include: { account: true, contact: true } });
+      await prisma.caseRecord.updateMany({ where: { organizationId, id: { in: ids } }, data: { ownerId, updatedById: userId } });
+      return prisma.caseRecord.findMany({ where: { organizationId, id: { in: ids } }, include: { account: true, contact: true } });
     }
     case "Knowledge__kav": {
-      await prisma.knowledgeArticle.updateMany({ where: { id: { in: ids } }, data: { updatedById: ownerId } });
-      return prisma.knowledgeArticle.findMany({ where: { id: { in: ids } } });
+      await prisma.knowledgeArticle.updateMany({ where: { organizationId, id: { in: ids } }, data: { updatedById: ownerId } });
+      return prisma.knowledgeArticle.findMany({ where: { organizationId, id: { in: ids } } });
     }
     default:
       return [];
@@ -316,9 +360,9 @@ function daysFromNow(days: number) {
   return date;
 }
 
-async function mergeCases(ids: string[], values: Record<string, unknown>) {
+async function mergeCases(ids: string[], values: Record<string, unknown>, organizationId: string, userId: string) {
   if (ids.length < 2) return;
-  const cases = await prisma.caseRecord.findMany({ where: { id: { in: ids } } });
+  const cases = await prisma.caseRecord.findMany({ where: { organizationId, id: { in: ids } } });
   const primaryHint = String(values.primaryCase ?? "");
   const primary = cases.find((item) => item.id === primaryHint || item.caseNumber === primaryHint) ?? cases[0];
   const mergedIds = cases.filter((item) => item.id !== primary.id).map((item) => item.id);
@@ -328,17 +372,17 @@ async function mergeCases(ids: string[], values: Record<string, unknown>) {
     data: {
       subject: primary.subject ? `${primary.subject} (merged)` : "Merged Case",
       description: [primary.description, `Merged cases: ${mergedIds.join(", ")}`].filter(Boolean).join("\n"),
-      updatedById: CURRENT_USER.id
+      updatedById: userId
     }
   });
 
   await prisma.caseRecord.updateMany({
-    where: { id: { in: mergedIds } },
+    where: { organizationId, id: { in: mergedIds } },
     data: {
       status: "Closed",
       closedAt: new Date(),
       subject: `Merged into ${primary.caseNumber}`,
-      updatedById: CURRENT_USER.id
+      updatedById: userId
     }
   });
 }

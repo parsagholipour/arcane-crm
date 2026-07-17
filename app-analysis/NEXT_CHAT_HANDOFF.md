@@ -1,28 +1,32 @@
 # Next Chat Handoff: Build app-analysis in Next.js
 
-Use this file to continue the interrupted chat named `Build app-analysis in Next.js`.
+Use this file to continue the active goal from the previous chat.
 
 ## Paste This Into The New Chat
 
 ```text
-I want to continue the previous goal from the chat "Build app-analysis in Next.js".
+I want to continue the active goal from the chat "Build app-analysis in Next.js".
 
 Workspace: /run/media/parsa/projects/robert/crm
 
-Please read app-analysis/NEXT_CHAT_HANDOFF.md first, then read app-analysis/README.md, app-analysis/06-ai-rebuild-spec.md, and app-analysis/09-ai-implementation-blueprint.md. Continue implementing the Salesforce Lightning-style CRM clone in this existing Next.js app.
+Please read app-analysis/NEXT_CHAT_HANDOFF.md first, then read app-analysis/README.md, app-analysis/06-ai-rebuild-spec.md, app-analysis/08-page-state-and-interaction-spec.md, and app-analysis/09-ai-implementation-blueprint.md. Use app-analysis/07-field-dictionary-and-picklists.md when working on fields, picklists, or lookup behavior.
+
+Active goal:
+Make sure all the features are fully working and implemented from app-analysis/.
+Do not implement trial or plans. Only implement the app logic.
 
 Important constraints:
 - Do not discard or reset existing local changes.
-- Inspect git status and diffs before editing.
+- Inspect git status and relevant staged/unstaged diffs before editing.
 - Use the existing Next.js, React, Tailwind, Radix UI, Prisma, and PostgreSQL patterns already in the repo.
 - Keep the first screen as the CRM workspace, not a landing page.
-- First make the project build again, then continue with the highest-value missing app-analysis requirements.
+- The previous build blocker is fixed. Continue with the highest-value remaining app-analysis gaps.
+- Run npm run build after meaningful changes, then smoke-check key routes on a fresh dev server if needed.
 
-Current known blocker:
-- `npm run build` compiles but fails type checking because `src/components/crm/CrmApp.tsx` references `listViewControlItems` at line 3281, but that helper is not defined.
-- There are also lint warnings for a missing `useEffect` dependency around line 2051 and two `<img>` usage warnings around lines 2599 and 2622.
-
-After fixing the blocker, run `npm run build`, then continue the implementation and summarize what changed.
+Current dev note:
+- Port 3001 has been used for fresh validation: npm run dev -- -H 0.0.0.0 -p 3001
+- Port 3000 is held by an older detached Next process and has repeatedly gone stale after builds.
+- Running next build can stale an already-running Next dev manifest; restart the dev server before trusting route checks after a production build.
 ```
 
 ## Current Workspace Summary
@@ -56,12 +60,12 @@ The `app-analysis/` folder is the source of truth for the target UI:
 
 ## Current Implementation State
 
-The app is already substantially implemented. `CrmApp.tsx` includes:
+The app is substantially implemented. `CrmApp.tsx` includes:
 - Trial banner, left app rail, global header, app nav, and console tabs.
 - Global search, help/settings/profile/notifications utilities.
 - List views with search, sorting, filters, charts, display modes, row actions, selection, import/list actions, list view preferences, and Kanban.
-- Record pages for accounts/contacts with related lists, details, duplicate handling, hierarchy, files, and activity.
-- Home, marketing, commerce, subscription, analytics, calendar, quick text, knowledge, product wizard, list email, report builder, and multiple modal workflows.
+- Record pages for Account and Contact with related lists, details, duplicate handling, hierarchy, file upload, and activity.
+- Home, marketing, commerce, subscription, analytics, calendar, quick text, knowledge, product wizard, list email, report builder, and modal workflows.
 - Toasts, guidance cards, calendar sources, notification preferences, custom reports/dashboards, app nav preferences, list view preferences, and Agentforce-like utility responses.
 
 Prisma/API coverage includes core objects and workflows:
@@ -71,48 +75,108 @@ Prisma/API coverage includes core objects and workflows:
 - Files, attachments, quick text, knowledge, list emails, messaging sessions, invoices, video calls.
 - Preferences, notifications, guidance, search recents, custom reports/dashboards, marketing/subscription actions.
 
+## Completed Since The Old Handoff
+
+The old handoff's known blocker is resolved:
+- `listViewControlItems` exists and the list-view controls modal/menu build.
+- The missing `useEffect` dependency warning was fixed.
+- Header avatar `<img>` warnings were replaced with `AvatarImage`.
+- `npm run build` now passes.
+
+Additional app-analysis progress:
+- Record page owner edit actions now route into the `Change Owner` list-action modal for the current record.
+- `Change Owner` has a fixture-mode/local fallback so ownership changes still update visible records when no DB workflow rows return.
+- Lead `Convert Lead` is implemented in UI and `/api/workflows`, creating/reusing Account, Contact, and optional Opportunity records while updating Lead status.
+- Knowledge destructive actions require confirmation, including `Delete Article` and more-action `Delete Draft`.
+- Standard record create/edit modals now show an unsaved-changes confirmation before discarding edited fields.
+- Product, Event, Quick Text, Knowledge, and List Email special create flows also guard unsaved changes.
+- Record activity timeline now groups visible activities by time labels such as `Today`, `Tomorrow`, `Yesterday`, or a date.
+- Record page file upload surfaces now show upload progress rows before completed file/attachment rows appear.
+- Lookup fields are now search-input comboboxes with filtered results, keyboard selection, selected-record pills, and clear-selection buttons.
+- Product `Add to Category` now persists `Product.category`, updates selected Product rows, and is covered by the use-case suite.
+- `scripts/crm-usecase-check.mjs` is available through `npm run test:usecases` and exercises the documented routes, action affordances, required validation, metadata, record CRUD, activity/files, list workflows, Knowledge lifecycle, marketing/commerce/utilities, profile/preferences, and disposable delete cleanup.
+
 ## Git And Verification Status
 
 Last inspected branch/status:
 
 ```text
 ## master
-M  src/app/globals.css
-M  src/app/layout.tsx
-MM src/components/crm/CrmApp.tsx
-M  tailwind.config.ts
+ M app-analysis/NEXT_CHAT_HANDOFF.md
+ M package.json
+ M prisma/schema.prisma
+ M src/app/api/records/[object]/[id]/route.ts
+ M src/app/api/records/[object]/route.ts
+ M src/app/api/utilities/route.ts
+ M src/app/api/workflows/route.ts
+ M src/components/crm/CrmApp.tsx
+ M src/lib/crm-metadata.ts
+?? scripts/
 ```
 
 Meaning:
-- `src/app/globals.css`, `src/app/layout.tsx`, `src/components/crm/CrmApp.tsx`, and `tailwind.config.ts` have staged changes.
-- `src/components/crm/CrmApp.tsx` also has additional unstaged changes.
+- The worktree is intentionally dirty with implementation and verification changes from the app-analysis pass.
+- `scripts/crm-usecase-check.mjs` is untracked and contains the reusable use-case verifier.
 - Preserve these changes unless explicitly asked to clean them up.
 
-Verification run on 2026-07-09:
+Verification most recently run:
 
-```text
+```bash
+CRM_BASE_URL=http://127.0.0.1:3003 npm run test:usecases
+git diff --check
 npm run build
+npm run lint
+npm run dev -- -H 0.0.0.0 -p 3003
+curl -sS -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:3003/lightning/page/home'
+curl -sS -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:3003/lightning/o/Product2/list'
+curl -sS -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:3003/lightning/o/Event/new'
 ```
 
-Result:
-- Production compile succeeded.
-- Type checking failed.
-- Error: `Cannot find name 'listViewControlItems'. Did you mean 'ListViewControlsMenu'?`
-- Location: `src/components/crm/CrmApp.tsx:3281`.
+Results:
+- `npm run test:usecases` passed twice on port `3003` with `13/13` checks, including Product `Add to Category`.
+- `git diff --check` passed.
+- `npm run build` passed.
+- `npm run lint` passed with only the expected Next lint deprecation notice.
+- Fresh dev server on port `3003` returned `200` for `/lightning/page/home`, `/lightning/o/Product2/list`, `/lightning/o/Contact/list`, `/lightning/o/Event/new`, and `/lightning/o/Case/list`.
+- Cleanup audit found zero disposable `codex-usecase-*` records left behind.
+- Browser UI verification also covered Contact, Account, Lead, and Opportunity `Import` modals end-to-end with disposable records, plus Account `Save & New` keeping the modal open and clearing the required name field. All browser-created records and notifications were cleaned up.
+- Browser UI verification covered List Email layout preview, `Select & Continue`, compose preview, `Send`, persisted `ListEmail.status = "Sent"`, and cleanup of the created record.
+- Browser UI verification covered Quick Text name/message entry, merge object/field selection, `{!Contact.FirstName}` insertion, moving `Event` into selected channels, preview, save, persisted `channels`/`mergeFields`, and cleanup of the created record plus notification.
+- Browser UI verification covered Lead conversion from a filtered Lead list: the conversion modal defaulted account/status/opportunity fields, `Convert Lead` created the Account, Contact, Opportunity, and notification, persisted the converted Lead status, and all disposable conversion records were cleaned up.
+- Browser UI verification covered Contact create/edit with lookup: the Contact modal accepted typed First/Last Name values, the Account lookup searched and selected `Robert`, save persisted `accountId = "acc-robert"`, record edit updated Phone on the record page and in Prisma, and the disposable Contact was cleaned up.
+- Browser UI verification covered Knowledge destructive confirmation: a disposable draft article was filtered to a single-row Knowledge list, `Delete Article` opened a confirmation dialog with the affected-record count and no deletion before confirmation, `Cancel` closed it while leaving the article visible, and the disposable article was cleaned up through Prisma. The final delete mutation is covered by `npm run test:usecases`.
+- Browser upload verification is blocked by the current browser automation wrapper because it cannot use native file chooser APIs and does not expose `File`/`Event` constructors for a faithful synthetic file input/drop event. Upload remains covered by `npm run test:usecases` and `FileDropzone`/`/api/files` inspection, but it is not browser-proven in this pass.
 
-Warnings from the same run:
-- React hook missing dependency: `data` around `src/components/crm/CrmApp.tsx:2051`.
-- `<img>` warnings around `src/components/crm/CrmApp.tsx:2599` and `src/components/crm/CrmApp.tsx:2622`.
+Older validation commands kept for reference:
+
+```bash
+git diff --check
+npm run build
+npm run dev -- -H 0.0.0.0 -p 3001
+curl -sS -o /dev/null -w 'Account %{http_code}\n' 'http://127.0.0.1:3001/lightning/o/Account/list'
+curl -sS -o /dev/null -w 'ContactRecord %{http_code}\n' 'http://127.0.0.1:3001/lightning/r/Contact/con-robert/view'
+curl -sS -o /dev/null -w 'LeadNew %{http_code}\n' 'http://127.0.0.1:3001/lightning/o/Lead/new'
+```
+
+Results:
+- `git diff --check` passed.
+- `npm run build` passed.
+- Fresh dev server on port `3001` returned `200` for Account list, Contact record, and Lead new routes.
+
+Notes:
+- Browser interaction checks have been run through the Codex browser plugin for representative list, Event, disabled-control, import, Save & New, List Email, Quick Text, Lead conversion, Contact create/edit with lookup, Knowledge destructive confirmation, and account flows; the reusable suite remains HTTP/API/static rather than a Playwright test.
+- After `npm run build`, a previously running Next dev server can return stale manifest `500`s until restarted.
 
 ## Recommended Next Steps
 
-1. Run `git status --short --branch` and inspect staged plus unstaged diffs before editing.
-2. Fix the build blocker by adding or restoring `listViewControlItems`.
-   - There is already a similar local `items` array inside `ListViewControlsMenu` around `src/components/crm/CrmApp.tsx:7213`.
-   - A clean fix is to extract that list into a shared helper returning `{ label, enabled, description }[]`, then let `ListViewControlsMenu` render labels and the list-view-controls modal render descriptions.
-3. Run `npm run build`.
-4. If build passes, continue against `app-analysis/06-ai-rebuild-spec.md` and `app-analysis/09-ai-implementation-blueprint.md`.
-5. Keep changes scoped and aligned with the current single-component implementation unless the user explicitly asks to refactor/split files.
+1. Run `git status --short --branch` and inspect relevant staged plus unstaged diffs before editing.
+2. Continue implementing the highest-value remaining app-analysis behavior gaps. Good candidates:
+   - Browser-level upload verification if a browser automation surface with native file selection becomes available.
+   - More complete keyboard/accessibility behavior around custom picklists and lookup result lists.
+   - Optional backend models for Salesforce-only Event `Related To` object choices if the clone ever expands beyond the app-analysis app-logic scope.
+3. Keep changes scoped to the app logic. Do not implement trial/plans beyond preserving visible shell affordances already present.
+4. Run `npm run build` and `npm run test:usecases` after meaningful changes.
+5. Restart the dev server on port `3003` after production builds before route smoke tests.
 
 ## Useful Commands
 
@@ -120,8 +184,9 @@ Warnings from the same run:
 git status --short --branch
 git diff --staged
 git diff
+git diff --check
 npm run build
-npm run dev
+npm run dev -- -H 0.0.0.0 -p 3001
 ```
 
 Optional local database setup:

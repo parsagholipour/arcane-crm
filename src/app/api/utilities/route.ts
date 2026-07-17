@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { CURRENT_USER } from "@/lib/crm-metadata";
+import { authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -37,21 +37,24 @@ type AgentforceMetadata = {
 type AgentforceWorkspace = Awaited<ReturnType<typeof loadAgentforceWorkspace>>;
 
 export async function POST(request: NextRequest) {
-  const payload = (await request.json()) as UtilityPayload;
-  const values = payload.values ?? {};
-
-  if (!process.env.DATABASE_URL) {
-    return NextResponse.json({ ok: true, fallback: true });
-  }
-
   try {
+    const authContext = await requireOrganizationContext();
+    const organizationId = authContext.organizationId;
+    const userId = authContext.userId;
+    const payload = (await request.json()) as UtilityPayload;
+    const values = payload.values ?? {};
+    const personalWhere = { organizationId, userId };
     if (payload.action === "createPartner") {
       const accountId = String(values.accountId ?? "");
       const name = String(values.name ?? "").trim();
       const role = values.role ? String(values.role) : null;
       if (!accountId || !name) return NextResponse.json({ error: "Account and partner name are required." }, { status: 400 });
+      if (!(await prisma.account.findFirst({ where: { id: accountId, organizationId }, select: { id: true } }))) {
+        return NextResponse.json({ error: "Account not found." }, { status: 404 });
+      }
       const partner = await prisma.partner.create({
         data: {
+          organizationId,
           accountId,
           name,
           role
@@ -65,14 +68,15 @@ export async function POST(request: NextRequest) {
       if (!name) return NextResponse.json({ error: "Calendar name is required." }, { status: 400 });
       const source = await prisma.calendarSource.create({
         data: {
-          userId: CURRENT_USER.id,
+          organizationId,
+          userId,
           name,
           type: String(values.type ?? "My") === "Other" ? "Other" : "My",
           color: String(values.color ?? "#0176d3"),
           visible: values.visible !== false
         }
       });
-      const calendarSources = await prisma.calendarSource.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { updatedAt: "desc" } });
+      const calendarSources = await prisma.calendarSource.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, source: JSON.parse(JSON.stringify(source)), calendarSources: JSON.parse(JSON.stringify(calendarSources)) }, { status: 201 });
     }
 
@@ -81,7 +85,7 @@ export async function POST(request: NextRequest) {
       const name = String(values.name ?? "").trim();
       if (!id || !name) return NextResponse.json({ error: "Calendar and name are required." }, { status: 400 });
       await prisma.calendarSource.updateMany({
-        where: { id, userId: CURRENT_USER.id },
+        where: { id, ...personalWhere },
         data: {
           name,
           type: String(values.type ?? "My") === "Other" ? "Other" : "My",
@@ -89,17 +93,17 @@ export async function POST(request: NextRequest) {
           visible: values.visible !== false
         }
       });
-      const source = await prisma.calendarSource.findFirst({ where: { id, userId: CURRENT_USER.id } });
+      const source = await prisma.calendarSource.findFirst({ where: { id, ...personalWhere } });
       if (!source) return NextResponse.json({ error: "Calendar not found." }, { status: 404 });
-      const calendarSources = await prisma.calendarSource.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { updatedAt: "desc" } });
+      const calendarSources = await prisma.calendarSource.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, source: JSON.parse(JSON.stringify(source)), calendarSources: JSON.parse(JSON.stringify(calendarSources)) });
     }
 
     if (payload.action === "deleteCalendarSource") {
       const id = String(payload.id ?? values.id ?? "").trim();
       if (!id) return NextResponse.json({ error: "Calendar is required." }, { status: 400 });
-      await prisma.calendarSource.deleteMany({ where: { id, userId: CURRENT_USER.id } });
-      const calendarSources = await prisma.calendarSource.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { updatedAt: "desc" } });
+      await prisma.calendarSource.deleteMany({ where: { id, ...personalWhere } });
+      const calendarSources = await prisma.calendarSource.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, calendarSources: JSON.parse(JSON.stringify(calendarSources)) });
     }
 
@@ -111,14 +115,15 @@ export async function POST(request: NextRequest) {
       if (!name || !object || !groupField || columns.length === 0) return NextResponse.json({ error: "Report name, object, group field, and columns are required." }, { status: 400 });
       const report = await prisma.customReport.create({
         data: {
-          userId: CURRENT_USER.id,
+          organizationId,
+          userId,
           name,
           object,
           groupField,
           columns
         }
       });
-      const reports = await prisma.customReport.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { updatedAt: "desc" } });
+      const reports = await prisma.customReport.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, report: JSON.parse(JSON.stringify(report)), customReports: JSON.parse(JSON.stringify(reports)) }, { status: 201 });
     }
 
@@ -128,60 +133,63 @@ export async function POST(request: NextRequest) {
       if (!name || reportIds.length === 0) return NextResponse.json({ error: "Dashboard name and at least one component are required." }, { status: 400 });
       const dashboard = await prisma.customDashboard.create({
         data: {
-          userId: CURRENT_USER.id,
+          organizationId,
+          userId,
           name,
           reportIds
         }
       });
-      const dashboards = await prisma.customDashboard.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { updatedAt: "desc" } });
+      const dashboards = await prisma.customDashboard.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, dashboard: JSON.parse(JSON.stringify(dashboard)), customDashboards: JSON.parse(JSON.stringify(dashboards)) }, { status: 201 });
     }
 
     if (payload.action === "markNotificationRead" && payload.id) {
-      const notification = await prisma.notification.update({
-        where: { id: payload.id },
+      const notification = await prisma.notification.updateManyAndReturn({
+        where: { id: payload.id, ...personalWhere },
         data: { read: true }
       });
-      return NextResponse.json({ ok: true, notification: JSON.parse(JSON.stringify(notification)) });
+      if (!notification[0]) return NextResponse.json({ error: "Notification not found." }, { status: 404 });
+      return NextResponse.json({ ok: true, notification: JSON.parse(JSON.stringify(notification[0])) });
     }
 
     if (payload.action === "markAllNotificationsRead") {
       await prisma.notification.updateMany({
-        where: { userId: CURRENT_USER.id, read: false },
+        where: { ...personalWhere, read: false },
         data: { read: true }
       });
-      const notifications = await prisma.notification.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { createdAt: "desc" } });
+      const notifications = await prisma.notification.findMany({ where: personalWhere, orderBy: { createdAt: "desc" } });
       return NextResponse.json({ ok: true, notifications: JSON.parse(JSON.stringify(notifications)) });
     }
 
     if (payload.action === "deleteNotification" && payload.id) {
-      await prisma.notification.delete({ where: { id: payload.id } });
+      await prisma.notification.deleteMany({ where: { id: payload.id, ...personalWhere } });
       return NextResponse.json({ ok: true });
     }
 
     if (payload.action === "clearReadNotifications") {
-      await prisma.notification.deleteMany({ where: { userId: CURRENT_USER.id, read: true } });
-      const notifications = await prisma.notification.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { createdAt: "desc" } });
+      await prisma.notification.deleteMany({ where: { ...personalWhere, read: true } });
+      const notifications = await prisma.notification.findMany({ where: personalWhere, orderBy: { createdAt: "desc" } });
       return NextResponse.json({ ok: true, notifications: JSON.parse(JSON.stringify(notifications)) });
     }
 
     if (payload.action === "clearAllNotifications") {
-      await prisma.notification.deleteMany({ where: { userId: CURRENT_USER.id } });
+      await prisma.notification.deleteMany({ where: personalWhere });
       return NextResponse.json({ ok: true, notifications: [] });
     }
 
     if (payload.action === "createNotification") {
       const category = values.category ? String(values.category) : "General";
       const preference = await prisma.notificationPreference.findUnique({
-        where: { userId_category: { userId: CURRENT_USER.id, category } }
+        where: { organizationId_userId_category: { organizationId, userId, category } }
       });
       if (preference?.enabled === false) {
-        const notifications = await prisma.notification.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { createdAt: "desc" } });
+        const notifications = await prisma.notification.findMany({ where: personalWhere, orderBy: { createdAt: "desc" } });
         return NextResponse.json({ ok: true, skipped: true, notifications: JSON.parse(JSON.stringify(notifications)) });
       }
       const notification = await prisma.notification.create({
         data: {
-          userId: CURRENT_USER.id,
+          organizationId,
+          userId,
           title: String(values.title ?? "Notification"),
           body: String(values.body ?? ""),
           href: values.href ? String(values.href) : null,
@@ -196,23 +204,24 @@ export async function POST(request: NextRequest) {
       const category = String(values.category ?? "").trim();
       if (!category) return NextResponse.json({ error: "Category is required." }, { status: 400 });
       const preference = await prisma.notificationPreference.upsert({
-        where: { userId_category: { userId: CURRENT_USER.id, category } },
+        where: { organizationId_userId_category: { organizationId, userId, category } },
         update: { enabled: values.enabled !== false },
-        create: { userId: CURRENT_USER.id, category, enabled: values.enabled !== false }
+        create: { organizationId, userId, category, enabled: values.enabled !== false }
       });
-      const notificationPreferences = await prisma.notificationPreference.findMany({ where: { userId: CURRENT_USER.id } });
+      const notificationPreferences = await prisma.notificationPreference.findMany({ where: personalWhere });
       return NextResponse.json({ ok: true, preference: JSON.parse(JSON.stringify(preference)), notificationPreferences: JSON.parse(JSON.stringify(notificationPreferences)) });
     }
 
     if (payload.action === "updateGuidance" && payload.id) {
       const state = await prisma.userGuidanceState.upsert({
-        where: { userId_itemId: { userId: CURRENT_USER.id, itemId: payload.id } },
+        where: { organizationId_userId_itemId: { organizationId, userId, itemId: payload.id } },
         update: {
           status: String(values.status ?? "ACTIVE"),
           snoozedUntil: values.snoozedUntil ? new Date(String(values.snoozedUntil)) : null
         },
         create: {
-          userId: CURRENT_USER.id,
+          organizationId,
+          userId,
           itemId: payload.id,
           status: String(values.status ?? "ACTIVE"),
           snoozedUntil: values.snoozedUntil ? new Date(String(values.snoozedUntil)) : null
@@ -223,7 +232,7 @@ export async function POST(request: NextRequest) {
 
     if (payload.action === "updatePreferences") {
       const preferences = await prisma.userPreference.upsert({
-        where: { userId: CURRENT_USER.id },
+        where: { organizationId_userId: { organizationId, userId } },
         update: {
           displayDensity: values.displayDensity ? String(values.displayDensity) : undefined,
           guidanceEnabled: typeof values.guidanceEnabled === "boolean" ? values.guidanceEnabled : undefined,
@@ -234,7 +243,8 @@ export async function POST(request: NextRequest) {
           locale: values.locale ? String(values.locale) : undefined
         },
         create: {
-          userId: CURRENT_USER.id,
+          organizationId,
+          userId,
           displayDensity: String(values.displayDensity ?? "Comfy"),
           guidanceEnabled: typeof values.guidanceEnabled === "boolean" ? values.guidanceEnabled : true,
           consoleTabsEnabled: typeof values.consoleTabsEnabled === "boolean" ? values.consoleTabsEnabled : true,
@@ -251,29 +261,30 @@ export async function POST(request: NextRequest) {
       const shortcutId = String(values.shortcutId ?? payload.id ?? "").trim();
       if (!shortcutId) return NextResponse.json({ error: "Shortcut is required." }, { status: 400 });
       const state = await prisma.setupShortcutState.upsert({
-        where: { userId_shortcutId: { userId: CURRENT_USER.id, shortcutId } },
+        where: { organizationId_userId_shortcutId: { organizationId, userId, shortcutId } },
         update: {
           pinned: typeof values.pinned === "boolean" ? values.pinned : undefined,
           lastOpenedAt: values.lastOpenedAt ? new Date(String(values.lastOpenedAt)) : undefined
         },
         create: {
-          userId: CURRENT_USER.id,
+          organizationId,
+          userId,
           shortcutId,
           pinned: typeof values.pinned === "boolean" ? values.pinned : false,
           lastOpenedAt: values.lastOpenedAt ? new Date(String(values.lastOpenedAt)) : null
         }
       });
-      const setupShortcutStates = await prisma.setupShortcutState.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { updatedAt: "desc" } });
+      const setupShortcutStates = await prisma.setupShortcutState.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, state: JSON.parse(JSON.stringify(state)), setupShortcutStates: JSON.parse(JSON.stringify(setupShortcutStates)) });
     }
 
     if (payload.action === "clearSetupShortcutHistory") {
       await prisma.setupShortcutState.updateMany({
-        where: { userId: CURRENT_USER.id, pinned: false },
+        where: { ...personalWhere, pinned: false },
         data: { lastOpenedAt: null }
       });
-      await prisma.setupShortcutState.deleteMany({ where: { userId: CURRENT_USER.id, pinned: false, lastOpenedAt: null } });
-      const setupShortcutStates = await prisma.setupShortcutState.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { updatedAt: "desc" } });
+      await prisma.setupShortcutState.deleteMany({ where: { ...personalWhere, pinned: false, lastOpenedAt: null } });
+      const setupShortcutStates = await prisma.setupShortcutState.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, setupShortcutStates: JSON.parse(JSON.stringify(setupShortcutStates)) });
     }
 
@@ -281,31 +292,32 @@ export async function POST(request: NextRequest) {
       const articleId = String(values.articleId ?? payload.id ?? "").trim();
       if (!articleId) return NextResponse.json({ error: "Article is required." }, { status: 400 });
       const state = await prisma.helpArticleState.upsert({
-        where: { userId_articleId: { userId: CURRENT_USER.id, articleId } },
+        where: { organizationId_userId_articleId: { organizationId, userId, articleId } },
         update: {
           saved: typeof values.saved === "boolean" ? values.saved : undefined,
           helpful: typeof values.helpful === "boolean" ? values.helpful : undefined,
           viewedAt: values.viewedAt ? new Date(String(values.viewedAt)) : undefined
         },
         create: {
-          userId: CURRENT_USER.id,
+          organizationId,
+          userId,
           articleId,
           saved: typeof values.saved === "boolean" ? values.saved : false,
           helpful: typeof values.helpful === "boolean" ? values.helpful : null,
           viewedAt: values.viewedAt ? new Date(String(values.viewedAt)) : null
         }
       });
-      const helpArticleStates = await prisma.helpArticleState.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { updatedAt: "desc" } });
+      const helpArticleStates = await prisma.helpArticleState.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, state: JSON.parse(JSON.stringify(state)), helpArticleStates: JSON.parse(JSON.stringify(helpArticleStates)) });
     }
 
     if (payload.action === "clearHelpArticleHistory") {
       await prisma.helpArticleState.updateMany({
-        where: { userId: CURRENT_USER.id, saved: false },
+        where: { ...personalWhere, saved: false },
         data: { viewedAt: null, helpful: null }
       });
-      await prisma.helpArticleState.deleteMany({ where: { userId: CURRENT_USER.id, saved: false, viewedAt: null } });
-      const helpArticleStates = await prisma.helpArticleState.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { updatedAt: "desc" } });
+      await prisma.helpArticleState.deleteMany({ where: { ...personalWhere, saved: false, viewedAt: null } });
+      const helpArticleStates = await prisma.helpArticleState.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, helpArticleStates: JSON.parse(JSON.stringify(helpArticleStates)) });
     }
 
@@ -315,10 +327,11 @@ export async function POST(request: NextRequest) {
       if (!app || items.length === 0) return NextResponse.json({ error: "App and items are required." }, { status: 400 });
 
       const preference = await prisma.appNavPreference.upsert({
-        where: { userId_app: { userId: CURRENT_USER.id, app } },
+        where: { organizationId_userId_app: { organizationId, userId, app } },
         update: { items },
         create: {
-          userId: CURRENT_USER.id,
+          organizationId,
+          userId,
           app,
           items
         }
@@ -329,7 +342,7 @@ export async function POST(request: NextRequest) {
     if (payload.action === "resetAppNavPreference") {
       const app = String(values.app ?? "");
       if (!app) return NextResponse.json({ error: "App is required." }, { status: 400 });
-      await prisma.appNavPreference.deleteMany({ where: { userId: CURRENT_USER.id, app } });
+      await prisma.appNavPreference.deleteMany({ where: { ...personalWhere, app } });
       return NextResponse.json({ ok: true, app });
     }
 
@@ -341,33 +354,36 @@ export async function POST(request: NextRequest) {
       const filters = Array.isArray(values.filters) ? values.filters : [];
       const chartType = values.chartType ? String(values.chartType) : null;
       const chartField = values.chartField ? String(values.chartField) : null;
+      const sharing = values.sharing ? String(values.sharing) : undefined;
       if (!object || !viewName || columns.length === 0) return NextResponse.json({ error: "Object, view name, and columns are required." }, { status: 400 });
       const previousViewName = values.previousViewName ? String(values.previousViewName) : "";
       if (previousViewName && previousViewName !== viewName) {
-        await prisma.listViewPreference.deleteMany({ where: { userId: CURRENT_USER.id, object, viewName: previousViewName } });
+        await prisma.listViewPreference.deleteMany({ where: { ...personalWhere, object, viewName: previousViewName } });
       }
 
       const pinned = Boolean(values.pinned);
       if (pinned) {
         await prisma.listViewPreference.updateMany({
-          where: { userId: CURRENT_USER.id, object },
+          where: { ...personalWhere, object },
           data: { pinned: false }
         });
       }
 
       const preference = await prisma.listViewPreference.upsert({
-        where: { userId_object_viewName: { userId: CURRENT_USER.id, object, viewName } },
+        where: { organizationId_userId_object_viewName: { organizationId, userId, object, viewName } },
         update: {
           columns,
           columnWidths,
           filters,
           chartType,
           chartField,
+          sharing,
           pinned,
           isCustom: Boolean(values.isCustom)
         },
         create: {
-          userId: CURRENT_USER.id,
+          organizationId,
+          userId,
           object,
           viewName,
           columns,
@@ -375,11 +391,12 @@ export async function POST(request: NextRequest) {
           filters,
           chartType,
           chartField,
+          sharing,
           pinned,
           isCustom: Boolean(values.isCustom)
         }
       });
-      const preferences = await prisma.listViewPreference.findMany({ where: { userId: CURRENT_USER.id, object }, orderBy: { updatedAt: "desc" } });
+      const preferences = await prisma.listViewPreference.findMany({ where: { ...personalWhere, object }, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, listViewPreference: JSON.parse(JSON.stringify(preference)), listViewPreferences: JSON.parse(JSON.stringify(preferences)) });
     }
 
@@ -394,15 +411,15 @@ export async function POST(request: NextRequest) {
       if (!object || !viewName || columns.length === 0) return NextResponse.json({ error: "Object, view name, and columns are required." }, { status: 400 });
 
       await prisma.listViewPreference.updateMany({
-        where: { userId: CURRENT_USER.id, object },
+        where: { ...personalWhere, object },
         data: { pinned: false }
       });
       const preference = await prisma.listViewPreference.upsert({
-        where: { userId_object_viewName: { userId: CURRENT_USER.id, object, viewName } },
+        where: { organizationId_userId_object_viewName: { organizationId, userId, object, viewName } },
         update: { columns, columnWidths, filters, chartType, chartField, pinned: true },
-        create: { userId: CURRENT_USER.id, object, viewName, columns, columnWidths, filters, chartType, chartField, pinned: true, isCustom: Boolean(values.isCustom) }
+        create: { organizationId, userId, object, viewName, columns, columnWidths, filters, chartType, chartField, pinned: true, isCustom: Boolean(values.isCustom) }
       });
-      const preferences = await prisma.listViewPreference.findMany({ where: { userId: CURRENT_USER.id, object }, orderBy: { updatedAt: "desc" } });
+      const preferences = await prisma.listViewPreference.findMany({ where: { ...personalWhere, object }, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, listViewPreference: JSON.parse(JSON.stringify(preference)), listViewPreferences: JSON.parse(JSON.stringify(preferences)) });
     }
 
@@ -410,8 +427,8 @@ export async function POST(request: NextRequest) {
       const object = String(values.object ?? "");
       const viewName = String(values.viewName ?? "");
       if (!object || !viewName) return NextResponse.json({ error: "Object and view name are required." }, { status: 400 });
-      await prisma.listViewPreference.deleteMany({ where: { userId: CURRENT_USER.id, object, viewName } });
-      const preferences = await prisma.listViewPreference.findMany({ where: { userId: CURRENT_USER.id, object }, orderBy: { updatedAt: "desc" } });
+      await prisma.listViewPreference.deleteMany({ where: { ...personalWhere, object, viewName } });
+      const preferences = await prisma.listViewPreference.findMany({ where: { ...personalWhere, object }, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, listViewPreferences: JSON.parse(JSON.stringify(preferences)) });
     }
 
@@ -424,31 +441,32 @@ export async function POST(request: NextRequest) {
       if (!href || !label || !context) return NextResponse.json({ error: "Search label, context, and destination are required." }, { status: 400 });
 
       const recent = await prisma.globalSearchRecent.upsert({
-        where: { userId_href: { userId: CURRENT_USER.id, href } },
+        where: { organizationId_userId_href: { organizationId, userId, href } },
         update: { query, label, context, category },
-        create: { userId: CURRENT_USER.id, query, label, context, href, category }
+        create: { organizationId, userId, query, label, context, href, category }
       });
-      const recents = await prisma.globalSearchRecent.findMany({ where: { userId: CURRENT_USER.id }, orderBy: { updatedAt: "desc" }, take: 8 });
+      const recents = await prisma.globalSearchRecent.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" }, take: 8 });
       return NextResponse.json({ ok: true, recent: JSON.parse(JSON.stringify(recent)), globalSearchRecents: JSON.parse(JSON.stringify(recents)) });
     }
 
     if (payload.action === "clearGlobalSearchRecents") {
-      await prisma.globalSearchRecent.deleteMany({ where: { userId: CURRENT_USER.id } });
+      await prisma.globalSearchRecent.deleteMany({ where: personalWhere });
       return NextResponse.json({ ok: true, globalSearchRecents: [] });
     }
 
     if (payload.action === "resetListViewPreferences") {
       const object = String(values.object ?? "");
       if (!object) return NextResponse.json({ error: "Object is required." }, { status: 400 });
-      await prisma.listViewPreference.deleteMany({ where: { userId: CURRENT_USER.id, object } });
+      await prisma.listViewPreference.deleteMany({ where: { ...personalWhere, object } });
       return NextResponse.json({ ok: true, listViewPreferences: [] });
     }
 
     if (payload.action === "clearAgentforceMessages") {
-      await prisma.agentforceMessage.deleteMany({ where: { userId: CURRENT_USER.id } });
+      await prisma.agentforceMessage.deleteMany({ where: personalWhere });
       const welcome = await prisma.agentforceMessage.create({
         data: {
-          userId: CURRENT_USER.id,
+          organizationId,
+          userId,
           role: "assistant",
           text: "I can summarize CRM records, draft follow-up email copy, suggest next actions, and take you to the right workspace.",
           metadata: {
@@ -467,14 +485,14 @@ export async function POST(request: NextRequest) {
     if (payload.action === "sendAgentforceMessage") {
       const text = String(values.text ?? "").trim();
       if (!text) return NextResponse.json({ error: "Message is required." }, { status: 400 });
-      const workspace = await loadAgentforceWorkspace();
-      const response = buildAgentforceResponse(text, workspace);
+      const workspace = await loadAgentforceWorkspace(organizationId);
+      const response = buildAgentforceResponse(text, workspace, authContext.user.name);
 
       const userMessage = await prisma.agentforceMessage.create({
-        data: { userId: CURRENT_USER.id, role: "user", text }
+        data: { organizationId, userId, role: "user", text }
       });
       const assistantMessage = await prisma.agentforceMessage.create({
-        data: { userId: CURRENT_USER.id, role: "assistant", text: response.text, metadata: response.metadata }
+        data: { organizationId, userId, role: "assistant", text: response.text, metadata: response.metadata }
       });
       return NextResponse.json({
         ok: true,
@@ -484,9 +502,8 @@ export async function POST(request: NextRequest) {
 
     if (payload.action === "updateProfile") {
       const user = await prisma.user.update({
-        where: { id: CURRENT_USER.id },
+        where: { id: userId },
         data: {
-          name: values.name ? String(values.name) : undefined,
           alias: values.alias ? String(values.alias) : undefined,
           avatarUrl: values.avatarUrl === null ? null : values.avatarUrl ? String(values.avatarUrl) : undefined
         }
@@ -497,29 +514,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unknown utility action." }, { status: 400 });
   } catch (error) {
     console.error(error);
+    const response = authorizationErrorResponse(error);
+    if (response) return response;
     return NextResponse.json({ error: "Unable to update utility state." }, { status: 500 });
   }
 }
 
-async function loadAgentforceWorkspace() {
+async function loadAgentforceWorkspace(organizationId: string) {
   const [accounts, contacts, leads, opportunities, cases, events, tasks] = await Promise.all([
-    prisma.account.findMany({ orderBy: { updatedAt: "desc" }, take: 20 }),
-    prisma.contact.findMany({ include: { account: true }, orderBy: { updatedAt: "desc" }, take: 20 }),
-    prisma.lead.findMany({ orderBy: { updatedAt: "desc" }, take: 30 }),
-    prisma.opportunity.findMany({ include: { account: true, contact: true }, orderBy: { updatedAt: "desc" }, take: 30 }),
-    prisma.caseRecord.findMany({ include: { account: true, contact: true }, orderBy: { updatedAt: "desc" }, take: 30 }),
-    prisma.event.findMany({ orderBy: { startAt: "asc" }, take: 20 }),
-    prisma.task.findMany({ orderBy: { updatedAt: "desc" }, take: 20 })
+    prisma.account.findMany({ where: { organizationId }, orderBy: { updatedAt: "desc" }, take: 20 }),
+    prisma.contact.findMany({ where: { organizationId }, include: { account: true }, orderBy: { updatedAt: "desc" }, take: 20 }),
+    prisma.lead.findMany({ where: { organizationId }, orderBy: { updatedAt: "desc" }, take: 30 }),
+    prisma.opportunity.findMany({ where: { organizationId }, include: { account: true, contact: true }, orderBy: { updatedAt: "desc" }, take: 30 }),
+    prisma.caseRecord.findMany({ where: { organizationId }, include: { account: true, contact: true }, orderBy: { updatedAt: "desc" }, take: 30 }),
+    prisma.event.findMany({ where: { organizationId }, orderBy: { startAt: "asc" }, take: 20 }),
+    prisma.task.findMany({ where: { organizationId }, orderBy: { updatedAt: "desc" }, take: 20 })
   ]);
   return { accounts, contacts, leads, opportunities, cases, events, tasks };
 }
 
-function buildAgentforceResponse(text: string, workspace: AgentforceWorkspace): { text: string; metadata: AgentforceMetadata } {
+function buildAgentforceResponse(text: string, workspace: AgentforceWorkspace, userName: string): { text: string; metadata: AgentforceMetadata } {
   const normalized = text.toLowerCase();
   if (/\b(pipeline|opportunit|deal|forecast|stage)\b/.test(normalized)) return buildPipelineAgentforceResponse(workspace);
   if (/\b(case|support|ticket|priority|escalat)\b/.test(normalized)) return buildCaseAgentforceResponse(workspace);
   if (/\b(lead|prospect|qualif|source)\b/.test(normalized)) return buildLeadAgentforceResponse(workspace);
-  if (/\b(email|follow.?up|draft|message|reply)\b/.test(normalized)) return buildFollowUpAgentforceResponse(text, workspace);
+  if (/\b(email|follow.?up|draft|message|reply)\b/.test(normalized)) return buildFollowUpAgentforceResponse(text, workspace, userName);
   return buildWorkspaceAgentforceResponse(workspace);
 }
 
@@ -633,7 +652,7 @@ function buildLeadAgentforceResponse(workspace: AgentforceWorkspace): { text: st
   };
 }
 
-function buildFollowUpAgentforceResponse(text: string, workspace: AgentforceWorkspace): { text: string; metadata: AgentforceMetadata } {
+function buildFollowUpAgentforceResponse(text: string, workspace: AgentforceWorkspace, userName: string): { text: string; metadata: AgentforceMetadata } {
   const target = findFollowUpTarget(text, workspace);
   const recipientName = target.contact ? contactDisplayName(target.contact) : target.account?.name ?? workspace.accounts[0]?.name ?? "Customer";
   const accountName = target.account?.name ?? target.contact?.account?.name ?? "your account";
@@ -648,7 +667,7 @@ function buildFollowUpAgentforceResponse(text: string, workspace: AgentforceWork
     openCases.length > 0 ? `I noticed ${openCases.length} open support case${openCases.length === 1 ? "" : "s"} and can coordinate an update.` : "There are no open support cases blocking the conversation.",
     "",
     "Best,",
-    CURRENT_USER.name
+    userName
   ].join("\n");
   return {
     text: `I drafted a follow-up for ${recipientName}. It references ${accountName}, ${openOpportunities.length} open opportunities, and ${openCases.length} open cases.`,

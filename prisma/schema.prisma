@@ -7,48 +7,122 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum OrganizationRole {
+  ADMIN
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model Organization {
+  id          String                   @id @default(cuid())
+  name        String
+  slug        String                   @unique
+  status      OrganizationStatus       @default(ACTIVE)
+  memberships OrganizationMembership[]
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+}
+
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  alias     String
-  avatarUrl String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String                   @id @default(cuid())
+  keycloakSub String?                  @unique
+  email       String?                  @unique
+  name        String
+  alias       String
+  avatarUrl   String?
+  status      UserStatus               @default(ACTIVE)
+  lastLoginAt DateTime?
+  memberships OrganizationMembership[]
+  appSessions AppSession[]
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
 
   @@map("users")
 }
 
+model OrganizationMembership {
+  id             String           @id @default(cuid())
+  organizationId String
+  userId         String
+  role           OrganizationRole @default(MEMBER)
+  status         MembershipStatus @default(ACTIVE)
+  invitedAt      DateTime         @default(now())
+  inviteSentAt   DateTime?
+  lastAccessedAt DateTime?
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([userId, status])
+}
+
+model AppSession {
+  id                String    @id @db.Uuid
+  userId            String
+  keycloakSub       String
+  keycloakSessionId String?
+  ipAddress         String?
+  userAgent         String?
+  createdAt         DateTime  @default(now())
+  lastSeenAt        DateTime  @default(now())
+  revokedAt         DateTime?
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt, lastSeenAt])
+  @@index([keycloakSessionId])
+}
+
 model Account {
-  id                    String       @id @default(cuid())
-  name                  String
-  website               String?
-  type                  String?
-  description           String?
-  parentAccountId       String?
-  ownerId               String
-  phone                 String?
-  billingCountry        String?
-  billingStreet         String?
-  billingPostalCode     String?
-  billingCity           String?
-  billingState          String?
-  shippingCountry       String?
-  shippingStreet        String?
-  shippingPostalCode    String?
-  shippingCity          String?
-  shippingState         String?
-  createdById           String
-  updatedById           String
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
-  contacts              Contact[]
-  opportunities         Opportunity[]
-  cases                 CaseRecord[]
-  partners              Partner[]
+  id                 String        @id @default(cuid())
+  organizationId     String
+  name               String
+  website            String?
+  type               String?
+  description        String?
+  parentAccountId    String?
+  ownerId            String
+  phone              String?
+  billingCountry     String?
+  billingStreet      String?
+  billingPostalCode  String?
+  billingCity        String?
+  billingState       String?
+  shippingCountry    String?
+  shippingStreet     String?
+  shippingPostalCode String?
+  shippingCity       String?
+  shippingState      String?
+  createdById        String
+  updatedById        String
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  contacts           Contact[]
+  opportunities      Opportunity[]
+  cases              CaseRecord[]
+  partners           Partner[]
+
+  @@index([organizationId])
 }
 
 model Contact {
-  id                 String       @id @default(cuid())
+  id                 String        @id @default(cuid())
+  organizationId     String
   salutation         String?
   firstName          String?
   lastName           String
@@ -66,15 +140,18 @@ model Contact {
   mailingState       String?
   createdById        String
   updatedById        String
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
-  account            Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  account            Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   opportunities      Opportunity[]
   cases              CaseRecord[]
+
+  @@index([organizationId])
 }
 
 model Lead {
   id                String   @id @default(cuid())
+  organizationId    String
   status            String   @default("New")
   salutation        String?
   firstName         String?
@@ -100,10 +177,13 @@ model Lead {
   updatedById       String
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  @@index([organizationId])
 }
 
 model Opportunity {
-  id               String    @id @default(cuid())
+  id               String   @id @default(cuid())
+  organizationId   String
   name             String
   accountId        String
   contactId        String?
@@ -117,106 +197,124 @@ model Opportunity {
   nextStep         String?
   createdById      String
   updatedById      String
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  account          Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  contact          Contact?  @relation(fields: [contactId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  account          Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  contact          Contact? @relation(fields: [contactId], references: [id])
+
+  @@index([organizationId])
 }
 
 model CaseRecord {
-  id                             String   @id @default(cuid())
-  caseNumber                     String   @unique
-  status                         String   @default("New")
+  id                             String    @id @default(cuid())
+  organizationId                 String
+  caseNumber                     String
+  status                         String    @default("New")
   origin                         String?
-  priority                       String   @default("Medium")
+  priority                       String    @default("Medium")
   ownerId                        String
   contactId                      String?
   accountId                      String?
   subject                        String?
   description                    String?
-  sendNotificationEmailToContact Boolean  @default(false)
-  openedAt                       DateTime @default(now())
+  sendNotificationEmailToContact Boolean   @default(false)
+  openedAt                       DateTime  @default(now())
   closedAt                       DateTime?
   createdById                    String
   updatedById                    String
-  createdAt                      DateTime @default(now())
-  updatedAt                      DateTime @updatedAt
-  account                        Account? @relation(fields: [accountId], references: [id])
-  contact                        Contact? @relation(fields: [contactId], references: [id])
+  createdAt                      DateTime  @default(now())
+  updatedAt                      DateTime  @updatedAt
+  account                        Account?  @relation(fields: [accountId], references: [id])
+  contact                        Contact?  @relation(fields: [contactId], references: [id])
 
+  @@unique([organizationId, caseNumber])
+  @@index([organizationId])
   @@map("cases")
 }
 
 model Product {
-  id          String           @id @default(cuid())
-  name        String
-  family      String?
-  productCode String?
-  sku         String?
-  active      Boolean          @default(false)
-  description String?
-  entries     PriceBookEntry[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id             String           @id @default(cuid())
+  organizationId String
+  name           String
+  family         String?
+  productCode    String?
+  sku            String?
+  category       String?
+  active         Boolean          @default(false)
+  description    String?
+  entries        PriceBookEntry[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([organizationId])
 }
 
 model PriceBook {
-  id          String           @id @default(cuid())
-  name        String
-  active      Boolean          @default(false)
-  description String?
-  isStandard  Boolean          @default(false)
-  validFrom   DateTime?
-  validTo     DateTime?
-  entries     PriceBookEntry[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id             String           @id @default(cuid())
+  organizationId String
+  name           String
+  active         Boolean          @default(false)
+  description    String?
+  isStandard     Boolean          @default(false)
+  validFrom      DateTime?
+  validTo        DateTime?
+  entries        PriceBookEntry[]
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@index([organizationId])
 }
 
 model PriceBookEntry {
-  id          String    @id @default(cuid())
-  productId   String
-  priceBookId String
-  listPrice   Decimal?
-  currency    String    @default("USD")
-  active      Boolean   @default(false)
-  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  priceBook   PriceBook @relation(fields: [priceBookId], references: [id], onDelete: Cascade)
+  id             String    @id @default(cuid())
+  organizationId String
+  productId      String
+  priceBookId    String
+  listPrice      Decimal?
+  currency       String    @default("USD")
+  active         Boolean   @default(false)
+  product        Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  priceBook      PriceBook @relation(fields: [priceBookId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
 }
 
 model Event {
-  id                  String   @id @default(cuid())
-  subject             String
-  description         String?
-  startAt             DateTime
-  endAt               DateTime
-  attendeeIds         String[]
-  nameObjectType      String?
-  nameRecordId        String?
-  relatedObjectType   String?
-  relatedRecordId     String?
-  assignedToId        String
-  location            String?
-  showTimeAs          String   @default("Busy")
-  allDay              Boolean  @default(false)
-  private             Boolean  @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                String   @id @default(cuid())
+  organizationId    String
+  subject           String
+  description       String?
+  startAt           DateTime
+  endAt             DateTime
+  attendeeIds       String[]
+  nameObjectType    String?
+  nameRecordId      String?
+  relatedObjectType String?
+  relatedRecordId   String?
+  assignedToId      String
+  location          String?
+  showTimeAs        String   @default("Busy")
+  allDay            Boolean  @default(false)
+  private           Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 model CalendarSource {
-  id        String   @id @default(cuid())
-  userId    String
-  name      String
-  type      String   @default("My")
-  color     String   @default("#0176d3")
-  visible   Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  name           String
+  type           String   @default("My")
+  color          String   @default("#0176d3")
+  visible        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
 }
 
 model Task {
   id                String    @id @default(cuid())
+  organizationId    String
   subject           String?
   dueDate           DateTime?
   status            String?
@@ -229,18 +327,20 @@ model Task {
 }
 
 model EmailActivity {
-  id                String    @id @default(cuid())
+  id                String   @id @default(cuid())
+  organizationId    String
   to                String
   from              String
   subject           String
   body              String?
   relatedObjectType String?
   relatedRecordId   String?
-  sentAt            DateTime  @default(now())
+  sentAt            DateTime @default(now())
 }
 
 model CallActivity {
   id                String   @id @default(cuid())
+  organizationId    String
   subject           String
   comments          String?
   relatedObjectType String?
@@ -250,6 +350,7 @@ model CallActivity {
 
 model FileRecord {
   id                String   @id @default(cuid())
+  organizationId    String
   name              String
   size              Int?
   relatedObjectType String?
@@ -260,6 +361,7 @@ model FileRecord {
 
 model AttachmentRecord {
   id                String   @id @default(cuid())
+  organizationId    String
   name              String
   size              Int?
   relatedObjectType String?
@@ -269,31 +371,34 @@ model AttachmentRecord {
 }
 
 model QuickTextFolder {
-  id        String      @id @default(cuid())
-  name      String
-  ownerId   String
-  sharing   String?
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @default(now()) @updatedAt
-  quickText QuickText[]
+  id             String      @id @default(cuid())
+  organizationId String
+  name           String
+  ownerId        String
+  sharing        String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @default(now()) @updatedAt
+  quickText      QuickText[]
 }
 
 model QuickText {
-  id          String           @id @default(cuid())
-  name        String
-  message     String
-  folderId    String?
-  category    String?
-  channels    String[]
-  mergeFields String[]
-  createdById String
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  folder      QuickTextFolder? @relation(fields: [folderId], references: [id])
+  id             String           @id @default(cuid())
+  organizationId String
+  name           String
+  message        String
+  folderId       String?
+  category       String?
+  channels       String[]
+  mergeFields    String[]
+  createdById    String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  folder         QuickTextFolder? @relation(fields: [folderId], references: [id])
 }
 
 model KnowledgeArticle {
   id                   String    @id @default(cuid())
+  organizationId       String
   title                String
   urlName              String
   summary              String?
@@ -314,160 +419,177 @@ model KnowledgeArticle {
 }
 
 model ListEmail {
-  id            String   @id @default(cuid())
-  layoutType    String
-  subject       String?
-  body          String?
-  recipientType String?
-  recipients    String[]
-  status        String   @default("Draft")
-  sentAt        DateTime?
-  scheduledAt   DateTime?
-  createdById   String
-  createdAt     DateTime @default(now())
+  id             String    @id @default(cuid())
+  organizationId String
+  layoutType     String
+  subject        String?
+  body           String?
+  recipientType  String?
+  recipients     String[]
+  status         String    @default("Draft")
+  sentAt         DateTime?
+  scheduledAt    DateTime?
+  createdById    String
+  createdAt      DateTime  @default(now())
 }
 
 model MessagingSession {
-  id        String   @id @default(cuid())
-  name      String?
-  status    String?
-  ownerId   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String?
+  status         String?
+  ownerId        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model Invoice {
-  id        String   @id @default(cuid())
-  name      String?
-  status    String?
-  amount    Decimal?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String?
+  status         String?
+  amount         Decimal?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model VideoCall {
-  id        String   @id @default(cuid())
-  name      String?
-  provider  String?
-  startedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String?
+  provider       String?
+  startedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 model Partner {
-  id        String   @id @default(cuid())
-  name      String
-  accountId String
-  role      String?
-  createdAt DateTime @default(now())
-  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  accountId      String
+  role           String?
+  createdAt      DateTime @default(now())
+  account        Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
 }
 
 model MarketingStore {
-  id        String   @id @default(cuid())
-  name      String
-  currency  String?
-  status    String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  currency       String?
+  status         String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model CustomReport {
-  id         String   @id @default(cuid())
-  userId     String
-  name       String
-  object     String
-  groupField String
-  columns    Json
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now()) @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  name           String
+  object         String
+  groupField     String
+  columns        Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
 }
 
 model CustomDashboard {
-  id        String   @id @default(cuid())
-  userId    String
-  name      String
-  reportIds Json
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  name           String
+  reportIds      Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
 }
 
 model Campaign {
-  id        String           @id @default(cuid())
-  name      String           @unique
-  status    String           @default("Planned")
-  ownerId   String
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-  members   CampaignMember[]
+  id             String           @id @default(cuid())
+  organizationId String
+  name           String
+  status         String           @default("Planned")
+  ownerId        String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  members        CampaignMember[]
+
+  @@unique([organizationId, name])
 }
 
 model CampaignMember {
-  id         String   @id @default(cuid())
-  campaignId String
-  objectType String
-  recordId   String
-  status     String   @default("Sent")
-  createdAt  DateTime @default(now())
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  id             String   @id @default(cuid())
+  organizationId String
+  campaignId     String
+  objectType     String
+  recordId       String
+  status         String   @default("Sent")
+  createdAt      DateTime @default(now())
+  campaign       Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
-  @@unique([campaignId, objectType, recordId])
+  @@unique([organizationId, campaignId, objectType, recordId])
 }
 
 model RecordLabel {
-  id         String   @id @default(cuid())
-  objectType String
-  recordId   String
-  label      String
-  color      String?
-  createdById String
-  createdAt  DateTime @default(now())
+  id             String   @id @default(cuid())
+  organizationId String
+  objectType     String
+  recordId       String
+  label          String
+  color          String?
+  createdById    String
+  createdAt      DateTime @default(now())
 
-  @@unique([objectType, recordId, label])
+  @@unique([organizationId, objectType, recordId, label])
 }
 
 model MarketingActivation {
-  id          String   @id @default(cuid())
-  senderName  String
-  senderEmail String
-  tracking    Boolean  @default(true)
-  active      Boolean  @default(true)
-  activatedById String
-  activatedAt DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  senderName     String
+  senderEmail    String
+  tracking       Boolean  @default(true)
+  active         Boolean  @default(true)
+  activatedById  String
+  activatedAt    DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model SubscriptionCheckout {
-  id        String   @id @default(cuid())
-  plan      String
-  seats     Int
-  code      String?
-  status    String   @default("Prepared")
-  userId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  plan           String
+  seats          Int
+  code           String?
+  status         String   @default("Prepared")
+  userId         String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model Notification {
-  id        String   @id @default(cuid())
-  userId    String
-  title     String
-  body      String
-  href      String?
-  category  String?
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  title          String
+  body           String
+  href           String?
+  category       String?
+  read           Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model NotificationPreference {
-  id        String   @id @default(cuid())
-  userId    String
-  category  String
-  enabled   Boolean  @default(true)
-  updatedAt DateTime @default(now()) @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  category       String
+  enabled        Boolean  @default(true)
+  updatedAt      DateTime @default(now()) @updatedAt
 
-  @@unique([userId, category])
+  @@unique([organizationId, userId, category])
 }
 
 model GuidanceItem {
@@ -482,20 +604,22 @@ model GuidanceItem {
 }
 
 model UserGuidanceState {
-  id           String       @id @default(cuid())
-  userId       String
-  itemId       String
-  status       String       @default("ACTIVE")
-  snoozedUntil DateTime?
-  updatedAt    DateTime     @default(now()) @updatedAt
-  item         GuidanceItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  itemId         String
+  status         String       @default("ACTIVE")
+  snoozedUntil   DateTime?
+  updatedAt      DateTime     @default(now()) @updatedAt
+  item           GuidanceItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, itemId])
+  @@unique([organizationId, userId, itemId])
 }
 
 model UserPreference {
   id                 String   @id @default(cuid())
-  userId             String   @unique
+  organizationId     String
+  userId             String
   displayDensity     String   @default("Comfy")
   guidanceEnabled    Boolean  @default(true)
   consoleTabsEnabled Boolean  @default(true)
@@ -504,78 +628,87 @@ model UserPreference {
   timezone           String?
   locale             String?
   updatedAt          DateTime @default(now()) @updatedAt
+
+  @@unique([organizationId, userId])
 }
 
 model SetupShortcutState {
-  id           String    @id @default(cuid())
-  userId       String
-  shortcutId   String
-  pinned       Boolean   @default(false)
-  lastOpenedAt DateTime?
-  updatedAt    DateTime  @default(now()) @updatedAt
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  shortcutId     String
+  pinned         Boolean   @default(false)
+  lastOpenedAt   DateTime?
+  updatedAt      DateTime  @default(now()) @updatedAt
 
-  @@unique([userId, shortcutId])
+  @@unique([organizationId, userId, shortcutId])
 }
 
 model HelpArticleState {
-  id        String    @id @default(cuid())
-  userId    String
-  articleId String
-  saved     Boolean   @default(false)
-  helpful   Boolean?
-  viewedAt  DateTime?
-  updatedAt DateTime  @default(now()) @updatedAt
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  articleId      String
+  saved          Boolean   @default(false)
+  helpful        Boolean?
+  viewedAt       DateTime?
+  updatedAt      DateTime  @default(now()) @updatedAt
 
-  @@unique([userId, articleId])
+  @@unique([organizationId, userId, articleId])
 }
 
 model AppNavPreference {
-  id        String   @id @default(cuid())
-  userId    String
-  app       String
-  items     Json
-  updatedAt DateTime @default(now()) @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  app            String
+  items          Json
+  updatedAt      DateTime @default(now()) @updatedAt
 
-  @@unique([userId, app])
+  @@unique([organizationId, userId, app])
 }
 
 model ListViewPreference {
-  id        String   @id @default(cuid())
-  userId    String
-  object    String
-  viewName  String
-  columns   Json
-  columnWidths Json?
-  filters   Json?
-  chartType String?
-  chartField String?
-  pinned    Boolean  @default(false)
-  isCustom  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  object         String
+  viewName       String
+  columns        Json
+  columnWidths   Json?
+  filters        Json?
+  chartType      String?
+  chartField     String?
+  sharing        String?  @default("Only I can see this list view")
+  pinned         Boolean  @default(false)
+  isCustom       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
 
-  @@unique([userId, object, viewName])
+  @@unique([organizationId, userId, object, viewName])
 }
 
 model GlobalSearchRecent {
-  id        String   @id @default(cuid())
-  userId    String
-  query     String?
-  label     String
-  context   String
-  href      String
-  category  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  query          String?
+  label          String
+  context        String
+  href           String
+  category       String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
 
-  @@unique([userId, href])
+  @@unique([organizationId, userId, href])
 }
 
 model AgentforceMessage {
-  id        String   @id @default(cuid())
-  userId    String
-  role      String
-  text      String
-  metadata  Json?
-  createdAt DateTime @default(now())
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           String
+  text           String
+  metadata       Json?
+  createdAt      DateTime @default(now())
 }
