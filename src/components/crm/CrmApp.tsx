@@ -95,19 +95,30 @@ import { contactName, dataKeyForObject, decorateBootstrap, recordTitle, routeFor
 import type { AppKey, AppNavItem, BootstrapData, CrmObject, FieldDefinition, FormDefinition, ObjectDefinition, RecordData } from "@/lib/crm-types";
 import type { AiActivityInsightPayload, AiEmailDraft, AiHomeInsight, AiInsightResponse } from "@/lib/ai-types";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
+import { InvoiceDetailPage, InvoiceEditorModal, InvoicePaymentModal, InvoiceStatusBadge, type InvoiceMutationResult } from "@/components/crm/InvoiceWorkspace";
+import { CommunicationsStatusBadge, MessagingSessionDetailPage, MessagingSessionEditorModal, VideoCallDetailPage, VideoCallEditorModal, type CommunicationsMutationResult } from "@/components/crm/CommunicationsWorkspace";
+import { CampaignDetailPage, CampaignEditorModal, CampaignStatusBadge, type CampaignMutationResult } from "@/components/crm/CampaignWorkspace";
+import { CommerceWorkspace } from "@/components/crm/CommerceWorkspace";
+import { MarketingLandingPagesPanel } from "@/components/crm/MarketingLandingPagesPanel";
+import { PriceBookDetailPage, ProductDetailPage } from "@/components/crm/CatalogWorkspace";
+import { KnowledgeDetailPage, ListEmailDetailPage, SalesRecordDetailPage } from "@/components/crm/RecordDetailWorkspace";
 
 type ModalState =
   | { type: "record"; mode: "new" | "edit"; object: CrmObject; record?: RecordData }
+  | { type: "invoice"; mode: "new" | "edit"; record?: RecordData }
+  | { type: "invoicePayment"; invoice: RecordData }
+  | { type: "messaging"; mode: "new" | "edit"; record?: RecordData }
+  | { type: "videoCall"; mode: "new" | "edit"; record?: RecordData }
+  | { type: "campaign"; mode: "new" | "edit"; record?: RecordData }
   | { type: "product" }
   | { type: "event"; relatedObjectType?: CrmObject; relatedRecordId?: string; startDate?: string; startTime?: string; endDate?: string; endTime?: string }
-  | { type: "quickText" }
-  | { type: "knowledge" }
-  | { type: "listEmail"; initialValues?: RecordData; startingStep?: 1 | 2; layout?: string }
+  | { type: "quickText"; record?: RecordData }
+  | { type: "knowledge"; record?: RecordData }
+  | { type: "listEmail"; record?: RecordData; initialValues?: RecordData; startingStep?: 1 | 2; layout?: string }
   | { type: "listAction"; action: string; object: CrmObject; records: RecordData[]; selectedIds: string[] }
   | { type: "quickTextFolder" }
-  | { type: "marketingActivation" }
-  | { type: "store" }
-  | { type: "reportBuilder"; reportType?: string }
+  | { type: "marketingActivation"; record?: RecordData }
+  | { type: "reportBuilder"; reportType?: string; record?: RecordData }
   | { type: "navEdit"; app: AppKey }
   | { type: "confirm"; title: string; body: string; onConfirm: () => void };
 
@@ -123,6 +134,7 @@ type ConsoleTab = {
 
 type BootstrapDataUpdater = (updater: (previous: BootstrapData) => BootstrapData) => void;
 type SaveRecordHandler = (object: CrmObject, values: RecordData, options?: { id?: string; stayOpen?: boolean }) => Promise<boolean>;
+type FileUploadRequest = { file: File; relatedObjectType: "Account" | "Contact"; relatedRecordId: string };
 
 type KanbanConfig = {
   field: string;
@@ -256,7 +268,7 @@ type ScreenState =
   | { kind: "list"; activeApp: AppKey; object: CrmObject }
   | { kind: "calendar"; activeApp: AppKey }
   | { kind: "quickText"; activeApp: AppKey }
-  | { kind: "record"; activeApp: AppKey; object: "Account" | "Contact"; id: string }
+  | { kind: "record"; activeApp: AppKey; object: "Account" | "Contact" | "Lead" | "Opportunity" | "Case" | "Product2" | "Pricebook2" | "Knowledge__kav" | "ListEmail" | "Invoice" | "MessagingSession" | "VideoCall" | "Campaign"; id: string }
   | { kind: "marketing"; activeApp: AppKey }
   | { kind: "commerce"; activeApp: AppKey }
   | { kind: "account"; activeApp: AppKey }
@@ -529,7 +541,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
     }
     if (segments[1] === "r" && isCrmObject(segments[2]) && segments[4] === "edit") {
       const record = getRecords(segments[2]).find((item) => item.id === segments[3]);
-      if (record) setModal({ type: "record", mode: "edit", object: segments[2], record });
+      if (record) openEdit(segments[2], record);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
@@ -545,12 +557,86 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
   }
 
   function openCreate(object: CrmObject) {
-    if (object === "Product2") setModal({ type: "product" });
+    if (object === "Invoice") setModal({ type: "invoice", mode: "new" });
+    else if (object === "Campaign") setModal({ type: "campaign", mode: "new" });
+    else if (object === "MessagingSession") setModal({ type: "messaging", mode: "new" });
+    else if (object === "VideoCall") setModal({ type: "videoCall", mode: "new" });
+    else if (object === "Product2") setModal({ type: "product" });
     else if (object === "Event") setModal({ type: "event" });
     else if (object === "QuickText") setModal({ type: "quickText" });
     else if (object === "Knowledge__kav") setModal({ type: "knowledge" });
     else if (object === "ListEmail") setModal({ type: "listEmail" });
     else setModal({ type: "record", mode: "new", object });
+  }
+
+  function openEdit(object: CrmObject, record: RecordData) {
+    if (object === "Invoice" && record.status !== "Draft") {
+      showToast({ tone: "warning", message: "Only Draft invoices can be edited." });
+      if (pathname.endsWith("/edit")) router.push(`/lightning/r/Invoice/${requiredId(record)}/view`);
+    }
+    else if (object === "Invoice") setModal({ type: "invoice", mode: "edit", record });
+    else if (object === "MessagingSession") setModal({ type: "messaging", mode: "edit", record });
+    else if (object === "VideoCall") setModal({ type: "videoCall", mode: "edit", record });
+    else if (object === "Campaign") setModal({ type: "campaign", mode: "edit", record });
+    else if (object === "QuickText") setModal({ type: "quickText", record });
+    else if (object === "Knowledge__kav") setModal({ type: "knowledge", record });
+    else if (object === "ListEmail" && record.status !== "Draft") showToast({ tone: "warning", message: "Sent or scheduled list emails cannot be edited." });
+    else if (object === "ListEmail") setModal({ type: "listEmail", record, initialValues: record, startingStep: 1, layout: String(record.layoutType ?? "Sales") });
+    else setModal({ type: "record", mode: "edit", object, record });
+  }
+
+  function applyInvoiceMutation(result: InvoiceMutationResult) {
+    if (!result.invoice?.id) return;
+    setData((previous) => {
+      const invoice = result.invoice;
+      const invoices = previous.invoices.some((item) => item.id === invoice.id)
+        ? previous.invoices.map((item) => item.id === invoice.id ? { ...item, ...invoice } : item)
+        : [invoice, ...previous.invoices];
+      const incomingNotifications = Array.isArray(result.notifications) ? result.notifications : [];
+      const incomingIds = new Set(incomingNotifications.map((item) => item.id));
+      return decorateBootstrap({
+        ...previous,
+        invoices,
+        notifications: [...incomingNotifications, ...previous.notifications.filter((item) => !incomingIds.has(item.id))]
+      });
+    });
+  }
+
+  function applyCommunicationsMutation(result: CommunicationsMutationResult) {
+    setData((previous) => {
+      const incomingNotifications = Array.isArray(result.notifications) ? result.notifications : [];
+      const incomingIds = new Set(incomingNotifications.map((item) => item.id));
+      const next = { ...previous, notifications: [...incomingNotifications, ...previous.notifications.filter((item) => !incomingIds.has(item.id))] };
+      if (result.session?.id) {
+        next.messagingSessions = previous.messagingSessions.some((item) => item.id === result.session!.id)
+          ? previous.messagingSessions.map((item) => item.id === result.session!.id ? { ...item, ...result.session } : item)
+          : [result.session, ...previous.messagingSessions];
+      }
+      if (result.videoCall?.id) {
+        next.videoCalls = previous.videoCalls.some((item) => item.id === result.videoCall!.id)
+          ? previous.videoCalls.map((item) => item.id === result.videoCall!.id ? { ...item, ...result.videoCall } : item)
+          : [result.videoCall, ...previous.videoCalls];
+      }
+      return decorateBootstrap(next);
+    });
+  }
+
+  function removeCommunication(object: "MessagingSession" | "VideoCall", id: string) {
+    const key = object === "MessagingSession" ? "messagingSessions" : "videoCalls";
+    setData((previous) => decorateBootstrap({ ...previous, [key]: previous[key].filter((item) => item.id !== id) }));
+    router.push(defaultRouteForObject(object));
+  }
+
+  function applyCampaignMutation(result: CampaignMutationResult) {
+    if (!result.campaign?.id) return;
+    setData((previous) => {
+      const campaigns = previous.campaigns.some((item) => item.id === result.campaign!.id)
+        ? previous.campaigns.map((item) => item.id === result.campaign!.id ? { ...item, ...result.campaign } : item)
+        : [result.campaign!, ...previous.campaigns];
+      const notifications = Array.isArray(result.notifications) ? result.notifications : [];
+      const notificationIds = new Set(notifications.map((item) => item.id));
+      return decorateBootstrap({ ...previous, campaigns, notifications: [...notifications, ...previous.notifications.filter((item) => !notificationIds.has(item.id))] });
+    });
   }
 
   function closeModal() {
@@ -577,6 +663,20 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
       notifications: [notification, ...previous.notifications.filter((item) => item.id !== notification.id)]
     }));
     return notification;
+  }
+
+  async function refreshBootstrapData(successMessage: string) {
+    try {
+      const response = await fetch("/api/bootstrap", { cache: "no-store" });
+      const refreshed = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(refreshed.error ?? "Refresh failed."));
+      setData(decorateBootstrap(refreshed as BootstrapData));
+      showToast({ tone: "success", message: successMessage });
+      return true;
+    } catch (error) {
+      showToast({ tone: "error", message: error instanceof Error ? error.message : "The CRM data could not be refreshed." });
+      return false;
+    }
   }
 
   async function saveRecord(object: CrmObject, values: RecordData, options: { id?: string; stayOpen?: boolean } = {}) {
@@ -623,16 +723,20 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
       return decorateBootstrap(nextData);
     });
 
-    void createAppNotification(notificationForSavedRecord(object, record, Boolean(options.id), values));
-    showToast({ tone: "success", message: `${OBJECT_DEFINITIONS[object].label} saved.` });
+    void createAppNotification(notificationForSavedRecord(object, record, Boolean(options.id), values, Boolean(json.delivery)));
+    showToast(json.warning
+      ? { tone: "warning", message: String(json.warning) }
+      : { tone: "success", message: String(json.message ?? `${OBJECT_DEFINITIONS[object].label} saved.`) });
     if (!options.stayOpen) closeModal();
     return true;
   }
 
   async function deleteRecord(object: CrmObject, id: string) {
-    const response = await fetch(`/api/records/${object}/${id}`, { method: "DELETE" });
+    const url = object === "Invoice" ? `/api/invoices/${id}` : object === "MessagingSession" ? `/api/messaging-sessions/${id}` : object === "VideoCall" ? `/api/video-calls/${id}` : object === "Campaign" ? `/api/campaigns/${id}` : `/api/records/${object}/${id}`;
+    const response = await fetch(url, { method: "DELETE" });
+    const json = await response.json().catch(() => ({}));
     if (!response.ok) {
-      showToast({ tone: "error", message: "The record couldn't be deleted." });
+      showToast({ tone: "error", message: json.error ?? "The record couldn't be deleted." });
       return;
     }
 
@@ -661,7 +765,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
     const json = await response.json().catch(() => ({}));
     if (!response.ok) {
       showToast({ tone: "error", message: json.error ?? "The activity couldn't be saved." });
-      return;
+      return false;
     }
     const record = json.record ?? { ...activity, id: `${activity.type}-${Date.now()}` };
     setData((previous) => {
@@ -672,26 +776,31 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
       } as BootstrapData;
     });
     void createAppNotification({
-      title: activity.type === "email" ? "Email activity logged" : activity.type === "call" ? "Call logged" : "Task created",
+      title: activity.type === "email" ? (activity.emailAction === "send" ? "Email sent" : "Email activity logged") : activity.type === "call" ? "Call logged" : "Task created",
       body: String(activity.subject ?? activity.notes ?? "Activity was added to the timeline."),
       href: activity.relatedObjectType && activity.relatedRecordId ? routeForRecord(String(activity.relatedObjectType) as CrmObject, String(activity.relatedRecordId)) : undefined,
       category: "Activity"
     });
-    showToast({ tone: "success", message: activity.type === "email" ? "Email activity logged." : activity.type === "call" ? "Call logged." : "Task created." });
+    showToast({ tone: "success", message: activity.type === "email" ? (activity.emailAction === "send" ? "Email accepted for delivery." : "Email activity logged.") : activity.type === "call" ? "Call logged." : "Task created." });
+    return true;
   }
 
-  async function saveFile(file: RecordData, attachment = false) {
+  async function saveFile(upload: FileUploadRequest, attachment = false) {
+    const payload = new FormData();
+    payload.set("file", upload.file);
+    payload.set("attachment", String(attachment));
+    payload.set("relatedObjectType", upload.relatedObjectType);
+    payload.set("relatedRecordId", upload.relatedRecordId);
     const response = await fetch("/api/files", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...file, attachment })
+      body: payload
     });
     const json = await response.json().catch(() => ({}));
     if (!response.ok) {
       showToast({ tone: "error", message: json.error ?? (attachment ? "The attachment couldn't be uploaded." : "The file couldn't be uploaded.") });
-      return;
+      return false;
     }
-    const record = json.record ?? { ...file, id: `file-${Date.now()}`, uploadedAt: new Date().toISOString() };
+    const record = json.record as RecordData;
     setData((previous) => ({
       ...previous,
       [attachment ? "attachments" : "files"]: [record, ...(previous[attachment ? "attachments" : "files"] as RecordData[])]
@@ -699,17 +808,32 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
     void createAppNotification({
       title: attachment ? "Attachment uploaded" : "File uploaded",
       body: String(record.name ?? "A file was added to the workspace."),
-      href: file.relatedObjectType && file.relatedRecordId ? routeForRecord(String(file.relatedObjectType) as CrmObject, String(file.relatedRecordId)) : undefined,
+      href: routeForRecord(upload.relatedObjectType, upload.relatedRecordId),
       category: "Files"
     });
     showToast({ tone: "success", message: attachment ? "Attachment uploaded." : "File uploaded." });
+    return true;
+  }
+
+  async function deleteFile(file: RecordData, attachment = false) {
+    const response = await fetch(`/api/files/${encodeURIComponent(requiredId(file))}?kind=${attachment ? "attachment" : "file"}`, { method: "DELETE" });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      showToast({ tone: "error", message: json.error ?? "The file couldn't be deleted." });
+      return false;
+    }
+    setData((previous) => ({
+      ...previous,
+      [attachment ? "attachments" : "files"]: (previous[attachment ? "attachments" : "files"] as RecordData[]).filter((item) => item.id !== file.id)
+    }));
+    showToast({ tone: "success", message: attachment ? "Attachment deleted." : "File deleted." });
+    return true;
   }
 
   return (
     <div className={cn("flex h-screen overflow-hidden bg-canvas text-[#181818]", compactDensity && "text-[13px]")}>
       <LeftAppRail activeApp={screen.activeApp} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <TrialBanner onBuyNow={() => router.push("/lightning/app/your-account")} />
         <GlobalHeader
           data={data}
           pathname={pathnameWithSearch(pathname, searchParams)}
@@ -739,7 +863,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
               data={data}
               getRecords={getRecords}
               onCreate={openCreate}
-              onEdit={(object, record) => setModal({ type: "record", mode: "edit", object, record })}
+              onEdit={openEdit}
               onDelete={(object, record) =>
                 setModal({
                   type: "confirm",
@@ -753,19 +877,31 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
               }
               onSaveActivity={saveActivity}
               onSaveFile={saveFile}
+              onDeleteFile={deleteFile}
               onOpenEvent={(relatedObjectType, relatedRecordId, startDate, startTime, endTime) => setModal({ type: "event", relatedObjectType, relatedRecordId, startDate, startTime, endDate: startDate, endTime })}
               onToast={showToast}
               recordLabels={recordLabels}
               campaignMembers={campaignMembers}
               onListAction={(action, object, records, selectedIds) => setModal({ type: "listAction", action, object, records, selectedIds })}
               onQuickTextFolder={() => setModal({ type: "quickTextFolder" })}
-              onMarketingActivation={() => setModal({ type: "marketingActivation" })}
-              onCreateStore={() => setModal({ type: "store" })}
-              onReportBuilder={(reportType) => setModal({ type: "reportBuilder", reportType })}
+              onMarketingActivation={() => setModal({ type: "marketingActivation", record: data.marketingActivations[0] })}
+              onReportBuilder={(reportType, record) => setModal({ type: "reportBuilder", reportType, record })}
               onSaveRecord={saveRecord}
               onDataChange={(updater) => setData((previous) => decorateBootstrap(updater(previous)))}
+              onInvoiceChanged={applyInvoiceMutation}
+              onInvoiceDeleted={(id) => setData((previous) => decorateBootstrap({ ...previous, invoices: previous.invoices.filter((invoice) => invoice.id !== id) }))}
+              onOpenInvoicePayment={(invoice) => setModal({ type: "invoicePayment", invoice })}
+              onCommunicationsChanged={applyCommunicationsMutation}
+              onCommunicationsDeleted={removeCommunication}
+              onCampaignChanged={applyCampaignMutation}
+              onCampaignDeleted={(id) => {
+                setData((previous) => decorateBootstrap({ ...previous, campaigns: previous.campaigns.filter((campaign) => campaign.id !== id) }));
+                router.push(defaultRouteForObject("Campaign"));
+              }}
               listSearchQuery={searchParams.get("search") ?? ""}
+              listViewName={screen.kind === "list" ? resolveRequestedListView(screen.object, searchParams.get("filterName")) : ""}
               analyticsReportName={searchParams.get("report") ?? ""}
+              onRefreshData={refreshBootstrapData}
             />
           </div>
         </main>
@@ -781,6 +917,23 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
         onResetAppNav={resetAppNavPreference}
         onDataChange={(updater) => setData((previous) => decorateBootstrap(updater(previous)))}
         onToast={showToast}
+        onInvoiceSaved={(result, mode) => {
+          applyInvoiceMutation(result);
+          setModal(null);
+          showToast({ tone: "success", message: mode === "new" ? `${String(result.invoice.invoiceNumber)} created as a Draft.` : mode === "payment" ? "Payment recorded. No money was processed by the CRM." : `${String(result.invoice.invoiceNumber)} updated.` });
+          router.push(`/lightning/r/Invoice/${String(result.invoice.id)}/view`);
+        }}
+        onCommunicationsSaved={(result) => {
+          applyCommunicationsMutation(result);
+          setModal(null);
+          const record = result.session ?? result.videoCall;
+          if (record?.id) router.push(`/lightning/r/${result.session ? "MessagingSession" : "VideoCall"}/${String(record.id)}/view`);
+        }}
+        onCampaignSaved={(result) => {
+          applyCampaignMutation(result);
+          setModal(null);
+          if (result.campaign?.id) router.push(`/lightning/r/Campaign/${String(result.campaign.id)}/view`);
+        }}
         onApplyListAction={(action, object, selectedIds, payload) => {
           applyListAction(action, object, selectedIds, payload);
         }}
@@ -973,9 +1126,10 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
     }
 
     if (action === "Activate Marketing") {
+      const activation = isRecordData(workflowResult.activation) ? workflowResult.activation : null;
       setData((previous) => ({
         ...previous,
-        marketingActivations: isRecordData(workflowResult.activation) ? [workflowResult.activation, ...previous.marketingActivations] : previous.marketingActivations
+        marketingActivations: activation ? [activation, ...previous.marketingActivations.filter((item) => item.id !== activation.id)] : previous.marketingActivations
       }));
       void createAppNotification({
         title: "Marketing activated",
@@ -1104,6 +1258,7 @@ function ScreenRenderer({
   onDelete,
   onSaveActivity,
   onSaveFile,
+  onDeleteFile,
   onOpenEvent,
   onToast,
   recordLabels,
@@ -1111,12 +1266,20 @@ function ScreenRenderer({
   onListAction,
   onQuickTextFolder,
   onMarketingActivation,
-  onCreateStore,
   onReportBuilder,
   onSaveRecord,
   onDataChange,
+  onInvoiceChanged,
+  onInvoiceDeleted,
+  onOpenInvoicePayment,
+  onCommunicationsChanged,
+  onCommunicationsDeleted,
+  onCampaignChanged,
+  onCampaignDeleted,
   listSearchQuery,
-  analyticsReportName
+  listViewName,
+  analyticsReportName,
+  onRefreshData
 }: {
   screen: ScreenState;
   data: BootstrapData;
@@ -1124,8 +1287,9 @@ function ScreenRenderer({
   onCreate: (object: CrmObject) => void;
   onEdit: (object: CrmObject, record: RecordData) => void;
   onDelete: (object: CrmObject, record: RecordData) => void;
-  onSaveActivity: (activity: RecordData) => Promise<void>;
-  onSaveFile: (file: RecordData, attachment?: boolean) => Promise<void>;
+  onSaveActivity: (activity: RecordData) => Promise<boolean>;
+  onSaveFile: (file: FileUploadRequest, attachment?: boolean) => Promise<boolean>;
+  onDeleteFile: (file: RecordData, attachment?: boolean) => Promise<boolean>;
   onOpenEvent: (object: CrmObject, id: string, startDate?: string, startTime?: string, endTime?: string) => void;
   onToast: (toast: ToastState) => void;
   recordLabels: Record<string, string[]>;
@@ -1133,23 +1297,58 @@ function ScreenRenderer({
   onListAction: (action: string, object: CrmObject, records: RecordData[], selectedIds: string[]) => void;
   onQuickTextFolder: () => void;
   onMarketingActivation: () => void;
-  onCreateStore: () => void;
-  onReportBuilder: (reportType?: string) => void;
+  onReportBuilder: (reportType?: string, record?: RecordData) => void;
   onSaveRecord: SaveRecordHandler;
   onDataChange: BootstrapDataUpdater;
+  onInvoiceChanged: (result: InvoiceMutationResult) => void;
+  onInvoiceDeleted: (id: string) => void;
+  onOpenInvoicePayment: (invoice: RecordData) => void;
+  onCommunicationsChanged: (result: CommunicationsMutationResult) => void;
+  onCommunicationsDeleted: (object: "MessagingSession" | "VideoCall", id: string) => void;
+  onCampaignChanged: (result: CampaignMutationResult) => void;
+  onCampaignDeleted: (id: string) => void;
   listSearchQuery: string;
+  listViewName: string;
   analyticsReportName: string;
+  onRefreshData: (successMessage: string) => Promise<boolean>;
 }) {
-  if (screen.kind === "home") return <HomePage data={data} onReportBuilder={onReportBuilder} onDataChange={onDataChange} onToast={onToast} />;
-  if (screen.kind === "marketing") return <MarketingPage data={data} onCreate={onCreate} onActivate={onMarketingActivation} />;
-  if (screen.kind === "commerce") return <CommercePage stores={data.stores} onCreateStore={onCreateStore} />;
+  if (screen.kind === "home") return <HomePage data={data} onReportBuilder={onReportBuilder} onDataChange={onDataChange} onToast={onToast} onRefreshData={onRefreshData} />;
+  if (screen.kind === "marketing") return <MarketingPage data={data} onCreate={onCreate} onActivate={onMarketingActivation} onDataChange={onDataChange} onToast={onToast} />;
+  if (screen.kind === "commerce") return <CommerceWorkspace data={data} onDataChange={onDataChange} onToast={onToast} />;
   if (screen.kind === "account") return <YourAccountPage user={data.user} onBuyNow={() => onToast({ tone: "warning", message: "Purchase checkout is a placeholder in this CRM clone." })} />;
-  if (screen.kind === "analytics") return <AnalyticsPage data={data} reportName={analyticsReportName} onReportBuilder={onReportBuilder} onToast={onToast} />;
-  if (screen.kind === "calendar") return <CalendarPage data={data} events={data.events} onCreate={(startDate, startTime, endTime) => onOpenEvent("Event", "", startDate, startTime, endTime)} onDataChange={onDataChange} onToast={onToast} />;
-  if (screen.kind === "quickText") return <QuickTextPage data={data} onCreate={() => onCreate("QuickText")} onCreateFolder={onQuickTextFolder} onDelete={(record) => onDelete("QuickText", record)} />;
+  if (screen.kind === "analytics") return <AnalyticsPage data={data} reportName={analyticsReportName} onReportBuilder={onReportBuilder} onDataChange={onDataChange} onToast={onToast} onRefreshData={onRefreshData} />;
+  if (screen.kind === "calendar") return <CalendarPage data={data} events={data.events} onCreate={(startDate, startTime, endTime) => onOpenEvent("Event", "", startDate, startTime, endTime)} onDataChange={onDataChange} onToast={onToast} onRefreshData={onRefreshData} />;
+  if (screen.kind === "quickText") return <QuickTextPage data={data} onCreate={() => onCreate("QuickText")} onCreateFolder={onQuickTextFolder} onEdit={(record) => onEdit("QuickText", record)} onDelete={(record) => onDelete("QuickText", record)} onDataChange={onDataChange} onToast={onToast} />;
   if (screen.kind === "record") {
     const record = getRecords(screen.object).find((item) => item.id === screen.id);
     if (!record) return <NotFoundPanel title="Record not found" body="The requested record could not be found." />;
+    if (screen.object === "Invoice") {
+      return <InvoiceDetailPage initialInvoice={record} data={data} onEdit={() => onEdit("Invoice", record)} onChanged={onInvoiceChanged} onDeleted={onInvoiceDeleted} onOpenPayment={() => onOpenInvoicePayment(record)} onToast={onToast} />;
+    }
+    if (screen.object === "MessagingSession") {
+      return <MessagingSessionDetailPage initial={record} data={data} onEdit={() => onEdit("MessagingSession", record)} onChanged={onCommunicationsChanged} onDeleted={(id) => onCommunicationsDeleted("MessagingSession", id)} onToast={onToast} />;
+    }
+    if (screen.object === "VideoCall") {
+      return <VideoCallDetailPage initial={record} data={data} onEdit={() => onEdit("VideoCall", record)} onChanged={onCommunicationsChanged} onDeleted={(id) => onCommunicationsDeleted("VideoCall", id)} onToast={onToast} />;
+    }
+    if (screen.object === "Campaign") {
+      return <CampaignDetailPage initial={record} data={data} onEdit={() => onEdit("Campaign", record)} onChanged={onCampaignChanged} onDeleted={onCampaignDeleted} onToast={onToast} />;
+    }
+    if (screen.object === "Product2") {
+      return <ProductDetailPage product={record} data={data} onDataChange={onDataChange} onDelete={() => onDelete("Product2", record)} onToast={onToast} />;
+    }
+    if (screen.object === "Pricebook2") {
+      return <PriceBookDetailPage priceBook={record} data={data} onDataChange={onDataChange} onDelete={() => onDelete("Pricebook2", record)} onToast={onToast} />;
+    }
+    if (screen.object === "Lead" || screen.object === "Opportunity" || screen.object === "Case") {
+      return <SalesRecordDetailPage object={screen.object} record={record} data={data} onEdit={() => onEdit(screen.object, record)} onDelete={() => onDelete(screen.object, record)} onChangeOwner={() => onListAction("Change Owner", screen.object, [record], [requiredId(record)])} onWorkflow={(action) => onListAction(action, screen.object, [record], [requiredId(record)])} />;
+    }
+    if (screen.object === "Knowledge__kav") {
+      return <KnowledgeDetailPage initial={record} data={data} onEdit={() => onEdit("Knowledge__kav", record)} onDelete={() => onDelete("Knowledge__kav", record)} onChanged={(article, notifications = []) => onDataChange((previous) => ({ ...previous, knowledgeArticles: previous.knowledgeArticles.map((item) => item.id === article.id ? { ...item, ...article } : item), notifications: [...notifications, ...previous.notifications.filter((item) => !notifications.some((incoming) => incoming.id === item.id))] }))} onToast={onToast} />;
+    }
+    if (screen.object === "ListEmail") {
+      return <ListEmailDetailPage email={record} data={data} onEdit={() => onEdit("ListEmail", record)} onDelete={() => onDelete("ListEmail", record)} onChanged={(email) => onDataChange((previous) => ({ ...previous, listEmails: previous.listEmails.map((item) => item.id === email.id ? { ...item, ...email } : item) }))} onToast={onToast} />;
+    }
     return (
       <RecordPage
         object={screen.object}
@@ -1163,16 +1362,18 @@ function ScreenRenderer({
         onRecordDelete={onDelete}
         onSaveActivity={onSaveActivity}
         onSaveFile={onSaveFile}
+        onDeleteFile={onDeleteFile}
         onOpenEvent={() => onOpenEvent(screen.object, requiredId(record))}
         onDataChange={onDataChange}
         onToast={onToast}
+        onRefreshData={onRefreshData}
         labels={recordLabels[requiredId(record)] ?? []}
         campaigns={campaignMembers[requiredId(record)] ?? []}
       />
     );
   }
 
-  return <ListViewPage object={screen.object} data={data} records={getRecords(screen.object)} recordLabels={recordLabels} campaignMembers={campaignMembers} initialQuery={listSearchQuery} onCreate={onCreate} onEdit={onEdit} onDelete={onDelete} onToast={onToast} onListAction={onListAction} onSaveRecord={onSaveRecord} onDataChange={onDataChange} />;
+  return <ListViewPage object={screen.object} data={data} records={getRecords(screen.object)} recordLabels={recordLabels} campaignMembers={campaignMembers} initialQuery={listSearchQuery} initialListView={listViewName} onCreate={onCreate} onEdit={onEdit} onDelete={onDelete} onToast={onToast} onListAction={onListAction} onSaveRecord={onSaveRecord} onDataChange={onDataChange} />;
 }
 
 function LeftAppRail({ activeApp }: { activeApp: AppKey }) {
@@ -1206,22 +1407,6 @@ function LeftAppRail({ activeApp }: { activeApp: AppKey }) {
         })}
       </nav>
     </aside>
-  );
-}
-
-function TrialBanner({ onBuyNow }: { onBuyNow: () => void }) {
-  return (
-    <div className="flex min-h-10 shrink-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-[#d8dde6] bg-[#032d60] px-3 py-2 text-center text-sm text-white">
-      <span className="font-medium">Don&apos;t wait: Save 70% now with code STARTER70 | Terms apply.</span>
-      <button
-        type="button"
-        onClick={onBuyNow}
-        className="inline-flex min-h-7 items-center rounded border border-white/70 bg-white px-3 text-xs font-semibold text-[#032d60] transition-colors hover:bg-[#eef4ff] active:scale-95"
-      >
-        Buy Now
-      </button>
-      <span className="text-xs text-[#d8e6fe]">Days left in your Trial: 30</span>
-    </div>
   );
 }
 
@@ -1550,7 +1735,7 @@ function searchRecordHref(object: CrmObject, record: RecordData, label: string) 
   return listSearchHref(object, label);
 }
 
-function notificationForSavedRecord(object: CrmObject, record: RecordData, isUpdate: boolean, values: RecordData) {
+function notificationForSavedRecord(object: CrmObject, record: RecordData, isUpdate: boolean, values: RecordData, deliveryAccepted = false) {
   const title = recordTitle(object, record);
   const href = canRouteToRecord(object) ? routeForRecord(object, requiredId(record)) : listSearchHref(object, title);
   const definition = OBJECT_DEFINITIONS[object];
@@ -1590,10 +1775,10 @@ function notificationForSavedRecord(object: CrmObject, record: RecordData, isUpd
     };
   }
 
-  if (object === "Case" && values.sendNotificationEmailToContact === true) {
+  if (object === "Case" && values.sendNotificationEmailToContact === true && deliveryAccepted) {
     return {
-      title: "Case contact notification queued",
-      body: `${title} will notify the related contact.`,
+      title: "Case contact notified",
+      body: `${title} was accepted for delivery to the related contact.`,
       href,
       category: "Workflow"
     };
@@ -1850,8 +2035,7 @@ function customAnalyticsReport(data: BootstrapData, report: RecordData): Analyti
 
 function dashboardReportComponents(dashboard: RecordData, reports: AnalyticsReportDefinition[]) {
   const ids = Array.isArray(dashboard.reportIds) ? dashboard.reportIds.map(String) : [];
-  const selected = ids.map((id) => reports.find((report) => report.id === id)).filter((report): report is AnalyticsReportDefinition => Boolean(report));
-  return selected.length > 0 ? selected : reports.slice(0, 2);
+  return ids.map((id) => reports.find((report) => report.id === id || report.id === `custom-report-${id}`)).filter((report): report is AnalyticsReportDefinition => Boolean(report));
 }
 
 function selectAnalyticsReport(reports: AnalyticsReportDefinition[], reportName: string) {
@@ -2982,6 +3166,7 @@ function ListViewPage({
   recordLabels,
   campaignMembers,
   initialQuery,
+  initialListView,
   onCreate,
   onEdit,
   onDelete,
@@ -2996,6 +3181,7 @@ function ListViewPage({
   recordLabels: Record<string, string[]>;
   campaignMembers: Record<string, string[]>;
   initialQuery: string;
+  initialListView: string;
   onCreate: (object: CrmObject) => void;
   onEdit: (object: CrmObject, record: RecordData) => void;
   onDelete: (object: CrmObject, record: RecordData) => void;
@@ -3007,7 +3193,7 @@ function ListViewPage({
   const definition = OBJECT_DEFINITIONS[object];
   const objectPreferences = useMemo(() => data.listViewPreferences.filter((item) => item.object === object), [data.listViewPreferences, object]);
   const pinnedPreference = objectPreferences.find((item) => item.pinned);
-  const [listView, setListView] = useState(String(pinnedPreference?.viewName ?? definition.defaultList));
+  const [listView, setListView] = useState(String(initialListView || pinnedPreference?.viewName || definition.defaultList));
   const [display, setDisplay] = useState<"Table" | "Kanban">("Table");
   const [query, setQuery] = useState(initialQuery);
   const [listViewSearch, setListViewSearch] = useState("");
@@ -3015,7 +3201,7 @@ function ListViewPage({
   const [selected, setSelected] = useState<string[]>([]);
   const [sortState, setSortState] = useState<ListSortState>(null);
   const [controlDialog, setControlDialog] = useState<string | null>(null);
-  const listViews = useMemo(() => Array.from(new Set([...definition.listViews, ...objectPreferences.map((item) => String(item.viewName))])), [definition.listViews, objectPreferences]);
+  const listViews = useMemo(() => Array.from(new Set([definition.defaultList, ...definition.listViews, ...objectPreferences.map((item) => String(item.viewName))])), [definition.defaultList, definition.listViews, objectPreferences]);
   const activePreference = objectPreferences.find((item) => item.viewName === listView);
   const activeColumns = columnsForListView(definition, activePreference);
   const activeColumnWidths = columnWidthsForListView(activePreference);
@@ -3031,24 +3217,37 @@ function ListViewPage({
   const isPinned = Boolean(activePreference?.pinned);
 
   useEffect(() => {
-    setListView(String(pinnedPreference?.viewName ?? definition.defaultList));
+    setListView(String(initialListView || pinnedPreference?.viewName || definition.defaultList));
     setQuery(initialQuery);
     setListViewSearch("");
     setSelected([]);
     setSortState(null);
     setControlDialog(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [object, initialQuery]);
+  }, [object, initialQuery, initialListView]);
 
   const visibleRecords = useMemo(() => {
-    const filteredBySavedFilters = records.filter((record) => activeFilters.every((filter) => recordMatchesListFilter(record, filter)));
+    const filteredByStandardView = records.filter((record) => recordMatchesStandardListView(object, listView, record, data.globalSearchRecents, data.user.id));
+    const filteredBySavedFilters = filteredByStandardView.filter((record) => activeFilters.every((filter) => recordMatchesListFilter(record, filter)));
     const filtered = filteredBySavedFilters.filter((record) => Object.values(record).join(" ").toLowerCase().includes(query.toLowerCase()));
     if (!sortState) return filtered;
     return [...filtered].sort((a, b) => {
       const comparison = compareRecordValues(a[sortState.key], b[sortState.key]);
       return sortState.direction === "asc" ? comparison : -comparison;
     });
-  }, [activeFilters, query, records, sortState]);
+  }, [activeFilters, data.globalSearchRecents, data.user.id, listView, object, query, records, sortState]);
+
+  async function refreshList() {
+    try {
+      const response = await fetch("/api/bootstrap", { cache: "no-store" });
+      const refreshed = await response.json();
+      if (!response.ok) throw new Error(String(refreshed.error ?? "Refresh failed."));
+      onDataChange(() => refreshed as BootstrapData);
+      onToast({ tone: "success", message: "List refreshed from the CRM." });
+    } catch (error) {
+      onToast({ tone: "error", message: error instanceof Error ? error.message : "The list could not be refreshed." });
+    }
+  }
 
   const recentListViews = useMemo(() => listViews.slice(0, 2).filter((view) => listViewMatchesSearch(view, listViewSearch)), [listViewSearch, listViews]);
   const otherListViews = useMemo(() => listViews.slice(2).filter((view) => listViewMatchesSearch(view, listViewSearch)), [listViewSearch, listViews]);
@@ -3230,7 +3429,7 @@ function ListViewPage({
     }
   }
 
-  if (object === "QuickText") return <QuickTextPage data={data} onCreate={() => onCreate("QuickText")} onCreateFolder={() => onListAction("New Folder", object, visibleRecords, selected)} onDelete={(record) => onDelete("QuickText", record)} />;
+  if (object === "QuickText") return <QuickTextPage data={data} onCreate={() => onCreate("QuickText")} onCreateFolder={() => onListAction("New Folder", object, visibleRecords, selected)} onEdit={(record) => onEdit("QuickText", record)} onDelete={(record) => onDelete("QuickText", record)} onDataChange={onDataChange} onToast={onToast} />;
 
   return (
     <section className="space-y-3">
@@ -3276,7 +3475,7 @@ function ListViewPage({
             {definition.actions.map((action) => (
               <Button key={action} variant={action === "New" || action === "New Quick Text" || action === "Send Email" ? "primary" : "secondary"} onClick={() => handleAction(action)}>
                 {action === "New" && <Plus size={14} />}
-                {action}
+                {object === "Invoice" && action === "New" ? "New Invoice" : action}
               </Button>
             ))}
           </div>
@@ -3306,7 +3505,7 @@ function ListViewPage({
                 </DropdownMenu.Content>
               </DropdownMenu.Portal>
             </DropdownMenu.Root>
-            <ToolbarButton label="Refresh" icon={RefreshCw} onClick={() => onToast({ tone: "success", message: "List refreshed." })} />
+            <ToolbarButton label="Refresh" icon={RefreshCw} onClick={() => void refreshList()} />
             <ToolbarButton
               label="Column sort"
               icon={ChevronsUpDown}
@@ -3781,7 +3980,7 @@ function DataGrid({
               {definition.columns.map((column, columnIndex) => {
                 const sourceKey = inlineEditableFieldForColumn(definition.object, column.key);
                 const editing = Boolean(sourceKey && editingCell?.recordId === requiredId(record) && editingCell.key === sourceKey);
-                const value = formatCell(record[column.key]);
+                const value = formatListCell(definition.object, record, column.key);
                 const labels = recordLabels[requiredId(record)] ?? [];
                 const campaigns = campaignMembers[requiredId(record)] ?? [];
                 return (
@@ -3808,6 +4007,12 @@ function DataGrid({
                               }
                             }}
                           />
+                        ) : definition.object === "Invoice" && column.key === "status" ? (
+                          <InvoiceStatusBadge status={String(record.status ?? "Draft")} />
+                        ) : (definition.object === "MessagingSession" || definition.object === "VideoCall") && column.key === "status" ? (
+                          <CommunicationsStatusBadge status={record.status} />
+                        ) : definition.object === "Campaign" && column.key === "status" ? (
+                          <CampaignStatusBadge status={record.status} />
                         ) : column.link && canRouteToRecord(definition.object) ? (
                           <Link href={routeForRecord(definition.object, requiredId(record))} className="truncate text-brand-700 hover:underline">
                             {value || "-"}
@@ -3866,12 +4071,12 @@ function RowActions({ object, record, onEdit, onDelete, onChangeOwner }: { objec
               </Link>
             </DropdownMenu.Item>
           )}
-          {canEditFromRow(object) && (
+          {canEditFromRow(object) && (object !== "Invoice" || record.status === "Draft") && (
             <DropdownMenu.Item onSelect={() => onEdit(object, record)} className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-brand-50">
               <Edit3 size={14} /> Edit
             </DropdownMenu.Item>
           )}
-          {canDeleteFromRow(object) && (
+          {canDeleteFromRow(object) && (object !== "Invoice" || record.status === "Draft") && (
             <DropdownMenu.Item onSelect={() => onDelete(object, record)} className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm text-[#ba0517] hover:bg-[#fff1f1]">
               <Trash2 size={14} /> Delete
             </DropdownMenu.Item>
@@ -4065,9 +4270,11 @@ function RecordPage({
   onRecordDelete,
   onSaveActivity,
   onSaveFile,
+  onDeleteFile,
   onOpenEvent,
   onDataChange,
   onToast,
+  onRefreshData,
   labels,
   campaigns
 }: {
@@ -4080,11 +4287,13 @@ function RecordPage({
   onChangeOwner: () => void;
   onRecordEdit: (object: CrmObject, record: RecordData) => void;
   onRecordDelete: (object: CrmObject, record: RecordData) => void;
-  onSaveActivity: (activity: RecordData) => Promise<void>;
-  onSaveFile: (file: RecordData, attachment?: boolean) => Promise<void>;
+  onSaveActivity: (activity: RecordData) => Promise<boolean>;
+  onSaveFile: (file: FileUploadRequest, attachment?: boolean) => Promise<boolean>;
+  onDeleteFile: (file: RecordData, attachment?: boolean) => Promise<boolean>;
   onOpenEvent: () => void;
   onDataChange: BootstrapDataUpdater;
   onToast: (toast: ToastState) => void;
+  onRefreshData: (successMessage: string) => Promise<boolean>;
   labels: string[];
   campaigns: string[];
 }) {
@@ -4179,6 +4388,7 @@ function RecordPage({
               data={data}
               onCreate={onCreate}
               onSaveFile={onSaveFile}
+              onDeleteFile={onDeleteFile}
               onRecordEdit={onRecordEdit}
               onRecordDelete={onRecordDelete}
               onViewAll={(title, relatedObject, records, fields) => setDialog({ type: "relatedList", title, object: relatedObject, records, fields })}
@@ -4190,7 +4400,7 @@ function RecordPage({
           </Tabs.Content>
         </Tabs.Root>
       </div>
-      <ActivityPanel object={object} record={record} data={data} onSaveActivity={onSaveActivity} onOpenEvent={onOpenEvent} onToast={onToast} />
+      <ActivityPanel object={object} record={record} data={data} onSaveActivity={onSaveActivity} onOpenEvent={onOpenEvent} onToast={onToast} onRefreshData={onRefreshData} />
       {dialog?.type === "hierarchy" && <RecordHierarchyDialog object={object} record={record} data={data} onClose={() => setDialog(null)} />}
       {dialog?.type === "relatedList" && (
         <RelatedListDialog
@@ -4241,6 +4451,7 @@ function RelatedLists({
   data,
   onCreate,
   onSaveFile,
+  onDeleteFile,
   onRecordEdit,
   onRecordDelete,
   onViewAll,
@@ -4250,7 +4461,8 @@ function RelatedLists({
   record: RecordData;
   data: BootstrapData;
   onCreate: (object: CrmObject) => void;
-  onSaveFile: (file: RecordData, attachment?: boolean) => Promise<void>;
+  onSaveFile: (file: FileUploadRequest, attachment?: boolean) => Promise<boolean>;
+  onDeleteFile: (file: RecordData, attachment?: boolean) => Promise<boolean>;
   onRecordEdit: (object: CrmObject, record: RecordData) => void;
   onRecordDelete: (object: CrmObject, record: RecordData) => void;
   onViewAll: (title: string, object: RelatedListObject, records: RecordData[], fields: string[]) => void;
@@ -4269,8 +4481,8 @@ function RelatedLists({
       <RelatedListCard title={`Opportunities (${opportunities.length})`} action="New" onAction={() => onCreate("Opportunity")} records={opportunities} fields={["stage", "amount", "closeDate"]} object="Opportunity" onViewAll={onViewAll} onEdit={onRecordEdit} onDelete={onRecordDelete} />
       <RelatedListCard title={`Cases (${cases.length})`} action="New" onAction={() => onCreate("Case")} records={cases} fields={["status", "priority", "subject"]} object="Case" onViewAll={onViewAll} onEdit={onRecordEdit} onDelete={onRecordDelete} />
       {object === "Account" && <RelatedListCard title={`Partners (${partners.length})`} action="New" onAction={onNewPartner} records={partners} fields={["role"]} viewAll={partners.length > 0 ? "View All Partners" : undefined} object="Partner" onViewAll={onViewAll} />}
-      <FileDropzone title={`Files (${files.length})`} action="Add Files" records={files} onUpload={(file) => onSaveFile({ ...file, relatedObjectType: object, relatedRecordId: requiredId(record) })} />
-      <FileDropzone title={`Notes & Attachments (${attachments.length})`} action="Upload Files" records={attachments} onUpload={(file) => onSaveFile({ ...file, relatedObjectType: object, relatedRecordId: requiredId(record) }, true)} />
+      <FileDropzone title={`Files (${files.length})`} action="Add Files" records={files} attachment={false} onUpload={(file) => onSaveFile({ file, relatedObjectType: object, relatedRecordId: requiredId(record) })} onDelete={(file) => onDeleteFile(file)} />
+      <FileDropzone title={`Notes & Attachments (${attachments.length})`} action="Upload Files" records={attachments} attachment onUpload={(file) => onSaveFile({ file, relatedObjectType: object, relatedRecordId: requiredId(record) }, true)} onDelete={(file) => onDeleteFile(file, true)} />
     </div>
   );
 }
@@ -4481,85 +4693,134 @@ function PartnerModal({ account, onClose, onSave }: { account?: RecordData; onCl
   );
 }
 
-function FileDropzone({ title, action, records, onUpload }: { title: string; action: string; records: RecordData[]; onUpload: (file: RecordData) => Promise<void> }) {
+function FileDropzone({
+  title,
+  action,
+  records,
+  attachment,
+  onUpload,
+  onDelete
+}: {
+  title: string;
+  action: string;
+  records: RecordData[];
+  attachment: boolean;
+  onUpload: (file: File) => Promise<boolean>;
+  onDelete: (file: RecordData) => Promise<boolean>;
+}) {
   const [dragging, setDragging] = useState(false);
-  const [pendingUploads, setPendingUploads] = useState<Array<{ id: string; name: string; size: number; progress: number; status: "Uploading" | "Complete" | "Error" }>>([]);
+  const [pendingUploads, setPendingUploads] = useState<Array<{ id: string; name: string; size: number; status: "Uploading" | "Complete" | "Error" }>>([]);
+  const [pendingDeletion, setPendingDeletion] = useState<RecordData | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const fileActionClass = "inline-flex min-h-7 items-center gap-1 rounded border border-[#c9c9c9] bg-white px-2 py-1 text-xs font-semibold text-brand-700 hover:bg-[#f3f3f3]";
   function uploadFiles(files: FileList | null) {
     if (!files) return;
     Array.from(files).forEach((file) => void uploadFile(file));
   }
   async function uploadFile(file: File) {
     const id = `upload-${file.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setPendingUploads((current) => [{ id, name: file.name, size: file.size, progress: 0, status: "Uploading" }, ...current]);
+    setPendingUploads((current) => [{ id, name: file.name, size: file.size, status: "Uploading" }, ...current]);
     try {
-      for (const progress of [24, 58, 88]) {
-        await waitForUploadProgress();
-        setPendingUploads((current) => current.map((item) => (item.id === id ? { ...item, progress } : item)));
-      }
-      await onUpload({ id: `pending-${file.name}-${Date.now()}`, name: file.name, size: file.size });
-      setPendingUploads((current) => current.map((item) => (item.id === id ? { ...item, progress: 100, status: "Complete" } : item)));
+      const uploaded = await onUpload(file);
+      if (!uploaded) throw new Error("Upload rejected");
+      setPendingUploads((current) => current.map((item) => (item.id === id ? { ...item, status: "Complete" } : item)));
       await waitForUploadProgress(300);
       setPendingUploads((current) => current.filter((item) => item.id !== id));
     } catch {
       setPendingUploads((current) => current.map((item) => (item.id === id ? { ...item, status: "Error" } : item)));
     }
   }
+  async function confirmDelete() {
+    if (!pendingDeletion) return;
+    setDeleting(true);
+    const deleted = await onDelete(pendingDeletion);
+    setDeleting(false);
+    if (deleted) setPendingDeletion(null);
+  }
   return (
-    <div className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
-      <div className="flex items-center justify-between border-b border-[#d8dde6] px-3 py-2">
-        <h3 className="font-semibold">{title}</h3>
-        <label className="inline-flex cursor-pointer items-center gap-1 rounded border border-[#c9c9c9] bg-white px-3 py-1 text-xs hover:bg-[#f3f3f3]">
-          <Upload size={13} />
-          {action}
-          <input
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(event) => {
-              uploadFiles(event.target.files);
-              event.currentTarget.value = "";
-            }}
-          />
-        </label>
-      </div>
-      <div
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => {
-          event.preventDefault();
-          setDragging(false);
-          uploadFiles(event.dataTransfer.files);
-        }}
-        className={cn("m-3 rounded border border-dashed border-[#c9c9c9] p-5 text-center text-sm text-[#706e6b]", dragging && "border-brand-500 bg-brand-50 text-brand-700")}
-      >
-        <div className="font-semibold">Drop Files</div>
-        <div>Or drop files</div>
-      </div>
-      {(pendingUploads.length > 0 || records.length > 0) && (
-        <div className="border-t border-[#d8dde6] p-3">
-          {pendingUploads.map((upload) => (
-            <div key={upload.id} className="mb-2 rounded border border-brand-200 bg-brand-50 p-2 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <span>{upload.name}</span>
-                <span className="text-xs text-[#706e6b]">{upload.status === "Error" ? "Upload failed" : `${upload.progress}%`}</span>
-              </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
-                <div className={cn("h-full rounded-full", upload.status === "Error" ? "bg-[#ba0517]" : "bg-brand-600")} style={{ width: `${upload.status === "Error" ? 100 : upload.progress}%` }} />
-              </div>
-            </div>
-          ))}
-          {records.map((record) => (
-            <div key={requiredId(record)} className="flex items-center justify-between py-1 text-sm">
-              <span>{record.name as string}</span>
-              <span className="text-xs text-[#706e6b]">{record.size ? `${Math.round(Number(record.size) / 1024)} KB` : ""}</span>
-            </div>
-          ))}
+    <>
+      <div className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
+        <div className="flex items-center justify-between border-b border-[#d8dde6] px-3 py-2">
+          <h3 className="font-semibold">{title}</h3>
+          <label className="inline-flex cursor-pointer items-center gap-1 rounded border border-[#c9c9c9] bg-white px-3 py-1 text-xs hover:bg-[#f3f3f3]">
+            <Upload size={13} />
+            {action}
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                uploadFiles(event.target.files);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
         </div>
+        <div
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragging(false);
+            uploadFiles(event.dataTransfer.files);
+          }}
+          className={cn("m-3 rounded border border-dashed border-[#c9c9c9] p-5 text-center text-sm text-[#706e6b]", dragging && "border-brand-500 bg-brand-50 text-brand-700")}
+        >
+          <div className="font-semibold">Drop Files</div>
+          <div>Files are stored securely in this organization.</div>
+        </div>
+        {(pendingUploads.length > 0 || records.length > 0) && (
+          <div className="border-t border-[#d8dde6] p-3">
+            {pendingUploads.map((upload) => (
+              <div key={upload.id} className={cn("mb-2 rounded border p-2 text-sm", upload.status === "Error" ? "border-[#ea001e] bg-[#fff1f1]" : "border-brand-200 bg-brand-50")}>
+                <div className="flex items-center justify-between gap-2">
+                  <span>{upload.name}</span>
+                  <span className="text-xs text-[#706e6b]">{upload.status === "Uploading" ? "Uploading…" : upload.status === "Complete" ? "Stored" : "Upload failed"}</span>
+                </div>
+              </div>
+            ))}
+            {records.map((record) => {
+              const available = Boolean(record.checksum);
+              const kind = attachment ? "attachment" : "file";
+              const fileUrl = `/api/files/${encodeURIComponent(requiredId(record))}?kind=${kind}`;
+              return (
+                <div key={requiredId(record)} className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eef1f6] py-2 last:border-0">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{String(record.name ?? "File")}</div>
+                    <div className="text-xs text-[#706e6b]">
+                      {record.size ? `${Math.max(1, Math.round(Number(record.size) / 1024))} KB` : "Unknown size"}
+                      {record.contentType ? ` · ${String(record.contentType)}` : ""}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {available ? (
+                      <>
+                        <a href={`${fileUrl}&disposition=inline`} target="_blank" rel="noreferrer" className={fileActionClass} aria-label={`Preview ${String(record.name ?? "file")}`}><Eye size={13} /> Preview</a>
+                        <a href={fileUrl} className={fileActionClass} aria-label={`Download ${String(record.name ?? "file")}`}><Download size={13} /> Download</a>
+                      </>
+                    ) : <span className="text-xs text-[#706e6b]">Legacy metadata only</span>}
+                    <button className={fileActionClass} onClick={() => setPendingDeletion(record)} aria-label={`Delete ${String(record.name ?? "file")}`}><Trash2 size={13} /></button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      {pendingDeletion && (
+        <BaseDialog
+          open
+          title={`Delete ${String(pendingDeletion.name ?? (attachment ? "attachment" : "file"))}?`}
+          onClose={() => !deleting && setPendingDeletion(null)}
+          footer={<><Button onClick={() => setPendingDeletion(null)} disabled={deleting}>Cancel</Button><Button variant="destructive" onClick={() => void confirmDelete()} disabled={deleting}>{deleting ? "Deleting…" : "Delete"}</Button></>}
+        >
+          <p className="text-sm text-[#706e6b]">This permanently removes the stored content and its CRM file record.</p>
+        </BaseDialog>
       )}
-    </div>
+    </>
   );
 }
 
@@ -4604,7 +4865,7 @@ function DetailsSections({ object, record, onEdit, onChangeOwner }: { object: "A
   );
 }
 
-function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent, onToast }: { object: "Account" | "Contact"; record: RecordData; data: BootstrapData; onSaveActivity: (activity: RecordData) => Promise<void>; onOpenEvent: () => void; onToast: (toast: ToastState) => void }) {
+function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent, onToast, onRefreshData }: { object: "Account" | "Contact"; record: RecordData; data: BootstrapData; onSaveActivity: (activity: RecordData) => Promise<boolean>; onOpenEvent: () => void; onToast: (toast: ToastState) => void; onRefreshData: (successMessage: string) => Promise<boolean> }) {
   const [mode, setMode] = useState<"email" | "call" | "task">("email");
   const [emailAction, setEmailAction] = useState<"send" | "log">("send");
   const [subject, setSubject] = useState("");
@@ -4696,9 +4957,12 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent, onTo
 
   async function submit() {
     const id = `${mode}-${Date.now()}`;
-    if (mode === "email") await onSaveActivity({ id, type: "email", to: recipient, subject: subject || (emailAction === "send" ? "Email" : "Logged Email"), body, emailAction, ...related });
-    if (mode === "call") await onSaveActivity({ id, type: "call", subject: subject || "Call", comments: [callResult, body].filter(Boolean).join("\n"), ...related });
-    if (mode === "task") await onSaveActivity({ id, type: "task", subject: subject || "Task", dueDate: taskDueDate, status: taskStatus, priority: taskPriority, ...related });
+    const saved = mode === "email"
+      ? await onSaveActivity({ id, type: "email", to: recipient, subject: subject || (emailAction === "send" ? "Email" : "Logged Email"), body, emailAction, ...related })
+      : mode === "call"
+        ? await onSaveActivity({ id, type: "call", subject: subject || "Call", comments: [callResult, body].filter(Boolean).join("\n"), ...related })
+        : await onSaveActivity({ id, type: "task", subject: subject || "Task", dueDate: taskDueDate, status: taskStatus, priority: taskPriority, ...related });
+    if (!saved) return;
     setSubject("");
     setBody("");
     if (mode === "email") setEmailAction("send");
@@ -4729,6 +4993,13 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent, onTo
   function expandAll() {
     const nextExpanded = visibleActivities.map((activity) => requiredId(activity)).filter(Boolean);
     setExpandedIds((current) => (nextExpanded.every((id) => current.includes(id)) ? [] : nextExpanded));
+  }
+
+  async function refreshActivity() {
+    if (await onRefreshData("Activity refreshed from the CRM.")) {
+      setRefreshedAt(new Date());
+      void loadActivityInsights(true);
+    }
   }
 
   return (
@@ -4821,7 +5092,7 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent, onTo
               </Popover.Content>
             </Popover.Portal>
           </Popover.Root>
-          <button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label="Refresh" onClick={() => { setRefreshedAt(new Date()); void loadActivityInsights(true); }}><RefreshCw size={13} /></button>
+          <button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label="Refresh" onClick={() => void refreshActivity()}><RefreshCw size={13} /></button>
           <button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label="Expand All" onClick={expandAll}><ChevronsUpDown size={13} /></button>
         </div>
         <div className="mb-2 flex items-center justify-between gap-2">
@@ -4879,7 +5150,7 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent, onTo
   );
 }
 
-function HomePage({ data, onReportBuilder, onDataChange, onToast }: { data: BootstrapData; onReportBuilder: (reportType?: string) => void; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void }) {
+function HomePage({ data, onReportBuilder, onDataChange, onToast, onRefreshData }: { data: BootstrapData; onReportBuilder: (reportType?: string) => void; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void; onRefreshData: (successMessage: string) => Promise<boolean> }) {
   const preferences = data.userPreferences[0];
   const preferredMode = String(preferences?.homeMode ?? "Onboarding") === "Dashboard" ? "Dashboard" : "Onboarding";
   const [homeMode, setHomeMode] = useState<"Onboarding" | "Dashboard">(preferredMode);
@@ -4983,9 +5254,8 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast }: { data: Boot
     }
   }
 
-  function refreshDashboard() {
-    setRefreshedAt(new Date());
-    onToast({ tone: "success", message: "Home dashboard refreshed." });
+  async function refreshDashboard() {
+    if (await onRefreshData("Home dashboard refreshed from the CRM.")) setRefreshedAt(new Date());
   }
 
   if (homeMode === "Dashboard") {
@@ -4995,7 +5265,7 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast }: { data: Boot
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="text-xs text-[#706e6b]">As of {formatDateTime(refreshedAt.toISOString())}</div>
             <div className="flex gap-1">
-              <Button onClick={refreshDashboard}><RefreshCw size={13} /> Refresh Chart</Button>
+              <Button onClick={() => void refreshDashboard()}><RefreshCw size={13} /> Refresh Chart</Button>
               <Button onClick={() => setGoalDialogOpen(true)}>Edit Goal</Button>
             </div>
           </div>
@@ -5195,7 +5465,7 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast }: { data: Boot
   );
 }
 
-function MarketingPage({ data, onCreate, onActivate }: { data: BootstrapData; onCreate: (object: CrmObject) => void; onActivate: () => void }) {
+function MarketingPage({ data, onCreate, onActivate, onDataChange, onToast }: { data: BootstrapData; onCreate: (object: CrmObject) => void; onActivate: () => void; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void }) {
   const latestActivation = data.marketingActivations[0];
   const growthEngines = [
     {
@@ -5206,9 +5476,9 @@ function MarketingPage({ data, onCreate, onActivate }: { data: BootstrapData; on
     },
     {
       title: "Custom Landing Pages with Forms",
-      body: "Use marketing activation settings as the launch point for branded forms and capture pages.",
-      action: latestActivation ? "Edit Activation" : "Activate",
-      onClick: onActivate
+      body: "Create, publish, and monitor branded lead-capture forms with optional Campaign attribution.",
+      action: "Manage Pages",
+      href: "#marketing-landing-pages"
     },
     {
       title: "Audience Building",
@@ -5293,35 +5563,7 @@ function MarketingPage({ data, onCreate, onActivate }: { data: BootstrapData; on
           </div>
         </DashboardPanel>
       </div>
-    </section>
-  );
-}
-
-function CommercePage({ stores, onCreateStore }: { stores: RecordData[]; onCreateStore: () => void }) {
-  if (stores.length === 0) {
-    return <EmptyPanel title="You don't have any stores yet!" body="A store holds product, payment, order, and promotion data." action="Create Store" onAction={onCreateStore} />;
-  }
-
-  return (
-    <section className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
-      <div className="flex items-center justify-between border-b border-[#d8dde6] p-3">
-        <div>
-          <h1 className="text-xl font-semibold">Stores</h1>
-          <div className="text-xs text-[#706e6b]">{stores.length} store{stores.length === 1 ? "" : "s"}</div>
-        </div>
-        <Button variant="primary" onClick={onCreateStore}>Create Store</Button>
-      </div>
-      <div className="grid gap-3 p-3 md:grid-cols-2 xl:grid-cols-3">
-        {stores.map((store) => (
-          <div key={requiredId(store)} className="rounded border border-[#d8dde6] p-3">
-            <div className="font-semibold">{store.name as string}</div>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-[#706e6b]">
-              <div>Status <div className="text-[#181818]">{formatCell(store.status) || "Draft"}</div></div>
-              <div>Currency <div className="text-[#181818]">{formatCell(store.currency) || "USD"}</div></div>
-            </div>
-          </div>
-        ))}
-      </div>
+      <MarketingLandingPagesPanel data={data} onDataChange={onDataChange} onToast={onToast} />
     </section>
   );
 }
@@ -5352,19 +5594,19 @@ function YourAccountPage({ user, onBuyNow }: { user: BootstrapData["user"]; onBu
   );
 }
 
-function AnalyticsPage({ data, reportName, onReportBuilder, onToast }: { data: BootstrapData; reportName: string; onReportBuilder: (reportType?: string) => void; onToast: (toast: ToastState) => void }) {
+function AnalyticsPage({ data, reportName, onReportBuilder, onDataChange, onToast, onRefreshData }: { data: BootstrapData; reportName: string; onReportBuilder: (reportType?: string, record?: RecordData) => void; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void; onRefreshData: (successMessage: string) => Promise<boolean> }) {
   const [refreshedAt, setRefreshedAt] = useState(() => new Date());
   const reports = useMemo(() => buildAnalyticsReports(data), [data]);
   const selectedReport = selectAnalyticsReport(reports, reportName);
+  const selectedCustomReport = data.customReports.find((report) => `custom-report-${requiredId(report)}` === selectedReport.id);
   const totalRecords = selectedReport.rows.reduce((sum, row) => sum + row.count, 0);
   const savedDashboards: Array<RecordData & { reports: AnalyticsReportDefinition[] }> = data.customDashboards.map((dashboard) => ({
     ...dashboard,
     reports: dashboardReportComponents(dashboard, reports)
   }));
 
-  function refreshReport() {
-    setRefreshedAt(new Date());
-    onToast({ tone: "success", message: `${selectedReport.title} refreshed.` });
+  async function refreshReport() {
+    if (await onRefreshData(`${selectedReport.title} refreshed from the CRM.`)) setRefreshedAt(new Date());
   }
 
   function exportReport() {
@@ -5378,6 +5620,22 @@ function AnalyticsPage({ data, reportName, onReportBuilder, onToast }: { data: B
     link.remove();
     URL.revokeObjectURL(url);
     onToast({ tone: "success", message: `${selectedReport.title} exported.` });
+  }
+
+  async function deleteSavedReport(report: RecordData) {
+    if (!window.confirm(`Delete saved report "${String(report.name ?? "Report")}"? Dashboard references to it will also be removed.`)) return;
+    const response = await postUtility("deleteCustomReport", requiredId(report));
+    if (!Array.isArray(response?.customReports)) return onToast({ tone: "error", message: "The saved report could not be deleted." });
+    onDataChange((previous) => ({ ...previous, customReports: response.customReports as RecordData[], customDashboards: Array.isArray(response.customDashboards) ? response.customDashboards as RecordData[] : previous.customDashboards }));
+    onToast({ tone: "success", message: "Saved report deleted." });
+  }
+
+  async function deleteSavedDashboard(dashboard: RecordData) {
+    if (!window.confirm(`Delete dashboard "${String(dashboard.name ?? "Dashboard")}"?`)) return;
+    const response = await postUtility("deleteCustomDashboard", requiredId(dashboard));
+    if (!Array.isArray(response?.customDashboards)) return onToast({ tone: "error", message: "The dashboard could not be deleted." });
+    onDataChange((previous) => ({ ...previous, customDashboards: response.customDashboards as RecordData[] }));
+    onToast({ tone: "success", message: "Dashboard deleted." });
   }
 
   return (
@@ -5431,9 +5689,10 @@ function AnalyticsPage({ data, reportName, onReportBuilder, onToast }: { data: B
               <p className="mt-1 max-w-2xl text-sm text-[#706e6b]">{selectedReport.description}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={() => onReportBuilder(selectedReport.objectLabel)}><Edit3 size={13} /> Edit</Button>
+              <Button onClick={() => onReportBuilder(selectedReport.objectLabel, selectedCustomReport)}><Edit3 size={13} /> {selectedCustomReport ? "Edit" : "Customize"}</Button>
+              {selectedCustomReport && <Button variant="destructive" onClick={() => void deleteSavedReport(selectedCustomReport)}><Trash2 size={13} /> Delete</Button>}
               <Button onClick={exportReport}><Download size={13} /> Export</Button>
-              <Button onClick={refreshReport}><RefreshCw size={13} /> Refresh</Button>
+              <Button onClick={() => void refreshReport()}><RefreshCw size={13} /> Refresh</Button>
             </div>
           </div>
 
@@ -5528,7 +5787,7 @@ function AnalyticsPage({ data, reportName, onReportBuilder, onToast }: { data: B
                     <div className="font-semibold">{String(dashboard.name ?? "Dashboard")}</div>
                     <div className="text-xs text-[#706e6b]">{dashboard.reports.length} component{dashboard.reports.length === 1 ? "" : "s"} - Updated {dashboard.updatedAt ? formatDateTime(String(dashboard.updatedAt)) : "recently"}</div>
                   </div>
-                  <LayoutDashboard size={18} className="text-brand-600" />
+                  <div className="flex items-center gap-1"><Button onClick={() => onReportBuilder("Dashboard", dashboard)}><Edit3 size={13} /> Edit</Button><Button variant="destructive" onClick={() => void deleteSavedDashboard(dashboard)}><Trash2 size={13} /> Delete</Button></div>
                 </div>
                 <div className="grid gap-2 md:grid-cols-2">
                   {dashboard.reports.map((report) => (
@@ -5601,20 +5860,22 @@ function CalendarPage({
   events,
   onCreate,
   onDataChange,
-  onToast
+  onToast,
+  onRefreshData
 }: {
   data: BootstrapData;
   events: RecordData[];
   onCreate: (startDate?: string, startTime?: string, endTime?: string) => void;
   onDataChange: BootstrapDataUpdater;
   onToast: (toast: ToastState) => void;
+  onRefreshData: (successMessage: string) => Promise<boolean>;
 }) {
-  const [anchorDate, setAnchorDate] = useState(() => new Date("2026-07-08T12:00:00"));
+  const [anchorDate, setAnchorDate] = useState(() => new Date());
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [viewMode, setViewMode] = useState<"Week" | "Day" | "Month">("Week");
-  const [miniMonth, setMiniMonth] = useState(() => new Date("2026-07-01T12:00:00"));
+  const [miniMonth, setMiniMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1, 12));
   const [calendarDialog, setCalendarDialog] = useState<CalendarSourceDialogState>(null);
-  const [refreshedAt, setRefreshedAt] = useState(() => new Date("2026-07-08T12:00:00"));
+  const [refreshedAt, setRefreshedAt] = useState(() => new Date());
   const hours = Array.from({ length: 24 }, (_, hour) => hour.toString().padStart(2, "0") + ":00");
   const yearOptions = useMemo(() => Array.from({ length: 9 }, (_, index) => String(2022 + index)), []);
   const defaultCalendarSources = useMemo<RecordData[]>(
@@ -5630,7 +5891,11 @@ function CalendarPage({
     return hasMyCalendar ? data.calendarSources : [defaultCalendarSources[0], ...data.calendarSources];
   }, [data.calendarSources, defaultCalendarSources]);
   const myCalendarVisible = calendarSources.filter((source) => calendarSourceType(source) === "My").some((source) => source.visible !== false);
-  const visibleEvents = myCalendarVisible ? events : [];
+  const calendarSourceById = new Map(calendarSources.map((source) => [requiredId(source), source]));
+  const visibleEvents: RecordData[] = events.filter((event) => {
+    const source = calendarSourceById.get(String(event.calendarSourceId ?? ""));
+    return source ? source.visible !== false : myCalendarVisible;
+  }).map((event) => ({ ...event, calendarColor: String(calendarSourceById.get(String(event.calendarSourceId ?? ""))?.color ?? "#0176d3") } as RecordData));
   const myCalendarSources = calendarSources.filter((source) => calendarSourceType(source) === "My");
   const otherCalendarSources = calendarSources.filter((source) => calendarSourceType(source) === "Other");
   const weekStart = startOfSaturdayWeek(anchorDate);
@@ -5661,9 +5926,8 @@ function CalendarPage({
     setMiniMonth((date) => new Date(Number(year), date.getMonth(), 1, 12));
   }
 
-  function refreshCalendar() {
-    setRefreshedAt(new Date());
-    onToast({ tone: "success", message: "Calendar refreshed." });
+  async function refreshCalendar() {
+    if (await onRefreshData("Calendar refreshed from the CRM.")) setRefreshedAt(new Date());
   }
 
   async function saveCalendarSource(values: RecordData, source?: RecordData) {
@@ -5810,13 +6074,14 @@ function CalendarPage({
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#d8dde6] p-3">
             <div>
               <h1 className="text-xl font-semibold">Calendar</h1>
-              <div className="text-xs text-[#706e6b]">{rangeLabel} | GMT +4 | Updated {formatDateTime(refreshedAt.toISOString())}</div>
+              <div className="text-xs text-[#706e6b]">{rangeLabel} | {String(data.userPreferences[0]?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)} | Updated {formatDateTime(refreshedAt.toISOString())}</div>
             </div>
             <div className="flex flex-wrap gap-1">
               <Button onClick={movePrevious}>{viewMode === "Day" ? "Previous Day" : viewMode === "Month" ? "Previous Month" : "Previous Week"}</Button>
               <Button onClick={moveNext}>{viewMode === "Day" ? "Next Day" : viewMode === "Month" ? "Next Month" : "Next Week"}</Button>
               <Button onClick={() => setAnchorDate(new Date())}>Today</Button>
-              <Button onClick={refreshCalendar}><RefreshCw size={14} /> Refresh</Button>
+              <Button onClick={() => void refreshCalendar()}><RefreshCw size={14} /> Refresh</Button>
+              <a href="/api/calendar/export" className="inline-flex min-h-8 items-center justify-center gap-1 rounded border border-[#c9c9c9] bg-white px-3 py-1 text-xs font-semibold text-brand-700 hover:bg-[#f3f3f3]"><Download size={14} /> Export .ics</a>
               <NativeSelect options={["Week", "Day", "Month"]} value={viewMode} onChange={(value) => setViewMode(value as "Week" | "Day" | "Month")} />
               <Button onClick={() => setSidebarVisible((visible) => !visible)}>{sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}</Button>
               <Button variant="primary" onClick={() => createAt(anchorDate)}>New Event</Button>
@@ -5896,6 +6161,7 @@ function CalendarSourceModal({ state, onClose, onSave }: { state: Exclude<Calend
   return (
     <BaseDialog open title={source ? "Edit Calendar" : "Add Calendar"} onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>Save</Button></>}>
       <div className="grid gap-3">
+        <div className="rounded border border-[#d8dde6] bg-[#f8f9fb] p-3 text-xs text-[#514f4d]">This creates a local CRM calendar. Google, Microsoft, and CalDAV synchronization require a configured provider connection and are not simulated. Use the calendar&apos;s .ics export for interoperability.</div>
         <FieldShell label="Calendar Name" required error={error}>
           <input className={inputClass} value={String(values.name ?? "")} onChange={(event) => setValues({ ...values, name: event.target.value })} />
         </FieldShell>
@@ -5927,10 +6193,10 @@ function CalendarSourceModal({ state, onClose, onSave }: { state: Exclude<Calend
   );
 }
 
-function QuickTextPage({ data, onCreate, onCreateFolder, onDelete }: { data: BootstrapData; onCreate: () => void; onCreateFolder: () => void; onDelete: (record: RecordData) => void }) {
+function QuickTextPage({ data, onCreate, onCreateFolder, onEdit, onDelete, onDataChange, onToast }: { data: BootstrapData; onCreate: () => void; onCreateFolder: () => void; onEdit: (record: RecordData) => void; onDelete: (record: RecordData) => void; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void }) {
   const [activeView, setActiveView] = useState("Recent");
   const [query, setQuery] = useState("");
-  const [favorites, setFavorites] = useState<string[]>([]);
+  const favorites = data.quickTextFavorites.map((favorite) => String(favorite.quickTextId));
   const [previewRecord, setPreviewRecord] = useState<RecordData | null>(null);
   const [showPreviewText, setShowPreviewText] = useState(true);
   const [showFolderColumn, setShowFolderColumn] = useState(true);
@@ -5963,8 +6229,14 @@ function QuickTextPage({ data, onCreate, onCreateFolder, onDelete }: { data: Boo
     { title: "FAVORITES", items: ["All Favorites"] }
   ];
 
-  function toggleFavorite(id: string) {
-    setFavorites((current) => (current.includes(id) ? current.filter((item) => item !== id) : [id, ...current]));
+  async function toggleFavorite(id: string) {
+    const response = await postUtility("toggleQuickTextFavorite", id);
+    if (!Array.isArray(response?.quickTextFavorites)) {
+      onToast({ tone: "error", message: "The Quick Text favorite could not be saved." });
+      return;
+    }
+    onDataChange((previous) => ({ ...previous, quickTextFavorites: response.quickTextFavorites as RecordData[] }));
+    onToast({ tone: "success", message: response.favorite ? "Quick Text added to favorites." : "Quick Text removed from favorites." });
   }
 
   return (
@@ -6036,12 +6308,13 @@ function QuickTextPage({ data, onCreate, onCreateFolder, onDelete }: { data: Boo
               showPreviewText={showPreviewText}
               showFolderColumn={showFolderColumn}
               onPreview={setPreviewRecord}
-              onToggleFavorite={toggleFavorite}
+              onEdit={onEdit}
+              onToggleFavorite={(id) => void toggleFavorite(id)}
               onDelete={onDelete}
             />
           )}
           {previewRecord && (
-            <BaseDialog open title={String(previewRecord.name ?? "Quick Text Preview")} onClose={() => setPreviewRecord(null)} footer={<Button onClick={() => setPreviewRecord(null)}>Close</Button>}>
+            <BaseDialog open title={String(previewRecord.name ?? "Quick Text Preview")} onClose={() => setPreviewRecord(null)} footer={<><Button onClick={() => { onEdit(previewRecord); setPreviewRecord(null); }}>Edit</Button><Button onClick={() => setPreviewRecord(null)}>Close</Button></>}>
               <div className="space-y-3 text-sm">
                 <div className="rounded border border-[#d8dde6] p-3 whitespace-pre-wrap">{String(previewRecord.message ?? "")}</div>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -6064,6 +6337,7 @@ function QuickTextLibraryTable({
   showPreviewText,
   showFolderColumn,
   onPreview,
+  onEdit,
   onToggleFavorite,
   onDelete
 }: {
@@ -6073,6 +6347,7 @@ function QuickTextLibraryTable({
   showPreviewText: boolean;
   showFolderColumn: boolean;
   onPreview: (record: RecordData) => void;
+  onEdit: (record: RecordData) => void;
   onToggleFavorite: (id: string) => void;
   onDelete: (record: RecordData) => void;
 }) {
@@ -6112,6 +6387,7 @@ function QuickTextLibraryTable({
                     <button aria-label="Preview quick text" className="rounded p-1 text-[#706e6b] hover:bg-white hover:text-brand-700" onClick={() => onPreview(record)}>
                       <Eye size={14} />
                     </button>
+                    <button aria-label="Edit quick text" className="rounded p-1 text-[#706e6b] hover:bg-white hover:text-brand-700" onClick={() => onEdit(record)}><Edit3 size={14} /></button>
                     <button aria-label="Delete quick text" className="rounded p-1 text-[#706e6b] hover:bg-white hover:text-[#ba0517]" onClick={() => onDelete(record)}>
                       <Trash2 size={14} />
                     </button>
@@ -6137,6 +6413,9 @@ function ModalHost({
   onResetAppNav,
   onDataChange,
   onToast,
+  onInvoiceSaved,
+  onCommunicationsSaved,
+  onCampaignSaved,
   onApplyListAction
 }: {
   modal: ModalState | null;
@@ -6149,6 +6428,9 @@ function ModalHost({
   onResetAppNav: (app: AppKey) => Promise<boolean>;
   onDataChange: BootstrapDataUpdater;
   onToast: (toast: ToastState) => void;
+  onInvoiceSaved: (result: InvoiceMutationResult, mode: "new" | "edit" | "payment") => void;
+  onCommunicationsSaved: (result: CommunicationsMutationResult) => void;
+  onCampaignSaved: (result: CampaignMutationResult) => void;
   onApplyListAction: (action: string, object: CrmObject, selectedIds: string[], payload: RecordData) => void;
 }) {
   if (!modal) return null;
@@ -6159,17 +6441,21 @@ function ModalHost({
       </BaseDialog>
     );
   }
+  if (modal.type === "invoice") return <InvoiceEditorModal mode={modal.mode} data={data} invoice={modal.record} onClose={onClose} onSaved={(result) => onInvoiceSaved(result, modal.mode)} onToast={onToast} />;
+  if (modal.type === "invoicePayment") return <InvoicePaymentModal invoice={modal.invoice} onClose={onClose} onSaved={(result) => onInvoiceSaved(result, "payment")} onToast={onToast} />;
+  if (modal.type === "messaging") return <MessagingSessionEditorModal data={data} initial={modal.record} onClose={onClose} onSaved={onCommunicationsSaved} onToast={onToast} />;
+  if (modal.type === "videoCall") return <VideoCallEditorModal data={data} initial={modal.record} onClose={onClose} onSaved={onCommunicationsSaved} onToast={onToast} />;
+  if (modal.type === "campaign") return <CampaignEditorModal data={data} initial={modal.record} onClose={onClose} onSaved={onCampaignSaved} onToast={onToast} />;
   if (modal.type === "navEdit") return <NavEditModal app={modal.app} data={data} onClose={onClose} onSave={onSaveAppNav} onReset={onResetAppNav} />;
   if (modal.type === "product") return <ProductWizardModal data={data} onClose={onClose} onSave={(values) => onSaveRecord("Product2", values)} />;
   if (modal.type === "event") return <EventModal data={data} relatedObjectType={modal.relatedObjectType} relatedRecordId={modal.relatedRecordId} startDate={modal.startDate} startTime={modal.startTime} endDate={modal.endDate} endTime={modal.endTime} onClose={onClose} onSave={(values) => onSaveRecord("Event", values)} />;
-  if (modal.type === "quickText") return <QuickTextModal data={data} onClose={onClose} onSave={(values) => onSaveRecord("QuickText", values)} />;
-  if (modal.type === "knowledge") return <KnowledgeModal onClose={onClose} onSave={(values) => onSaveRecord("Knowledge__kav", values)} />;
-  if (modal.type === "listEmail") return <ListEmailWizard data={data} initialValues={modal.initialValues} startingStep={modal.startingStep} initialLayout={modal.layout} onClose={onClose} onSave={(values) => onSaveRecord("ListEmail", values)} />;
+  if (modal.type === "quickText") return <QuickTextModal data={data} initial={modal.record} onClose={onClose} onSave={(values) => onSaveRecord("QuickText", values, { id: modal.record?.id })} />;
+  if (modal.type === "knowledge") return <KnowledgeModal initial={modal.record} onClose={onClose} onSave={(values) => onSaveRecord("Knowledge__kav", values, { id: modal.record?.id })} />;
+  if (modal.type === "listEmail") return <ListEmailWizard data={data} initialValues={modal.initialValues} startingStep={modal.startingStep} initialLayout={modal.layout} onClose={onClose} onSave={(values) => onSaveRecord("ListEmail", values, { id: modal.record?.id })} />;
   if (modal.type === "listAction") return <ListActionModal modal={modal} data={data} recordLabels={recordLabels} campaignMembers={campaignMembers} onClose={onClose} onSaveRecord={onSaveRecord} onApply={onApplyListAction} />;
   if (modal.type === "quickTextFolder") return <QuickTextFolderModal onClose={onClose} onSave={(values) => onApplyListAction("New Folder", "QuickText", [], values)} />;
-  if (modal.type === "marketingActivation") return <MarketingActivationModal user={data.user} onClose={onClose} onSave={(values) => onApplyListAction("Activate Marketing", "ListEmail", [], values)} />;
-  if (modal.type === "store") return <StoreModal onClose={onClose} onSave={(values) => onApplyListAction("Create Store", "ListEmail", [], values)} />;
-  if (modal.type === "reportBuilder") return <ReportBuilderModal reportType={modal.reportType} data={data} onClose={onClose} onDataChange={onDataChange} onToast={onToast} />;
+  if (modal.type === "marketingActivation") return <MarketingActivationModal user={data.user} initial={modal.record} onClose={onClose} onSave={(values) => onApplyListAction("Activate Marketing", "ListEmail", [], values)} />;
+  if (modal.type === "reportBuilder") return <ReportBuilderModal reportType={modal.reportType} initial={modal.record} data={data} onClose={onClose} onDataChange={onDataChange} onToast={onToast} />;
   return <GenericRecordModal mode={modal.mode} object={modal.object} data={data} record={modal.record} onClose={onClose} onSave={(values, stayOpen) => onSaveRecord(modal.object, values, { id: modal.record?.id, stayOpen })} />;
 }
 
@@ -6204,7 +6490,11 @@ function ListActionModal({
     body: string;
     confirmLabel: string;
   } | null>(null);
-  const selectedRecords = modal.selectedIds.length > 0 ? modal.records.filter((record) => modal.selectedIds.includes(requiredId(record))) : modal.records;
+  const selectedRecords = modal.selectedIds.length > 0
+    ? modal.records.filter((record) => modal.selectedIds.includes(requiredId(record)))
+    : modal.action === "Printable View"
+      ? modal.records
+      : [];
   const effectiveSelectedIds = modal.selectedIds.length > 0 ? modal.selectedIds : selectedRecords.map(requiredId).filter(Boolean);
   const targetCount = selectedRecords.length;
   const title = `${modal.action} ${OBJECT_DEFINITIONS[modal.object].plural}`;
@@ -6299,7 +6589,7 @@ function ListActionModal({
 
   if (modal.action === "Merge Cases") {
     return (
-      <BaseDialog open title="Merge Cases" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onApply(modal.action, modal.object, effectiveSelectedIds, values)}>{targetCount >= 2 ? "Merge Cases" : "Done"}</Button></>}>
+      <BaseDialog open title="Merge Cases" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button>{targetCount >= 2 && <Button variant="primary" onClick={() => onApply(modal.action, modal.object, effectiveSelectedIds, values)}>Merge Cases</Button>}</>}>
         {targetCount < 2 ? (
           <p className="text-sm text-[#706e6b]">Select at least two cases from the list to merge. The current list has {targetCount} selected case{targetCount === 1 ? "" : "s"}.</p>
         ) : (
@@ -6327,6 +6617,7 @@ function ListActionModal({
         <Button onClick={onClose}>Cancel</Button>
         <Button
           variant="primary"
+          disabled={targetCount === 0}
           onClick={() =>
             onApply("Convert Lead", "Lead", effectiveSelectedIds, {
               accountName,
@@ -6409,7 +6700,7 @@ function ListActionModal({
   }
 
   if (["Publish", "Assign", "Archive", "Delete Article", "Show more actions"].includes(modal.action)) {
-    const targetLabel = `${targetCount || modal.records.length} article record${(targetCount || modal.records.length) === 1 ? "" : "s"}`;
+    const targetLabel = `${targetCount} selected article record${targetCount === 1 ? "" : "s"}`;
     return (
       <BaseDialog
         open
@@ -6423,6 +6714,7 @@ function ListActionModal({
                 <Button onClick={onClose}>Cancel</Button>
                 <Button
                   variant={modal.action === "Delete Article" ? "destructive" : "primary"}
+                  disabled={targetCount === 0}
                   onClick={() =>
                     modal.action === "Delete Article"
                       ? openKnowledgeDeleteConfirmation("Delete Article")
@@ -6445,18 +6737,18 @@ function ListActionModal({
               <div className="rounded border border-[#d8dde6] p-3">
                 <div className="font-semibold">Delete Draft</div>
                 <p className="mt-1 text-sm text-[#706e6b]">Delete selected articles that are still drafts. Published and archived articles remain untouched.</p>
-                <div className="mt-2"><Button variant="destructive" onClick={() => openKnowledgeDeleteConfirmation("Delete Draft")}>Delete Draft</Button></div>
+                <div className="mt-2"><Button variant="destructive" disabled={targetCount === 0} onClick={() => openKnowledgeDeleteConfirmation("Delete Draft")}>Delete Draft</Button></div>
               </div>
               <div className="rounded border border-[#d8dde6] p-3">
                 <div className="font-semibold">Restore</div>
                 <p className="mt-1 text-sm text-[#706e6b]">Move archived selected articles back to Draft and clear archive metadata.</p>
-                <div className="mt-2"><Button onClick={() => onApply("Restore", modal.object, effectiveSelectedIds, values)}>Restore</Button></div>
+                <div className="mt-2"><Button disabled={targetCount === 0} onClick={() => onApply("Restore", modal.object, effectiveSelectedIds, values)}>Restore</Button></div>
               </div>
               <div className="rounded border border-[#d8dde6] p-3">
                 <FieldShell label="New Owner">
                   <select className={inputClass} value={String(values.ownerId ?? data.user.id)} onChange={(event) => setValues({ ...values, ownerId: event.target.value })}>{data.users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select>
                 </FieldShell>
-                <div className="mt-2"><Button onClick={() => onApply("Change Owner", modal.object, effectiveSelectedIds, values)}>Change Owner</Button></div>
+                <div className="mt-2"><Button disabled={targetCount === 0} onClick={() => onApply("Change Owner", modal.object, effectiveSelectedIds, values)}>Change Owner</Button></div>
               </div>
             </div>
           )}
@@ -6466,9 +6758,9 @@ function ListActionModal({
   }
 
   return (
-    <BaseDialog open title={title} onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onApply(modal.action, modal.object, effectiveSelectedIds, values)}>Save</Button></>}>
+    <BaseDialog open title={title} onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={targetCount === 0} onClick={() => onApply(modal.action, modal.object, effectiveSelectedIds, values)}>Save</Button></>}>
       <div className="space-y-3">
-        <p className="text-sm text-[#706e6b]">{targetCount} selected record{targetCount === 1 ? "" : "s"}; if none are selected, the current list result set is used.</p>
+        <p className="text-sm text-[#706e6b]">{targetCount} selected record{targetCount === 1 ? "" : "s"}. Select records in the list before applying a bulk action.</p>
         {modal.action === "Add to Campaign" && (
           <>
             <FieldShell label="Campaign"><input className={inputClass} value={String(values.campaign ?? "")} onChange={(event) => setValues({ ...values, campaign: event.target.value })} /></FieldShell>
@@ -6501,10 +6793,10 @@ function QuickTextFolderModal({ onClose, onSave }: { onClose: () => void; onSave
   );
 }
 
-function MarketingActivationModal({ user, onClose, onSave }: { user: BootstrapData["user"]; onClose: () => void; onSave: (values: RecordData) => void }) {
-  const [values, setValues] = useState<RecordData>({ senderName: user.name, senderEmail: user.email ?? "", tracking: true });
+function MarketingActivationModal({ user, initial, onClose, onSave }: { user: BootstrapData["user"]; initial?: RecordData; onClose: () => void; onSave: (values: RecordData) => void }) {
+  const [values, setValues] = useState<RecordData>({ id: initial?.id, senderName: initial?.senderName ?? user.name, senderEmail: initial?.senderEmail ?? user.email ?? "", tracking: initial?.tracking !== false });
   return (
-    <BaseDialog open title="Activate Marketing" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onSave(values)}>Activate</Button></>}>
+    <BaseDialog open title={initial ? "Edit Marketing Activation" : "Activate Marketing"} onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onSave(values)}>{initial ? "Save" : "Activate"}</Button></>}>
       <div className="space-y-3">
         <FieldShell label="Default Sender Name"><input className={inputClass} value={String(values.senderName ?? "")} onChange={(event) => setValues({ ...values, senderName: event.target.value })} /></FieldShell>
         <FieldShell label="Default Sender Email"><input className={inputClass} type="email" value={String(values.senderEmail ?? "")} onChange={(event) => setValues({ ...values, senderEmail: event.target.value })} /></FieldShell>
@@ -6514,31 +6806,18 @@ function MarketingActivationModal({ user, onClose, onSave }: { user: BootstrapDa
   );
 }
 
-function StoreModal({ onClose, onSave }: { onClose: () => void; onSave: (values: RecordData) => void }) {
-  const [values, setValues] = useState<RecordData>({ name: "Starter Store", currency: "USD", status: "Draft" });
-  return (
-    <BaseDialog open title="Create Store" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onSave(values)}>Create Store</Button></>}>
-      <div className="space-y-3">
-        <FieldShell label="Store Name" required><input className={inputClass} value={String(values.name ?? "")} onChange={(event) => setValues({ ...values, name: event.target.value })} /></FieldShell>
-        <FieldShell label="Currency"><NativeSelect options={["USD", "AED", "EUR", "GBP"]} value={String(values.currency ?? "USD")} onChange={(value) => setValues({ ...values, currency: value })} /></FieldShell>
-        <FieldShell label="Launch Status"><NativeSelect options={["Draft", "Preview", "Active"]} value={String(values.status ?? "Draft")} onChange={(value) => setValues({ ...values, status: value })} /></FieldShell>
-      </div>
-    </BaseDialog>
-  );
-}
-
-function ReportBuilderModal({ reportType, data, onClose, onDataChange, onToast }: { reportType?: string; data: BootstrapData; onClose: () => void; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void }) {
+function ReportBuilderModal({ reportType, initial, data, onClose, onDataChange, onToast }: { reportType?: string; initial?: RecordData; data: BootstrapData; onClose: () => void; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void }) {
   const dashboardMode = reportType === "Dashboard";
-  const initialType = reportBuilderTypeFrom(reportType);
+  const initialType = !dashboardMode && initial ? reportBuilderTypes.find((type) => reportBuilderConfigs[type].object === initial.object) ?? reportBuilderTypeFrom(reportType) : reportBuilderTypeFrom(reportType);
   const [builderType, setBuilderType] = useState<ReportBuilderType>(initialType);
-  const [groupField, setGroupField] = useState(reportBuilderConfigs[initialType].defaultGroup);
-  const [selectedColumns, setSelectedColumns] = useState<string[]>(reportBuilderConfigs[initialType].columns);
-  const [reportName, setReportName] = useState(`${initialType} by ${reportBuilderFieldLabel(reportBuilderConfigs[initialType].object, reportBuilderConfigs[initialType].defaultGroup)}`);
-  const [dashboardName, setDashboardName] = useState("Executive CRM Dashboard");
+  const [groupField, setGroupField] = useState(String(initial?.groupField ?? reportBuilderConfigs[initialType].defaultGroup));
+  const [selectedColumns, setSelectedColumns] = useState<string[]>(() => Array.isArray(initial?.columns) ? initial.columns.map(String) : reportBuilderConfigs[initialType].columns);
+  const [reportName, setReportName] = useState(String(initial?.name ?? `${initialType} by ${reportBuilderFieldLabel(reportBuilderConfigs[initialType].object, reportBuilderConfigs[initialType].defaultGroup)}`));
+  const [dashboardName, setDashboardName] = useState(String(initial?.name ?? "Executive CRM Dashboard"));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const analyticsReports = useMemo(() => buildAnalyticsReports(data), [data]);
-  const [dashboardReportIds, setDashboardReportIds] = useState<string[]>(() => analyticsReports.slice(0, 4).map((report) => report.id));
+  const [dashboardReportIds, setDashboardReportIds] = useState<string[]>(() => Array.isArray(initial?.reportIds) ? initial.reportIds.map(String) : analyticsReports.slice(0, 4).map((report) => report.id));
   const config = reportBuilderConfigs[builderType];
   const records = reportBuilderRecords(data, builderType);
   const previewReport = useMemo(() => reportBuilderPreviewReport(data, builderType, groupField), [data, builderType, groupField]);
@@ -6573,7 +6852,7 @@ function ReportBuilderModal({ reportType, data, onClose, onDataChange, onToast }
       return;
     }
     setSaving(true);
-    const response = await postUtility("saveCustomReport", undefined, {
+    const response = await postUtility(initial ? "updateCustomReport" : "saveCustomReport", initial ? requiredId(initial) : undefined, {
       name: reportName.trim(),
       object: config.object,
       groupField,
@@ -6586,7 +6865,7 @@ function ReportBuilderModal({ reportType, data, onClose, onDataChange, onToast }
       return;
     }
     onDataChange((previous) => ({ ...previous, customReports: response.customReports as RecordData[] }));
-    onToast({ tone: "success", message: `Report "${reportName.trim()}" saved.` });
+    onToast({ tone: "success", message: `Report "${reportName.trim()}" ${initial ? "updated" : "saved"}.` });
     onClose();
   }
 
@@ -6600,7 +6879,7 @@ function ReportBuilderModal({ reportType, data, onClose, onDataChange, onToast }
       return;
     }
     setSaving(true);
-    const response = await postUtility("saveCustomDashboard", undefined, {
+    const response = await postUtility(initial ? "updateCustomDashboard" : "saveCustomDashboard", initial ? requiredId(initial) : undefined, {
       name: dashboardName.trim(),
       reportIds: dashboardReportIds
     });
@@ -6611,13 +6890,13 @@ function ReportBuilderModal({ reportType, data, onClose, onDataChange, onToast }
       return;
     }
     onDataChange((previous) => ({ ...previous, customDashboards: response.customDashboards as RecordData[] }));
-    onToast({ tone: "success", message: `Dashboard "${dashboardName.trim()}" saved.` });
+    onToast({ tone: "success", message: `Dashboard "${dashboardName.trim()}" ${initial ? "updated" : "saved"}.` });
     onClose();
   }
 
   if (dashboardMode) {
     return (
-      <BaseDialog open title="New Dashboard" onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void saveDashboard()}>{saving ? "Saving..." : "Save Dashboard"}</Button></>}>
+      <BaseDialog open title={initial ? "Edit Dashboard" : "New Dashboard"} onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void saveDashboard()}>{saving ? "Saving..." : initial ? "Update Dashboard" : "Save Dashboard"}</Button></>}>
         <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
           <aside className="rounded border border-[#d8dde6] p-3">
             <FieldShell label="Dashboard Name" error={error && !dashboardName.trim() ? error : ""}>
@@ -6642,7 +6921,7 @@ function ReportBuilderModal({ reportType, data, onClose, onDataChange, onToast }
                 <div className="font-semibold">Dashboard Preview</div>
                 <div className="text-xs text-[#706e6b]">{selectedDashboardReports.length} component{selectedDashboardReports.length === 1 ? "" : "s"}</div>
               </div>
-              <Button onClick={() => onToast({ tone: "success", message: "Dashboard preview refreshed." })}><RefreshCw size={13} /> Refresh</Button>
+              <span className="text-xs text-[#706e6b]">Preview updates automatically</span>
             </div>
             {error && dashboardName.trim() && <div className="mb-3 rounded border border-[#f1c40f] bg-[#fff7d6] px-3 py-2 text-xs text-[#5f4b00]">{error}</div>}
             <div className="grid gap-3 md:grid-cols-2">
@@ -6682,7 +6961,7 @@ function ReportBuilderModal({ reportType, data, onClose, onDataChange, onToast }
   }
 
   return (
-    <BaseDialog open title="Report Builder" onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void saveReport()}>{saving ? "Saving..." : "Save Report"}</Button></>}>
+    <BaseDialog open title={initial ? "Edit Report" : "Report Builder"} onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void saveReport()}>{saving ? "Saving..." : initial ? "Update Report" : "Save Report"}</Button></>}>
       <div className="grid gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="rounded border border-[#d8dde6] p-3">
           <div className="mb-2 font-semibold">Report Types</div>
@@ -6931,7 +7210,7 @@ function EventModal({
   data,
   relatedObjectType,
   relatedRecordId,
-  startDate = "2026-07-08",
+  startDate = toDateInputValue(new Date()),
   startTime = "09:00",
   endDate,
   endTime,
@@ -6982,7 +7261,8 @@ function EventModal({
     nameObjectType: nameTypeDefault,
     nameRecordId: nameRecordDefault ?? "",
     relatedObjectType: relatedTypeDefault,
-    relatedRecordId: relatedRecordDefault ?? ""
+    relatedRecordId: relatedRecordDefault ?? "",
+    calendarSourceId: data.calendarSources.find((source) => calendarSourceType(source) === "My")?.id ?? ""
   }));
   const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -7035,8 +7315,9 @@ function EventModal({
       ...values,
       nameRecordId: values.nameRecordId || null,
       relatedRecordId: values.relatedRecordId || null,
-      startAt: `${values.startDate}T${values.startTime}:00.000Z`,
-      endAt: `${values.endDate}T${values.endTime}:00.000Z`
+      calendarSourceId: values.calendarSourceId || null,
+      startAt: new Date(`${values.startDate}T${values.startTime}:00`).toISOString(),
+      endAt: new Date(`${values.endDate}T${values.endTime}:00`).toISOString()
     };
     const ok = await onSave(payload);
     if (ok && stayOpen) {
@@ -7110,6 +7391,7 @@ function EventModal({
           </div>
         </FieldShell>
         <FieldShell label="Assigned To" required error={errors.assignedToId}><input className={inputClass} value={data.user.name} readOnly /></FieldShell>
+        <FieldShell label="Calendar"><select className={inputClass} value={String(values.calendarSourceId ?? "")} onChange={(event) => setValues({ ...values, calendarSourceId: event.target.value })}><option value="">{data.user.name} (default local calendar)</option>{data.calendarSources.map((source) => <option key={requiredId(source)} value={requiredId(source)}>{String(source.name ?? "Calendar")}</option>)}</select></FieldShell>
         <FieldShell label="Location"><input className={inputClass} value={String(values.location ?? "")} onChange={(event) => setValues({ ...values, location: event.target.value })} /></FieldShell>
         <FieldShell label="Show Time As"><NativeSelect options={SHOW_TIME_AS} value={String(values.showTimeAs)} onChange={(value) => setValues({ ...values, showTimeAs: value })} /></FieldShell>
         <FieldShell label="All-Day Event"><RadixCheckbox checked={Boolean(values.allDay)} onCheckedChange={(value) => setValues({ ...values, allDay: Boolean(value) })} /></FieldShell>
@@ -7132,8 +7414,8 @@ function eventQuickTextSnippet(data: BootstrapData) {
   return String(eventQuickText?.message ?? "Thank you for your time. I will follow up with next steps.");
 }
 
-function QuickTextModal({ data, onClose, onSave }: { data: BootstrapData; onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
-  const [initialValues] = useState<RecordData>(() => ({ category: "Greetings", channels: ["Email"], mergeFields: [], includeInSelectedChannels: true }));
+function QuickTextModal({ data, initial, onClose, onSave }: { data: BootstrapData; initial?: RecordData; onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
+  const [initialValues] = useState<RecordData>(() => initial ? { ...initial, includeInSelectedChannels: true } : ({ category: "Greetings", channels: ["Email"], mergeFields: [], includeInSelectedChannels: true }));
   const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -7176,7 +7458,7 @@ function QuickTextModal({ data, onClose, onSave }: { data: BootstrapData; onClos
   }
   if (discardDialog) return discardDialog;
   return (
-    <BaseDialog open title="New Quick Text" onClose={requestClose} wide footer={<><Button onClick={() => setPreviewOpen((open) => !open)}>Preview</Button><Button onClick={requestClose}>Cancel</Button><Button onClick={() => void submit(true)}>Save & New</Button><Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}>
+    <BaseDialog open title={initial ? `Edit ${String(initial.name ?? "Quick Text")}` : "New Quick Text"} onClose={requestClose} wide footer={<><Button onClick={() => setPreviewOpen((open) => !open)}>Preview</Button><Button onClick={requestClose}>Cancel</Button>{!initial && <Button onClick={() => void submit(true)}>Save & New</Button>}<Button variant="primary" onClick={() => void submit(false)}>{initial ? "Update" : "Save"}</Button></>}>
       <div className="mb-4 text-xs text-[#706e6b]"><span className="text-[#ba0517]">*</span>= Required Information</div>
       <div className="grid gap-4 md:grid-cols-2">
         <FieldShell label="Quick Text Name" required error={errors.name}><input className={inputClass} value={String(values.name ?? "")} onChange={(event) => setValues({ ...values, name: event.target.value })} /></FieldShell>
@@ -7264,8 +7546,8 @@ function formatWordCount(count: number) {
   return `${count} word${count === 1 ? "" : "s"}`;
 }
 
-function KnowledgeModal({ onClose, onSave }: { onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
-  const [initialValues] = useState<RecordData>(() => ({ visibleInInternalApp: true, visibleToCustomer: false }));
+function KnowledgeModal({ initial, onClose, onSave }: { initial?: RecordData; onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
+  const [initialValues] = useState<RecordData>(() => initial ? { ...initial } : { visibleInInternalApp: true, visibleToCustomer: false });
   const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [undoStack, setUndoStack] = useState<string[]>([]);
@@ -7418,7 +7700,7 @@ function KnowledgeModal({ onClose, onSave }: { onClose: () => void; onSave: (val
   if (discardDialog) return discardDialog;
 
   return (
-    <BaseDialog open title="New Knowledge" onClose={requestClose} wide footer={<><Button onClick={requestClose}>Cancel</Button><Button onClick={() => void submit(true)}>Save & New</Button><Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}>
+    <BaseDialog open title={initial ? `Edit ${String(initial.title ?? "Knowledge")}` : "New Knowledge"} onClose={requestClose} wide footer={<><Button onClick={requestClose}>Cancel</Button>{!initial && <Button onClick={() => void submit(true)}>Save & New</Button>}<Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}>
       <div className="grid gap-4">
         <div className="grid gap-3 md:grid-cols-2">
           <FieldShell label="Title" required error={errors.title}><input className={inputClass} value={String(values.title ?? "")} onChange={(event) => setValues({ ...values, title: event.target.value, urlName: slugify(event.target.value) })} /></FieldShell>
@@ -7516,25 +7798,52 @@ function KnowledgeModal({ onClose, onSave }: { onClose: () => void; onSave: (val
   );
 }
 
+function validEmailValue(value: unknown) {
+  return typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
 function ListEmailWizard({ data, initialValues: providedInitialValues, startingStep = 1, initialLayout = "Sales", onClose, onSave }: { data: BootstrapData; initialValues?: RecordData; startingStep?: 1 | 2; initialLayout?: string; onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
+  function normalizeRecipientReference(value: unknown) {
+    const reference = String(value);
+    if (/^(lead|contact|account):/.test(reference)) return reference;
+    if (data.leads.some((record) => String(record.id) === reference)) return `lead:${reference}`;
+    if (data.contacts.some((record) => String(record.id) === reference)) return `contact:${reference}`;
+    if (data.accounts.some((record) => String(record.id) === reference)) return `account:${reference}`;
+    return reference;
+  }
+
+  function recipientTypeAllows(reference: string, recipientType: string) {
+    if (recipientType === "Leads") return reference.startsWith("lead:");
+    if (recipientType === "Contacts") return reference.startsWith("contact:");
+    if (recipientType === "Accounts") return reference.startsWith("account:");
+    if (recipientType === "Leads and Contacts") return reference.startsWith("lead:") || reference.startsWith("contact:");
+    return true;
+  }
+
   const [step, setStep] = useState<1 | 2>(startingStep);
   const [layout, setLayout] = useState(initialLayout);
   const [layoutQuery, setLayoutQuery] = useState("");
   const [savedQuery, setSavedQuery] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [initialValues] = useState<RecordData>(() => ({ recipientType: "Leads and Contacts", status: "Draft", recipients: [], scheduleTime: "09:00", ...providedInitialValues }));
+  const [initialValues] = useState<RecordData>(() => ({
+    recipientType: "Leads and Contacts",
+    status: "Draft",
+    scheduleTime: "09:00",
+    ...providedInitialValues,
+    recipients: Array.isArray(providedInitialValues?.recipients) ? providedInitialValues.recipients.map(normalizeRecipientReference) : []
+  }));
   const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const recipientType = String(values.recipientType ?? "Leads and Contacts");
   const recipientOptions = [
-    ...data.leads.map((lead) => ({ id: String(lead.id), label: `Lead: ${contactName(lead) || lead.company || lead.id}` })),
-    ...data.contacts.map((contact) => ({ id: String(contact.id), label: `Contact: ${contactName(contact)}` })),
-    ...data.accounts.map((account) => ({ id: String(account.id), label: `Account: ${account.name ?? account.id}` }))
+    ...data.leads.map((lead) => ({ id: `lead:${String(lead.id)}`, label: `Lead: ${contactName(lead) || lead.company || lead.id}`, disabled: !validEmailValue(lead.email), detail: validEmailValue(lead.email) ? String(lead.email) : "No email address" })),
+    ...data.contacts.map((contact) => ({ id: `contact:${String(contact.id)}`, label: `Contact: ${contactName(contact)}`, disabled: !validEmailValue(contact.email), detail: validEmailValue(contact.email) ? String(contact.email) : "No email address" })),
+    ...data.accounts.map((account) => {
+      const emailedContacts = data.contacts.filter((contact) => contact.accountId === account.id && validEmailValue(contact.email));
+      return { id: `account:${String(account.id)}`, label: `Account: ${account.name ?? account.id}`, disabled: emailedContacts.length === 0, detail: emailedContacts.length ? `${emailedContacts.length} emailed contact${emailedContacts.length === 1 ? "" : "s"}` : "No contacts with email" };
+    })
   ];
-  const fallbackRecipientOptions = [
-    { id: "all-leads", label: "All Leads" },
-    { id: "all-contacts", label: "All Contacts" }
-  ];
-  const availableRecipients = recipientOptions.length ? recipientOptions : fallbackRecipientOptions;
+  const availableRecipients = recipientOptions.filter((recipient) => recipientTypeAllows(recipient.id, recipientType));
   const selectedRecipients = Array.isArray(values.recipients) ? values.recipients.map(String) : [];
   const visibleLayouts = LIST_EMAIL_LAYOUTS.filter((item) => `${item.name} ${item.description}`.toLowerCase().includes(layoutQuery.toLowerCase()));
   const visibleSavedEmails = data.listEmails.filter((email) => `${email.subject ?? ""} ${email.layoutType ?? ""}`.toLowerCase().includes(savedQuery.toLowerCase()));
@@ -7556,7 +7865,7 @@ function ListEmailWizard({ data, initialValues: providedInitialValues, startingS
       ...current,
       subject: current.subject ?? defaultListEmailSubject(layout),
       body: current.body ?? defaultListEmailBody(layout),
-      recipients: Array.isArray(current.recipients) && current.recipients.length ? current.recipients : availableRecipients.slice(0, 2).map((item) => item.id)
+      recipients: Array.isArray(current.recipients) && current.recipients.length ? current.recipients : availableRecipients.filter((item) => !item.disabled).slice(0, 2).map((item) => item.id)
     }));
   }
 
@@ -7565,7 +7874,7 @@ function ListEmailWizard({ data, initialValues: providedInitialValues, startingS
     setValues({
       recipientType: email.recipientType ?? "Leads and Contacts",
       status: "Draft",
-      recipients: Array.isArray(email.recipients) ? email.recipients.map(String) : [],
+      recipients: Array.isArray(email.recipients) ? email.recipients.map(normalizeRecipientReference) : [],
       subject: email.subject ?? "",
       body: email.body ?? ""
     });
@@ -7663,7 +7972,11 @@ function ListEmailWizard({ data, initialValues: providedInitialValues, startingS
         <div className="grid gap-4">
           <div className="grid gap-3 md:grid-cols-2">
             <FieldShell label="Recipient Type">
-              <NativeSelect options={["Leads and Contacts", "Leads", "Contacts", "Accounts", "Custom"]} value={String(values.recipientType ?? "Leads and Contacts")} onChange={(value) => setValues({ ...values, recipientType: value })} />
+              <NativeSelect options={["Leads and Contacts", "Leads", "Contacts", "Accounts", "Custom"]} value={recipientType} onChange={(value) => setValues({
+                ...values,
+                recipientType: value,
+                recipients: selectedRecipients.filter((reference) => recipientTypeAllows(reference, value))
+              })} />
             </FieldShell>
             <FieldShell label="Schedule">
               <div className="grid grid-cols-2 gap-2">
@@ -7675,11 +7988,12 @@ function ListEmailWizard({ data, initialValues: providedInitialValues, startingS
           <FieldShell label="Recipients" required error={errors.recipients}>
             <div className="grid max-h-36 gap-2 overflow-auto rounded-lg border border-[#e4e7ec] bg-white shadow-card p-2 md:grid-cols-2">
               {availableRecipients.map((recipient) => (
-                <label key={recipient.id} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-brand-50">
-                  <input type="checkbox" checked={selectedRecipients.includes(recipient.id)} onChange={() => toggleRecipient(recipient.id)}  className={checkboxClass} />
-                  <span>{recipient.label}</span>
+                <label key={recipient.id} className={cn("flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-brand-50", recipient.disabled && "cursor-not-allowed opacity-55")}>
+                  <input type="checkbox" disabled={recipient.disabled} checked={selectedRecipients.includes(recipient.id)} onChange={() => toggleRecipient(recipient.id)} className={checkboxClass} />
+                  <span><span className="block">{recipient.label}</span><span className="block text-[11px] text-[#706e6b]">{recipient.detail}</span></span>
                 </label>
               ))}
+              {!availableRecipients.length && <div className="col-span-full p-3 text-center text-sm text-[#706e6b]">No records are available for this recipient type.</div>}
             </div>
           </FieldShell>
           <FieldShell label="Subject" required error={errors.subject}><input className={inputClass} value={String(values.subject ?? "")} onChange={(event) => setValues({ ...values, subject: event.target.value })} /></FieldShell>
@@ -8695,10 +9009,11 @@ function EmptyPanel({ title, body, action, onAction }: { title: string; body: st
 }
 
 function CalendarEventChip({ event }: { event: RecordData }) {
+  const color = String(event.calendarColor ?? "#0176d3");
   return (
-    <div className="rounded border border-brand-500 bg-brand-50 px-1.5 py-1 text-[11px] leading-tight text-brand-900">
+    <div className="rounded border bg-white px-1.5 py-1 text-[11px] leading-tight text-[#181818]" style={{ borderColor: color, boxShadow: `inset 3px 0 0 ${color}` }}>
       <div className="truncate font-semibold">{String(event.subject ?? "Event")}</div>
-      <div className="truncate text-brand-700">{calendarTimeRange(event)}</div>
+      <div className="truncate text-[#514f4d]">{calendarTimeRange(event)}</div>
     </div>
   );
 }
@@ -8851,8 +9166,13 @@ function parseScreen(pathname: string, searchParams: SearchParamsLike): ScreenSt
     if (segments[2] === "QuickText") return { kind: "quickText", activeApp: "service" };
     return { kind: "list", activeApp: inferActiveApp(pathname, searchParams), object: segments[2] };
   }
-  if (segments[1] === "r" && (segments[2] === "Account" || segments[2] === "Contact")) {
-    return { kind: "record", activeApp: segments[2] === "Account" ? "accounts" : "contacts", object: segments[2], id: segments[3] };
+  if (segments[1] === "r" && (segments[2] === "Account" || segments[2] === "Contact" || segments[2] === "Lead" || segments[2] === "Opportunity" || segments[2] === "Case" || segments[2] === "Product2" || segments[2] === "Pricebook2" || segments[2] === "Knowledge__kav" || segments[2] === "ListEmail" || segments[2] === "Invoice" || segments[2] === "MessagingSession" || segments[2] === "VideoCall" || segments[2] === "Campaign")) {
+    return {
+      kind: "record",
+      activeApp: segments[2] === "Account" ? "accounts" : segments[2] === "Contact" ? "contacts" : segments[2] === "MessagingSession" || segments[2] === "Case" || segments[2] === "Knowledge__kav" ? "service" : segments[2] === "Campaign" || segments[2] === "ListEmail" ? "marketing" : "sales",
+      object: segments[2],
+      id: segments[3]
+    };
   }
   return { kind: "home", activeApp: "home" };
 }
@@ -8860,7 +9180,7 @@ function parseScreen(pathname: string, searchParams: SearchParamsLike): ScreenSt
 function inferActiveApp(pathname: string, searchParams: SearchParamsLike): AppKey {
   if (pathname.includes("/Lead") || pathname.includes("/Opportunity") || pathname.includes("/Product2") || pathname.includes("/Pricebook2") || pathname.includes("/Event") || pathname.includes("/Invoice") || pathname.includes("/VideoCall")) return "sales";
   if (pathname.includes("/Case") || pathname.includes("/QuickText") || pathname.includes("/MessagingSession") || pathname.includes("/Knowledge__kav")) return "service";
-  if (pathname.includes("/ListEmail")) return "marketing";
+  if (pathname.includes("/ListEmail") || pathname.includes("/Campaign")) return "marketing";
   if (pathname.includes("/Account")) return "accounts";
   if (pathname.includes("/Contact")) return "contacts";
   if (searchParams.get("app") === "service") return "service";
@@ -8870,7 +9190,7 @@ function inferActiveApp(pathname: string, searchParams: SearchParamsLike): AppKe
 function screenToTab(screen: ScreenState, pathname: string, searchParams: SearchParamsLike): ConsoleTab {
   const href = pathnameWithSearch(pathname, searchParams);
   if (screen.kind === "record") return { href, label: `${screen.id.includes("robert") ? "Robert" : screen.id} | ${screen.object}` };
-  if (screen.kind === "list") return { href, label: `${OBJECT_DEFINITIONS[screen.object].defaultList} | ${OBJECT_DEFINITIONS[screen.object].plural}` };
+  if (screen.kind === "list") return { href, label: `${resolveRequestedListView(screen.object, searchParams.get("filterName")) || OBJECT_DEFINITIONS[screen.object].defaultList} | ${OBJECT_DEFINITIONS[screen.object].plural}` };
   if (screen.kind === "calendar") return { href, label: "Calendar" };
   if (screen.kind === "quickText") return { href, label: "Quick Text" };
   if (screen.kind === "marketing") return { href, label: "Marketing" };
@@ -8878,6 +9198,14 @@ function screenToTab(screen: ScreenState, pathname: string, searchParams: Search
   if (screen.kind === "account") return { href, label: "Your Account" };
   if (screen.kind === "analytics") return { href, label: "Analytics" };
   return { href, label: "Home" };
+}
+
+function resolveRequestedListView(object: CrmObject, requested: string | null) {
+  if (!requested) return "";
+  const definition = OBJECT_DEFINITIONS[object];
+  const normalized = requested.replace(/^__/, "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (normalized === "recent") return definition.defaultList;
+  return [definition.defaultList, ...definition.listViews].find((view) => view.replace(/[^a-z0-9]/gi, "").toLowerCase() === normalized) ?? "";
 }
 
 function navItemsForApp(app: AppKey, data: BootstrapData): AppNavItem[] {
@@ -9023,6 +9351,103 @@ function filtersForListView(definition: ObjectDefinition, preference?: RecordDat
     });
 }
 
+function recordMatchesStandardListView(object: CrmObject, listView: string, record: RecordData, recentRecords: RecordData[], currentUserId: string) {
+  const status = String(record.status ?? "Draft");
+  const isRecent = recentRecords.some((recent) => String(recent.href ?? "") === routeForRecord(object, requiredId(record)));
+  if (listView.includes("Recently Viewed") || listView === "Recently Viewed") return isRecent;
+  if (object === "Contact") {
+    if (listView === "Birthdays This Month") return isDateInCurrentMonth(record.birthDate);
+    if (listView === "My Contacts") return record.ownerId === currentUserId;
+    if (listView === "New This Week") return isDateInCurrentWeek(record.createdAt);
+    return true;
+  }
+  if (object === "Account") {
+    if (listView === "My Accounts") return record.ownerId === currentUserId;
+    if (listView === "New This Week") return isDateInCurrentWeek(record.createdAt);
+    return true;
+  }
+  if (object === "Lead") {
+    if (listView === "All Open Leads") return !record.convertedAt && status !== "Unqualified";
+    if (listView === "My Leads") return record.ownerId === currentUserId;
+    if (listView === "Today's Leads") return isDateToday(record.createdAt);
+    return true;
+  }
+  if (object === "Opportunity") {
+    if (listView === "Closing Next Month") return isDateInNextMonth(record.closeDate);
+    if (listView === "My Opportunities") return record.ownerId === currentUserId;
+    return true;
+  }
+  if (object === "Product2") return listView === "Active Products" ? record.active === true : true;
+  if (object === "Pricebook2") return listView === "Active Price Books" ? record.active === true : true;
+  if (object === "Case") {
+    if (listView === "All Open Cases") return status !== "Closed";
+    if (listView === "My Cases") return record.ownerId === currentUserId;
+    return true;
+  }
+  if (object === "Knowledge__kav") {
+    const publicationStatus = String(record.publicationStatus ?? "Draft");
+    if (listView === "Archived Articles") return publicationStatus === "Archived";
+    if (listView === "Draft Articles") return publicationStatus === "Draft";
+    if (listView === "Published Articles") return publicationStatus === "Published";
+    return true;
+  }
+  if (object === "ListEmail") return listView === "My List Emails" ? record.createdById === currentUserId : true;
+  if (object === "Campaign") {
+    if (["Planned", "In Progress", "Completed", "Archived"].includes(listView)) return status === listView;
+    return true;
+  }
+  if (object === "MessagingSession") {
+    if (["Open", "Waiting", "Closed"].includes(listView)) return status === listView;
+    return true;
+  }
+  if (object === "VideoCall") {
+    if (listView === "Upcoming") return status === "Scheduled";
+    if (["In Progress", "Completed", "Cancelled"].includes(listView)) return status === listView;
+    return true;
+  }
+  if (object !== "Invoice") return true;
+  if (listView === "Draft") return status === "Draft";
+  if (listView === "Outstanding") return ["Sent", "Partially Paid", "Overdue"].includes(status) && Number(record.balanceDue ?? 0) > 0;
+  if (listView === "Overdue") return status === "Overdue";
+  if (listView === "Paid") return status === "Paid";
+  return true;
+}
+
+function validRecordDate(value: unknown) {
+  if (!value) return null;
+  const date = new Date(String(value));
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function isDateToday(value: unknown) {
+  const date = validRecordDate(value);
+  const today = new Date();
+  return Boolean(date && date.getUTCFullYear() === today.getUTCFullYear() && date.getUTCMonth() === today.getUTCMonth() && date.getUTCDate() === today.getUTCDate());
+}
+
+function isDateInCurrentWeek(value: unknown) {
+  const date = validRecordDate(value);
+  if (!date) return false;
+  const today = new Date();
+  const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - today.getUTCDay()));
+  const end = new Date(start); end.setUTCDate(end.getUTCDate() + 7);
+  return date >= start && date < end;
+}
+
+function isDateInCurrentMonth(value: unknown) {
+  const date = validRecordDate(value);
+  const today = new Date();
+  return Boolean(date && date.getUTCMonth() === today.getUTCMonth());
+}
+
+function isDateInNextMonth(value: unknown) {
+  const date = validRecordDate(value);
+  if (!date) return false;
+  const today = new Date();
+  const next = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1));
+  return date.getUTCFullYear() === next.getUTCFullYear() && date.getUTCMonth() === next.getUTCMonth();
+}
+
 function recordMatchesListFilter(record: RecordData, filter: RecordData) {
   const raw = record[String(filter.field)];
   const value = formatCell(raw).toLowerCase();
@@ -9142,11 +9567,11 @@ function defaultRouteForObject(object: CrmObject) {
 }
 
 function canRouteToRecord(object: CrmObject) {
-  return object === "Account" || object === "Contact";
+  return object === "Account" || object === "Contact" || object === "Lead" || object === "Opportunity" || object === "Case" || object === "Product2" || object === "Pricebook2" || object === "Knowledge__kav" || object === "ListEmail" || object === "Invoice" || object === "MessagingSession" || object === "VideoCall" || object === "Campaign";
 }
 
 function canEditFromRow(object: CrmObject) {
-  return Boolean(FORM_DEFINITIONS[object]);
+  return object === "Invoice" || object === "MessagingSession" || object === "VideoCall" || object === "Campaign" || Boolean(FORM_DEFINITIONS[object]);
 }
 
 function inlineEditableFieldForColumn(object: CrmObject, columnKey: string) {
@@ -9156,7 +9581,7 @@ function inlineEditableFieldForColumn(object: CrmObject, columnKey: string) {
 }
 
 function canDeleteFromRow(object: CrmObject) {
-  return ["Account", "Contact", "Lead", "Opportunity", "Product2", "Pricebook2", "Case", "QuickText", "Knowledge__kav", "ListEmail"].includes(object);
+  return ["Account", "Contact", "Lead", "Opportunity", "Product2", "Pricebook2", "Case", "QuickText", "Knowledge__kav", "ListEmail", "Invoice", "MessagingSession", "VideoCall", "Campaign"].includes(object);
 }
 
 function canChangeOwnerFromRow(object: CrmObject) {
@@ -9603,6 +10028,14 @@ function formatCell(value: unknown) {
   if (Array.isArray(value)) return value.join(", ");
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) return formatDateTime(value);
   return String(value);
+}
+
+function formatListCell(object: CrmObject, record: RecordData, key: string) {
+  if (object === "Invoice" && ["total", "amountPaid", "balanceDue"].includes(key)) {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: String(record.currency ?? "USD"), minimumFractionDigits: 2 }).format(Number(record[key] ?? 0));
+  }
+  if (object === "Invoice" && ["issueDate", "dueDate"].includes(key) && record[key]) return formatDate(String(record[key]));
+  return formatCell(record[key]);
 }
 
 function fieldLabel(field: string) {

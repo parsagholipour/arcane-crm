@@ -1,7 +1,12 @@
 import { AppAuthorizationError, assertOrganizationRecord, assertOrganizationUser, assertRelatedOrganizationRecord, authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
+import { EmailValidationError } from "@/lib/email/errors";
+import { emailErrorResponse } from "@/lib/email/http";
+import { deliverCaseNotification, deliverListEmail } from "@/lib/email/workflows";
 import { prisma } from "@/lib/prisma";
+import { RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 
 type Params = Promise<{ object: string; id: string }>;
 
@@ -13,14 +18,89 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     const { object, id } = await context.params;
     if (!isCrmObject(object)) return NextResponse.json({ error: "Unknown object." }, { status: 404 });
     await assertScopedRecord(object, id, authContext.organizationId);
+    if (object === "Lead") {
+      const lead = await prisma.lead.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { convertedAt: true } });
+      if (lead?.convertedAt) return NextResponse.json({ error: "Converted Leads are read-only. Open the converted Account, Contact, or Opportunity instead." }, { status: 409 });
+    }
     const payload = normalizePayload(await request.json());
-    await validateReferences(payload, authContext.organizationId);
+    validateRecordPayload(object, payload);
+    await validateReferences(payload, authContext.organizationId, authContext.userId);
+    if (object === "Event") {
+      const existingEvent = await prisma.event.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { startAt: true, endAt: true } });
+      if (!existingEvent) return NextResponse.json({ error: "Record not found." }, { status: 404 });
+      const startAt = payload.startAt ? new Date(String(payload.startAt)) : existingEvent.startAt;
+      const endAt = payload.endAt ? new Date(String(payload.endAt)) : existingEvent.endAt;
+      if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime())) return NextResponse.json({ error: "Choose valid event start and end times." }, { status: 400 });
+      if (endAt <= startAt) return NextResponse.json({ error: "Event end time must be after its start time." }, { status: 400 });
+    }
+    let delivery = null;
+    if (object === "Case" && payload.sendNotificationEmailToContact === true) {
+      const existing = await prisma.caseRecord.findFirst({ where: { id, organizationId: authContext.organizationId } });
+      if (!existing) throw new AppAuthorizationError("Record not found.", 404);
+      if (!existing.sendNotificationEmailToContact) {
+        delivery = await deliverCaseNotification({
+          organizationId: authContext.organizationId,
+          organizationName: authContext.organization.name,
+          userId: authContext.userId,
+          sourceId: id,
+          contactId: payload.contactId === undefined ? existing.contactId : payload.contactId,
+          caseNumber: existing.caseNumber,
+          status: String(payload.status ?? existing.status),
+          subject: payload.subject === undefined ? existing.subject : payload.subject as string | null,
+          description: payload.description === undefined ? existing.description : payload.description as string | null
+        });
+      }
+    }
+    if (object === "ListEmail") {
+      const existing = await prisma.listEmail.findFirst({ where: { id, organizationId: authContext.organizationId } });
+      if (!existing) throw new AppAuthorizationError("Record not found.", 404);
+      if (existing.status !== "Draft") return NextResponse.json({ error: "Sent or scheduled list emails cannot be changed." }, { status: 409 });
+      if (payload.status) {
+        const status = String(payload.status);
+        if (!["Draft", "Sent", "Scheduled"].includes(status)) throw new EmailValidationError("Invalid list email status.");
+        if (status === "Sent" || status === "Scheduled") {
+          if (status === "Scheduled" && !(payload.scheduledAt ?? existing.scheduledAt)) throw new EmailValidationError("Choose a schedule date and time.");
+          delivery = await deliverListEmail({
+            organizationId: authContext.organizationId,
+            organizationName: authContext.organization.name,
+            userId: authContext.userId,
+            sourceId: id,
+            subject: payload.subject === undefined ? existing.subject : payload.subject,
+            body: payload.body === undefined ? existing.body : payload.body,
+            recipients: payload.recipients === undefined ? existing.recipients : payload.recipients,
+            scheduledAt: status === "Scheduled" ? (payload.scheduledAt ?? existing.scheduledAt) : undefined
+          });
+        }
+      }
+    }
+    if (object === "Knowledge__kav") {
+      const article = await prisma.knowledgeArticle.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { publicationStatus: true } });
+      if (article?.publicationStatus !== "Draft") return NextResponse.json({ error: "Only Draft Knowledge articles can be edited. Restore an archived article to Draft first." }, { status: 409 });
+    }
     const record = await updateRecord(object, id, payload, authContext.userId);
-    return NextResponse.json({ record: JSON.parse(JSON.stringify(record)) });
+    const recordStatus = "status" in record ? String(record.status) : "";
+    const skipped = delivery && "skipped" in delivery && Array.isArray(delivery.skipped) ? delivery.skipped.length : 0;
+    const message = object === "ListEmail" && recordStatus === "Sent"
+      ? `List email accepted for ${delivery?.acceptedCount ?? 0} recipient${delivery?.acceptedCount === 1 ? "" : "s"}.`
+      : object === "ListEmail" && recordStatus === "Scheduled"
+        ? `List email scheduled for ${delivery?.acceptedCount ?? 0} recipient${delivery?.acceptedCount === 1 ? "" : "s"}.`
+        : object === "Case" && delivery
+          ? "Case saved and contact notification accepted."
+          : undefined;
+    return NextResponse.json({
+      record: JSON.parse(JSON.stringify(record)),
+      ...(delivery ? { delivery } : {}),
+      ...(message ? { message } : {}),
+      ...(skipped ? { warning: `${message ?? "Email accepted."} ${skipped} selected record${skipped === 1 ? " was" : "s were"} skipped because no deliverable address was available.` } : {})
+    });
   } catch (error) {
     console.error(error);
     const response = authorizationErrorResponse(error);
     if (response) return response;
+    const deliveryResponse = emailErrorResponse(error);
+    if (deliveryResponse) return deliveryResponse;
+    if (error instanceof RecordPayloadValidationError) return NextResponse.json({ error: error.message, fields: error.fields }, { status: 400 });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return NextResponse.json({ error: "A record with that unique name or identifier already exists." }, { status: 409 });
     return NextResponse.json({ error: "Unable to update record." }, { status: 500 });
   }
 }
@@ -31,12 +111,35 @@ export async function DELETE(_request: NextRequest, context: { params: Params })
     const { object, id } = await context.params;
     if (!isCrmObject(object)) return NextResponse.json({ error: "Unknown object." }, { status: 404 });
     await assertScopedRecord(object, id, authContext.organizationId);
+    if (object === "ListEmail") {
+      const listEmail = await prisma.listEmail.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { status: true } });
+      if (listEmail?.status !== "Draft") return NextResponse.json({ error: "Sent or scheduled list emails cannot be deleted." }, { status: 409 });
+    }
+    if (object === "Lead") {
+      const lead = await prisma.lead.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { convertedAt: true } });
+      if (lead?.convertedAt) return NextResponse.json({ error: "Converted Leads cannot be deleted." }, { status: 409 });
+    }
+    if (object === "Knowledge__kav") {
+      const article = await prisma.knowledgeArticle.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { publicationStatus: true } });
+      if (article?.publicationStatus !== "Draft") return NextResponse.json({ error: "Only Draft Knowledge articles can be deleted from the record page. Archive published articles instead." }, { status: 409 });
+    }
+    if (object === "Product2") {
+      const usage = await prisma.product.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { _count: { select: { invoiceLineItems: true, commerceOrderLines: true, inventoryItems: true } } } });
+      if (usage && (usage._count.invoiceLineItems || usage._count.commerceOrderLines || usage._count.inventoryItems)) return NextResponse.json({ error: "A Product used by an invoice, order, or inventory record cannot be deleted. Deactivate it instead." }, { status: 409 });
+    }
+    if (object === "Pricebook2") {
+      const connectedStores = await prisma.marketingStore.count({ where: { organizationId: authContext.organizationId, priceBookId: id } });
+      if (connectedStores) return NextResponse.json({ error: "A Price Book connected to a Store cannot be deleted. Disconnect or archive the Store first." }, { status: 409 });
+    }
     await deleteRecord(object, id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error(error);
     const response = authorizationErrorResponse(error);
     if (response) return response;
+    if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2003", "P2014"].includes(error.code)) {
+      return NextResponse.json({ error: "This record cannot be deleted because related CRM records still reference it." }, { status: 409 });
+    }
     return NextResponse.json({ error: "Unable to delete record." }, { status: 500 });
   }
 }
@@ -54,7 +157,7 @@ function normalizePayload(payload: RecordData) {
   ) as RecordData;
 }
 
-async function validateReferences(payload: RecordData, organizationId: string) {
+async function validateReferences(payload: RecordData, organizationId: string, userId: string) {
   if (payload.ownerId) await assertOrganizationUser(organizationId, String(payload.ownerId));
   if (payload.assignedToId) await assertOrganizationUser(organizationId, String(payload.assignedToId));
   if (payload.accountId) await assertOrganizationRecord(organizationId, "account", String(payload.accountId));
@@ -63,6 +166,10 @@ async function validateReferences(payload: RecordData, organizationId: string) {
   if (payload.reportsToContactId) await assertOrganizationRecord(organizationId, "contact", String(payload.reportsToContactId));
   await assertRelatedOrganizationRecord(organizationId, payload.nameObjectType, payload.nameRecordId);
   await assertRelatedOrganizationRecord(organizationId, payload.relatedObjectType, payload.relatedRecordId);
+  if (payload.calendarSourceId) {
+    const source = await prisma.calendarSource.findFirst({ where: { id: String(payload.calendarSourceId), organizationId, userId }, select: { id: true } });
+    if (!source) throw new AppAuthorizationError("Calendar not found.", 404);
+  }
 }
 
 async function assertScopedRecord(object: CrmObject, id: string, organizationId: string) {
@@ -119,6 +226,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           description: payload.description as string | null | undefined,
           phone: payload.phone as string | null | undefined,
           email: payload.email as string | null | undefined,
+          birthDate: payload.birthDate === undefined ? undefined : payload.birthDate === null ? null : new Date(String(payload.birthDate)),
           mailingCountry: payload.mailingCountry as string | null | undefined,
           mailingStreet: payload.mailingStreet as string | null | undefined,
           mailingPostalCode: payload.mailingPostalCode as string | null | undefined,
@@ -186,7 +294,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           subject: payload.subject as string | null | undefined,
           description: payload.description as string | null | undefined,
           sendNotificationEmailToContact: payload.sendNotificationEmailToContact === undefined ? undefined : Boolean(payload.sendNotificationEmailToContact),
-          closedAt: payload.status === "Closed" ? new Date() : undefined,
+          closedAt: payload.status === undefined ? undefined : payload.status === "Closed" ? new Date() : null,
           updatedById: userId
         }
       });
@@ -235,6 +343,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           relatedObjectType: payload.relatedObjectType as string | null | undefined,
           relatedRecordId: payload.relatedRecordId as string | null | undefined,
           assignedToId: payload.assignedToId ? String(payload.assignedToId) : undefined,
+          calendarSourceId: payload.calendarSourceId as string | null | undefined,
           location: payload.location as string | null | undefined,
           showTimeAs: payload.showTimeAs ? String(payload.showTimeAs) : undefined,
           allDay: payload.allDay === undefined ? undefined : Boolean(payload.allDay),
@@ -265,7 +374,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           recipients: Array.isArray(payload.recipients) ? payload.recipients.map(String) : undefined,
           status: listEmailStatus,
           sentAt: listEmailStatus === "Sent" ? new Date() : undefined,
-          scheduledAt: payload.scheduledAt ? new Date(String(payload.scheduledAt)) : payload.scheduledAt === null ? null : undefined
+          scheduledAt: listEmailStatus === "Sent" ? null : payload.scheduledAt ? new Date(String(payload.scheduledAt)) : payload.scheduledAt === null ? null : undefined
         }
       });
     }

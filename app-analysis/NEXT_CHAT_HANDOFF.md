@@ -61,18 +61,18 @@ The `app-analysis/` folder is the source of truth for the target UI:
 ## Current Implementation State
 
 The app is substantially implemented. `CrmApp.tsx` includes:
-- Trial banner, left app rail, global header, app nav, and console tabs.
+- Left app rail, global header, app nav, and console tabs. The trial purchase banner has intentionally been removed.
 - Global search, help/settings/profile/notifications utilities.
 - List views with search, sorting, filters, charts, display modes, row actions, selection, import/list actions, list view preferences, and Kanban.
 - Record pages for Account and Contact with related lists, details, duplicate handling, hierarchy, file upload, and activity.
-- Home, marketing, commerce, subscription, analytics, calendar, quick text, knowledge, product wizard, list email, report builder, and modal workflows.
+- Home, marketing, commerce, subscription, analytics, calendar, quick text, knowledge, product wizard, list email, Sales invoice, report builder, and modal workflows.
 - Toasts, guidance cards, calendar sources, notification preferences, custom reports/dashboards, app nav preferences, list view preferences, and Agentforce-like utility responses.
 
 Prisma/API coverage includes core objects and workflows:
 - Accounts, Contacts, Leads, Opportunities, Cases.
 - Products, Price Books, Price Book Entries.
 - Events, Tasks, Email/Call activities.
-- Files, attachments, quick text, knowledge, list emails, messaging sessions, invoices, video calls.
+- Files, attachments, quick text, knowledge, list emails, messaging sessions, video calls, and full Sales invoices with line items and payment history.
 - Preferences, notifications, guidance, search recents, custom reports/dashboards, marketing/subscription actions.
 
 ## Completed Since The Old Handoff
@@ -84,6 +84,7 @@ The old handoff's known blocker is resolved:
 - `npm run build` now passes.
 
 Additional app-analysis progress:
+- Sales Invoices are a functioning Sales feature with tenant-scoped CRUD, lifecycle validation, Decimal calculations, concurrency-safe numbering, Product/Price Book defaults, external-payment recording, notifications, detail pages, and valid PDF downloads. They are deliberately unrelated to `SubscriptionCheckout` and Your Account subscription billing.
 - Record page owner edit actions now route into the `Change Owner` list-action modal for the current record.
 - `Change Owner` has a fixture-mode/local fallback so ownership changes still update visible records when no DB workflow rows return.
 - Lead `Convert Lead` is implemented in UI and `/api/workflows`, creating/reusing Account, Contact, and optional Opportunity records while updating Lead status.
@@ -95,6 +96,14 @@ Additional app-analysis progress:
 - Lookup fields are now search-input comboboxes with filtered results, keyboard selection, selected-record pills, and clear-selection buttons.
 - Product `Add to Category` now persists `Product.category`, updates selected Product rows, and is covered by the use-case suite.
 - `scripts/crm-usecase-check.mjs` is available through `npm run test:usecases` and exercises the documented routes, action affordances, required validation, metadata, record CRUD, activity/files, list workflows, Knowledge lifecycle, marketing/commerce/utilities, profile/preferences, and disposable delete cleanup.
+- Durable file content, Messaging Sessions, Video Calls, Campaigns, Products/Price Books, commerce orders/inventory/promotions/fulfillment, public Knowledge, provider email tracking, saved Analytics lifecycle, calendar source assignment/ICS export, and the missing core detail routes are implemented. See `12-non-subscription-feature-completion.md`.
+- SendGrid delivery events are accepted only through the signed webhook route when `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` is configured; acceptance, delivery, deferred, bounce, drop, spam, and unsubscribe states are kept distinct.
+- Calendar sources are intentionally local. External calendar OAuth/sync is not faked; `.ics` export is available.
+- Standard list views now apply their documented filters from `filterName`, Refresh refetches Bootstrap data, Contact birthdays persist, and Quick Text favorites are per-user records.
+- Lead conversion destinations and timestamps persist, converted Leads are immutable, Case numbers use a tenant sequence, and Case merge transactionally re-parents related activity/files before closing the secondary Case.
+- Knowledge URL names are tenant-unique and article numbers are allocated concurrency-safely.
+- Marketing includes real landing-page CRUD/lifecycle, public branded lead forms, Campaign attribution, submission history, and notifications. Public forms are deliberately separate from marketing sender activation.
+- Subscription checkout and Your Account app billing remain intentionally out of scope and are separate from Sales invoices and commerce orders.
 
 ## Git And Verification Status
 
@@ -133,7 +142,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:3003/lightning/o/Eve
 ```
 
 Results:
-- `npm run test:usecases` passed twice on port `3003` with `13/13` checks, including Product `Add to Category`.
+- The latest authenticated `npm run test:usecases` run passed `26/26` checks. It covers the original CRM flows plus standard-view persistence, Lead conversion immutability, Case and Knowledge numbering, Case merge integrity, invoice lifecycle/PDF, durable files, communications, campaigns, commerce, Knowledge feedback, email delivery tracking, Analytics/calendar behavior, marketing landing-page lifecycle, anonymous form submission, Web Lead/Campaign attribution, and cleanup.
 - `git diff --check` passed.
 - `npm run build` passed.
 - `npm run lint` passed with only the expected Next lint deprecation notice.
@@ -170,13 +179,10 @@ Notes:
 ## Recommended Next Steps
 
 1. Run `git status --short --branch` and inspect relevant staged plus unstaged diffs before editing.
-2. Continue implementing the highest-value remaining app-analysis behavior gaps. Good candidates:
-   - Browser-level upload verification if a browser automation surface with native file selection becomes available.
-   - More complete keyboard/accessibility behavior around custom picklists and lookup result lists.
-   - Optional backend models for Salesforce-only Event `Related To` object choices if the clone ever expands beyond the app-analysis app-logic scope.
-3. Keep changes scoped to the app logic. Do not implement trial/plans beyond preserving visible shell affordances already present.
-4. Run `npm run build` and `npm run test:usecases` after meaningful changes.
-5. Restart the dev server on port `3003` after production builds before route smoke tests.
+2. Keep changes scoped to CRM app logic. Do not connect Sales invoices or commerce to application subscription billing.
+3. Provider expansions should use real APIs and explicit configuration. Do not simulate email delivery, payment processing, carrier fulfillment, video-room provisioning, or external calendar sync.
+4. Run the Prisma, TypeScript, focused unit, authenticated use-case, diff, and production-build gates after meaningful changes.
+5. Restart the development server after Prisma generation or a production build before trusting route checks.
 
 ## Useful Commands
 
@@ -195,7 +201,7 @@ Optional local database setup:
 cp .env.example .env
 docker compose up -d
 npm run prisma:generate
-npm run prisma:push
+npm run prisma:migrate:deploy
 npm run prisma:seed
 ```
 

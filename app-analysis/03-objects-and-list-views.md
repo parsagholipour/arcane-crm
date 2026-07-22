@@ -233,6 +233,8 @@ Rebuild requirement: expose both options. If an object/list cannot support Kanba
 
 ### Invoices
 
+> Implementation note (July 22, 2026): the observations below describe the original empty Salesforce trial surface. The CRM now implements complete organization-scoped Sales invoicing, documented in `11-sales-invoicing-implementation.md`; this historical observation is intentionally retained.
+
 - Object API-style name: `Invoice`
 - URL: `/lightning/o/Invoice/home`
 - Default list: `Recently Viewed`

@@ -11,6 +11,7 @@ export type CrmObject =
   | "MessagingSession"
   | "Knowledge__kav"
   | "ListEmail"
+  | "Campaign"
   | "Invoice"
   | "VideoCall";
 
@@ -41,6 +42,7 @@ export type BootstrapData = {
   organizations: OrganizationSummary[];
   organizationRole: "ADMIN" | "MEMBER";
   isSuperAdmin: boolean;
+  emailDeliveryConfigured: boolean;
   accounts: RecordData[];
   contacts: RecordData[];
   leads: RecordData[];
@@ -53,6 +55,7 @@ export type BootstrapData = {
   calendarSources: RecordData[];
   quickTexts: RecordData[];
   quickTextFolders: RecordData[];
+  quickTextFavorites: RecordData[];
   knowledgeArticles: RecordData[];
   listEmails: RecordData[];
   messagingSessions: RecordData[];
@@ -62,13 +65,19 @@ export type BootstrapData = {
   attachments: RecordData[];
   tasks: RecordData[];
   emailActivities: RecordData[];
+  emailDeliveries: RecordData[];
   callActivities: RecordData[];
   partners: RecordData[];
   stores: RecordData[];
+  commerceOrders: RecordData[];
+  inventoryItems: RecordData[];
+  commercePromotions: RecordData[];
+  commerceFulfillments: RecordData[];
   campaigns: RecordData[];
   campaignMembers: RecordData[];
   recordLabels: RecordData[];
   marketingActivations: RecordData[];
+  marketingLandingPages: RecordData[];
   subscriptionCheckouts: RecordData[];
   customReports: RecordData[];
   customDashboards: RecordData[];

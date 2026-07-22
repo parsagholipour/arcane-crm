@@ -18,6 +18,8 @@ This is intended as a 100% UI-observed reconstruction spec. It documents every v
 - [08-page-state-and-interaction-spec.md](08-page-state-and-interaction-spec.md) - detailed component states, list-view behavior, modal state machines, console tabs, activity composer, file upload, search, and calendar behavior.
 - [09-ai-implementation-blueprint.md](09-ai-implementation-blueprint.md) - route map, component architecture, data model, fixture data, rebuild sequence, and acceptance checklist for an AI implementer.
 - [10-raw-observation-log.md](10-raw-observation-log.md) - compact raw screen observations and text snippets from the live UI, normalized to ASCII.
+- [11-sales-invoicing-implementation.md](11-sales-invoicing-implementation.md) - implementation note for the functioning Sales invoice feature that now exceeds the originally observed empty scaffold.
+- [12-non-subscription-feature-completion.md](12-non-subscription-feature-completion.md) - implementation note for the completed core lifecycle, communications, campaigns, marketing forms, commerce, Knowledge, Analytics, calendar, file, and provider-tracking surfaces.
 
 ## Important Scope Notes
 
@@ -26,3 +28,4 @@ This is intended as a 100% UI-observed reconstruction spec. It documents every v
 - Salesforce REST metadata endpoints were not available through the browser wrapper, so field/layout details are based on visible Lightning UI, dialogs, menus, and record pages.
 - The app includes many Salesforce-standard capabilities. A non-Salesforce rebuild should replicate the behavior and UI patterns, not necessarily Salesforce internal implementation.
 - Some large Salesforce-standard lists, such as countries and 15-minute time slots, were sampled from the dropdown UI. The rebuild should implement the full standard lists, while preserving the observed labels, defaults, and behavior.
+- Historical observation files remain unchanged where useful. Later implementation notes describe deliberate product capabilities that exceed the originally observed trial state.

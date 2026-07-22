@@ -3,7 +3,7 @@ import Keycloak from "next-auth/providers/keycloak";
 import { NextResponse } from "next/server";
 
 export function isPublicAuthPath(pathname: string) {
-  return pathname.startsWith("/auth/") || pathname === "/no-organization";
+  return pathname.startsWith("/auth/") || pathname.startsWith("/knowledge/") || pathname.startsWith("/forms/") || pathname === "/no-organization";
 }
 
 export default {

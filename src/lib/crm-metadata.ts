@@ -406,6 +406,7 @@ export const APP_NAV: Record<AppKey, AppNavItem[]> = {
   ],
   marketing: [
     { label: "Marketing overview", href: "/lightning/app/marketing" },
+    { label: "Campaigns", href: "/lightning/o/Campaign/list", object: "Campaign" },
     { label: "List Emails", href: "/lightning/o/ListEmail/list", object: "ListEmail" }
   ],
   commerce: [{ label: "Stores", href: "/lightning/app/commerce" }],
@@ -596,15 +597,20 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     icon: "messages-square",
     dataKey: "messagingSessions",
     defaultList: "Recently Viewed",
-    listViews: ["All Messaging Sessions", "Recently Viewed (Pinned list)"],
-    actions: ["List View Controls", "Refresh", "Charts", "Filters"],
+    listViews: ["All Messaging Sessions", "Open", "Waiting", "Closed", "Recently Viewed (Pinned list)"],
+    actions: ["New"],
     columns: [
-      { key: "name", label: "Messaging Session Name" },
+      { key: "name", label: "Messaging Session Name", link: true },
+      { key: "channel", label: "Channel" },
+      { key: "subject", label: "Subject" },
       { key: "status", label: "Status" },
+      { key: "lastMessageAt", label: "Last Message" },
       { key: "ownerAlias", label: "Owner Alias" }
     ],
     searchInputName: "Messaging Session-search-input",
-    disabledInlineEditMessage: "Inline edit isn't available for the displayed fields."
+    emptyTitle: "Start your first messaging session",
+    emptyBody: "Choose New to track participants and inbound, outbound, or externally exchanged messages.",
+    supportsNew: true
   },
   Knowledge__kav: {
     object: "Knowledge__kav",
@@ -648,21 +654,54 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     ],
     searchInputName: "List Email-search-input"
   },
+  Campaign: {
+    object: "Campaign",
+    label: "Campaign",
+    plural: "Campaigns",
+    icon: "megaphone",
+    dataKey: "campaigns",
+    defaultList: "All Campaigns",
+    listViews: ["All Campaigns", "Planned", "In Progress", "Completed", "Archived", "Recently Viewed"],
+    actions: ["New"],
+    columns: [
+      { key: "name", label: "Campaign Name", link: true },
+      { key: "type", label: "Type" },
+      { key: "status", label: "Status" },
+      { key: "startDate", label: "Start Date" },
+      { key: "endDate", label: "End Date" },
+      { key: "memberCount", label: "Members" },
+      { key: "responseRate", label: "Response Rate" },
+      { key: "ownerAlias", label: "Owner Alias" }
+    ],
+    searchInputName: "Campaign-search-input",
+    emptyTitle: "Create your first marketing campaign",
+    emptyBody: "Choose New to plan a campaign, add Leads or Contacts, and measure response.",
+    supportsNew: true
+  },
   Invoice: {
     object: "Invoice",
     label: "Invoice",
     plural: "Invoices",
     icon: "receipt",
     dataKey: "invoices",
-    defaultList: "Recently Viewed",
-    listViews: ["All Invoices", "Recently Viewed (Pinned list)"],
-    actions: ["List View Controls", "Refresh", "Edit List", "Charts", "Filters"],
+    defaultList: "All Invoices",
+    listViews: ["All Invoices", "Draft", "Outstanding", "Overdue", "Paid", "Recently Viewed"],
+    actions: ["New"],
     columns: [
-      { key: "name", label: "Invoice Name" },
+      { key: "invoiceNumber", label: "Invoice Number", link: true },
+      { key: "accountName", label: "Account" },
+      { key: "opportunityName", label: "Opportunity" },
       { key: "status", label: "Status" },
-      { key: "amount", label: "Amount" }
+      { key: "issueDate", label: "Issue Date" },
+      { key: "dueDate", label: "Due Date" },
+      { key: "total", label: "Total" },
+      { key: "amountPaid", label: "Amount Paid" },
+      { key: "balanceDue", label: "Balance Due" }
     ],
-    searchInputName: "Invoice-search-input"
+    searchInputName: "Invoice-search-input",
+    emptyTitle: "Create your first sales invoice",
+    emptyBody: "Choose New Invoice to create a draft for an Account, add line items, and track externally received payments.",
+    supportsNew: true
   },
   VideoCall: {
     object: "VideoCall",
@@ -671,14 +710,20 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     icon: "video",
     dataKey: "videoCalls",
     defaultList: "Recently Viewed",
-    listViews: ["All Video Calls", "Recently Viewed (Pinned list)"],
-    actions: ["List View Controls", "Refresh", "Edit List", "Charts", "Filters"],
+    listViews: ["All Video Calls", "Upcoming", "In Progress", "Completed", "Cancelled", "Recently Viewed (Pinned list)"],
+    actions: ["New"],
     columns: [
-      { key: "name", label: "Video Call Name" },
+      { key: "name", label: "Video Call Name", link: true },
+      { key: "status", label: "Status" },
       { key: "provider", label: "Provider" },
-      { key: "startedAt", label: "Started At" }
+      { key: "scheduledStartAt", label: "Scheduled Start" },
+      { key: "scheduledEndAt", label: "Scheduled End" },
+      { key: "organizerName", label: "Organizer" }
     ],
-    searchInputName: "Video Call-search-input"
+    searchInputName: "Video Call-search-input",
+    emptyTitle: "Schedule your first video call",
+    emptyBody: "Choose New to track a real provider link, participants, attendance, and call lifecycle.",
+    supportsNew: true
   }
 };
 
@@ -728,6 +773,7 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
       { name: "ownerId", label: "Contact Owner", section: "About", type: "lookup", lookupObject: "User" },
       { name: "phone", label: "Phone", section: "Get in Touch", type: "phone" },
       { name: "email", label: "Email", section: "Get in Touch", type: "email" },
+      { name: "birthDate", label: "Birthdate", section: "Get in Touch", type: "date" },
       ...addressFields("mailing", "Mailing Address")
     ]
   },

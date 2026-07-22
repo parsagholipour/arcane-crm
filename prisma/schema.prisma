@@ -89,7 +89,7 @@ model AppSession {
 }
 
 model Account {
-  id                 String        @id @default(cuid())
+  id                 String             @id @default(cuid())
   organizationId     String
   name               String
   website            String?
@@ -110,79 +110,95 @@ model Account {
   shippingState      String?
   createdById        String
   updatedById        String
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
   contacts           Contact[]
   opportunities      Opportunity[]
   cases              CaseRecord[]
   partners           Partner[]
+  invoices           Invoice[]
+  messagingSessions  MessagingSession[]
+  videoCalls         VideoCall[]
+  commerceOrders     CommerceOrder[]
 
   @@index([organizationId])
 }
 
 model Contact {
-  id                 String        @id @default(cuid())
-  organizationId     String
-  salutation         String?
-  firstName          String?
-  lastName           String
-  accountId          String
-  title              String?
-  reportsToContactId String?
-  description        String?
-  ownerId            String
-  phone              String?
-  email              String?
-  mailingCountry     String?
-  mailingStreet      String?
-  mailingPostalCode  String?
-  mailingCity        String?
-  mailingState       String?
-  createdById        String
-  updatedById        String
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  account            Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  opportunities      Opportunity[]
-  cases              CaseRecord[]
+  id                  String                        @id @default(cuid())
+  organizationId      String
+  salutation          String?
+  firstName           String?
+  lastName            String
+  accountId           String
+  title               String?
+  reportsToContactId  String?
+  description         String?
+  ownerId             String
+  phone               String?
+  email               String?
+  birthDate           DateTime?
+  mailingCountry      String?
+  mailingStreet       String?
+  mailingPostalCode   String?
+  mailingCity         String?
+  mailingState        String?
+  createdById         String
+  updatedById         String
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime                      @updatedAt
+  account             Account                       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  opportunities       Opportunity[]
+  cases               CaseRecord[]
+  messagingSessions   MessagingSession[]            @relation("MessagingSessionContact")
+  messageParticipants MessagingSessionParticipant[]
+  videoCalls          VideoCall[]                   @relation("VideoCallContact")
+  videoParticipants   VideoCallParticipant[]
+  commerceOrders      CommerceOrder[]
 
   @@index([organizationId])
 }
 
 model Lead {
-  id                String   @id @default(cuid())
-  organizationId    String
-  status            String   @default("New")
-  salutation        String?
-  firstName         String?
-  lastName          String
-  company           String
-  title             String?
-  website           String?
-  description       String?
-  ownerId           String
-  rating            String?
-  phone             String?
-  email             String?
-  country           String?
-  street            String?
-  postalCode        String?
-  city              String?
-  state             String?
-  numberOfEmployees Int?
-  annualRevenue     Decimal?
-  leadSource        String?
-  industry          String?
-  createdById       String
-  updatedById       String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                       String                    @id @default(cuid())
+  organizationId           String
+  status                   String                    @default("New")
+  salutation               String?
+  firstName                String?
+  lastName                 String
+  company                  String
+  title                    String?
+  website                  String?
+  description              String?
+  ownerId                  String
+  rating                   String?
+  phone                    String?
+  email                    String?
+  country                  String?
+  street                   String?
+  postalCode               String?
+  city                     String?
+  state                    String?
+  numberOfEmployees        Int?
+  annualRevenue            Decimal?
+  leadSource               String?
+  industry                 String?
+  convertedAt              DateTime?
+  convertedAccountId       String?
+  convertedContactId       String?
+  convertedOpportunityId   String?
+  createdById              String
+  updatedById              String
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  marketingFormSubmissions MarketingFormSubmission[]
 
   @@index([organizationId])
+  @@index([organizationId, convertedAt])
 }
 
 model Opportunity {
-  id               String   @id @default(cuid())
+  id               String      @id @default(cuid())
   organizationId   String
   name             String
   accountId        String
@@ -197,10 +213,12 @@ model Opportunity {
   nextStep         String?
   createdById      String
   updatedById      String
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  account          Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  contact          Contact? @relation(fields: [contactId], references: [id])
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  account          Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  contact          Contact?    @relation(fields: [contactId], references: [id])
+  invoices         Invoice[]
+  videoCalls       VideoCall[]
 
   @@index([organizationId])
 }
@@ -232,19 +250,28 @@ model CaseRecord {
   @@map("cases")
 }
 
+model CaseNumberSequence {
+  organizationId String   @id
+  nextNumber     Int      @default(1)
+  updatedAt      DateTime @default(now()) @updatedAt
+}
+
 model Product {
-  id             String           @id @default(cuid())
-  organizationId String
-  name           String
-  family         String?
-  productCode    String?
-  sku            String?
-  category       String?
-  active         Boolean          @default(false)
-  description    String?
-  entries        PriceBookEntry[]
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  id                 String              @id @default(cuid())
+  organizationId     String
+  name               String
+  family             String?
+  productCode        String?
+  sku                String?
+  category           String?
+  active             Boolean             @default(false)
+  description        String?
+  entries            PriceBookEntry[]
+  invoiceLineItems   InvoiceLineItem[]
+  commerceOrderLines CommerceOrderLine[]
+  inventoryItems     InventoryItem[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 
   @@index([organizationId])
 }
@@ -259,6 +286,7 @@ model PriceBook {
   validFrom      DateTime?
   validTo        DateTime?
   entries        PriceBookEntry[]
+  stores         MarketingStore[]
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -266,21 +294,22 @@ model PriceBook {
 }
 
 model PriceBookEntry {
-  id             String    @id @default(cuid())
-  organizationId String
-  productId      String
-  priceBookId    String
-  listPrice      Decimal?
-  currency       String    @default("USD")
-  active         Boolean   @default(false)
-  product        Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  priceBook      PriceBook @relation(fields: [priceBookId], references: [id], onDelete: Cascade)
+  id                 String              @id @default(cuid())
+  organizationId     String
+  productId          String
+  priceBookId        String
+  listPrice          Decimal?
+  currency           String              @default("USD")
+  active             Boolean             @default(false)
+  product            Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  priceBook          PriceBook           @relation(fields: [priceBookId], references: [id], onDelete: Cascade)
+  commerceOrderLines CommerceOrderLine[]
 
   @@index([organizationId])
 }
 
 model Event {
-  id                String   @id @default(cuid())
+  id                String          @id @default(cuid())
   organizationId    String
   subject           String
   description       String?
@@ -292,24 +321,36 @@ model Event {
   relatedObjectType String?
   relatedRecordId   String?
   assignedToId      String
+  calendarSourceId  String?
   location          String?
-  showTimeAs        String   @default("Busy")
-  allDay            Boolean  @default(false)
-  private           Boolean  @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  showTimeAs        String          @default("Busy")
+  allDay            Boolean         @default(false)
+  private           Boolean         @default(false)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  calendarSource    CalendarSource? @relation(fields: [calendarSourceId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, calendarSourceId, startAt])
 }
 
 model CalendarSource {
-  id             String   @id @default(cuid())
-  organizationId String
-  userId         String
-  name           String
-  type           String   @default("My")
-  color          String   @default("#0176d3")
-  visible        Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @default(now()) @updatedAt
+  id               String    @id @default(cuid())
+  organizationId   String
+  userId           String
+  name             String
+  type             String    @default("My")
+  color            String    @default("#0176d3")
+  visible          Boolean   @default(true)
+  provider         String    @default("Local")
+  externalId       String?
+  connectionStatus String    @default("Local")
+  readOnly         Boolean   @default(false)
+  lastSyncedAt     DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
+  events           Event[]
+
+  @@index([organizationId, userId])
 }
 
 model Task {
@@ -338,6 +379,52 @@ model EmailActivity {
   sentAt            DateTime @default(now())
 }
 
+model EmailDelivery {
+  id                String               @id @default(cuid())
+  organizationId    String
+  trackingKey       String
+  provider          String               @default("sendgrid")
+  providerMessageId String?
+  sourceType        String
+  sourceId          String?
+  recipient         String
+  sender            String
+  subject           String
+  status            String               @default("Accepted")
+  recordedById      String
+  scheduledAt       DateTime?
+  acceptedAt        DateTime
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  lastEventAt       DateTime?
+  lastReason        String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  events            EmailDeliveryEvent[]
+
+  @@unique([organizationId, trackingKey, recipient])
+  @@index([organizationId, sourceType, sourceId])
+  @@index([trackingKey, recipient])
+  @@index([providerMessageId])
+}
+
+model EmailDeliveryEvent {
+  id                String        @id @default(cuid())
+  organizationId    String
+  deliveryId        String
+  providerEventId   String?       @unique
+  providerMessageId String?
+  eventType         String
+  occurredAt        DateTime
+  reason            String?
+  response          String?
+  raw               Json
+  createdAt         DateTime      @default(now())
+  delivery          EmailDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, deliveryId, occurredAt])
+}
+
 model CallActivity {
   id                String   @id @default(cuid())
   organizationId    String
@@ -353,10 +440,15 @@ model FileRecord {
   organizationId    String
   name              String
   size              Int?
+  contentType       String?
+  checksum          String?
+  content           Bytes?
   relatedObjectType String?
   relatedRecordId   String?
   uploadedById      String
   uploadedAt        DateTime @default(now())
+
+  @@index([organizationId, relatedObjectType, relatedRecordId])
 }
 
 model AttachmentRecord {
@@ -364,10 +456,15 @@ model AttachmentRecord {
   organizationId    String
   name              String
   size              Int?
+  contentType       String?
+  checksum          String?
+  content           Bytes?
   relatedObjectType String?
   relatedRecordId   String?
   uploadedById      String
   uploadedAt        DateTime @default(now())
+
+  @@index([organizationId, relatedObjectType, relatedRecordId])
 }
 
 model QuickTextFolder {
@@ -382,7 +479,7 @@ model QuickTextFolder {
 }
 
 model QuickText {
-  id             String           @id @default(cuid())
+  id             String              @id @default(cuid())
   organizationId String
   name           String
   message        String
@@ -391,31 +488,70 @@ model QuickText {
   channels       String[]
   mergeFields    String[]
   createdById    String
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  folder         QuickTextFolder? @relation(fields: [folderId], references: [id])
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  folder         QuickTextFolder?    @relation(fields: [folderId], references: [id])
+  favorites      QuickTextFavorite[]
+}
+
+model QuickTextFavorite {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  quickTextId    String
+  createdAt      DateTime  @default(now())
+  quickText      QuickText @relation(fields: [quickTextId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId, quickTextId])
+  @@index([organizationId, userId, createdAt])
 }
 
 model KnowledgeArticle {
-  id                   String    @id @default(cuid())
+  id                   String              @id @default(cuid())
   organizationId       String
   title                String
   urlName              String
   summary              String?
   bodyRichText         String?
-  visibleInInternalApp Boolean   @default(true)
-  visibleToCustomer    Boolean   @default(false)
+  visibleInInternalApp Boolean             @default(true)
+  visibleToCustomer    Boolean             @default(false)
   articleNumber        String?
   publishedAt          DateTime?
-  publicationStatus    String    @default("Draft")
+  publicationStatus    String              @default("Draft")
   validationStatus     String?
-  totalViewCount       Int       @default(0)
+  totalViewCount       Int                 @default(0)
+  lastViewedAt         DateTime?
   archivedAt           DateTime?
   archivedById         String?
   createdById          String
   updatedById          String
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  feedback             KnowledgeFeedback[]
+
+  @@unique([organizationId, urlName])
+  @@unique([organizationId, articleNumber])
+}
+
+model KnowledgeArticleNumberSequence {
+  organizationId String   @id
+  nextNumber     Int      @default(1)
+  updatedAt      DateTime @default(now()) @updatedAt
+}
+
+model KnowledgeFeedback {
+  id             String           @id @default(cuid())
+  organizationId String
+  articleId      String
+  visitorKey     String
+  helpful        Boolean
+  comment        String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  article        KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, articleId, visitorKey])
+  @@index([organizationId, articleId, helpful])
 }
 
 model ListEmail {
@@ -434,33 +570,202 @@ model ListEmail {
 }
 
 model MessagingSession {
-  id             String   @id @default(cuid())
+  id             String                        @id @default(cuid())
   organizationId String
-  name           String?
-  status         String?
-  ownerId        String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  name           String
+  subject        String?
+  channel        String                        @default("Web Chat")
+  status         String                        @default("Open")
+  ownerId        String
+  accountId      String?
+  contactId      String?
+  externalId     String?
+  startedAt      DateTime                      @default(now())
+  endedAt        DateTime?
+  lastMessageAt  DateTime?
+  createdById    String
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @updatedAt
+  account        Account?                      @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  contact        Contact?                      @relation("MessagingSessionContact", fields: [contactId], references: [id], onDelete: SetNull)
+  participants   MessagingSessionParticipant[]
+  messages       MessagingMessage[]
+
+  @@index([organizationId, status, lastMessageAt])
+  @@index([organizationId, accountId])
+  @@index([organizationId, contactId])
+}
+
+model MessagingSessionParticipant {
+  id             String           @id @default(cuid())
+  organizationId String
+  sessionId      String
+  contactId      String?
+  name           String
+  address        String?
+  role           String           @default("Customer")
+  joinedAt       DateTime         @default(now())
+  leftAt         DateTime?
+  session        MessagingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  contact        Contact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, sessionId])
+  @@index([organizationId, contactId])
+}
+
+model MessagingMessage {
+  id                String           @id @default(cuid())
+  organizationId    String
+  sessionId         String
+  direction         String
+  senderName        String?
+  senderAddress     String?
+  body              String
+  status            String           @default("Recorded")
+  externalMessageId String?
+  recordedById      String
+  sentAt            DateTime         @default(now())
+  createdAt         DateTime         @default(now())
+  session           MessagingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, sessionId, sentAt])
 }
 
 model Invoice {
+  id                  String            @id @default(cuid())
+  organizationId      String
+  invoiceNumber       String
+  accountId           String
+  opportunityId       String?
+  status              String            @default("Draft")
+  issueDate           DateTime
+  dueDate             DateTime
+  currency            String            @default("USD")
+  purchaseOrderNumber String?
+  billingName         String
+  billingStreet       String?
+  billingCity         String?
+  billingState        String?
+  billingPostalCode   String?
+  billingCountry      String?
+  notes               String?
+  terms               String?
+  subtotal            Decimal           @default(0) @db.Decimal(18, 2)
+  discountTotal       Decimal           @default(0) @db.Decimal(18, 2)
+  taxTotal            Decimal           @default(0) @db.Decimal(18, 2)
+  total               Decimal           @default(0) @db.Decimal(18, 2)
+  amountPaid          Decimal           @default(0) @db.Decimal(18, 2)
+  balanceDue          Decimal           @default(0) @db.Decimal(18, 2)
+  createdById         String
+  sentAt              DateTime?
+  paidAt              DateTime?
+  voidedAt            DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  account             Account           @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  opportunity         Opportunity?      @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  lineItems           InvoiceLineItem[]
+  payments            InvoicePayment[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId, status, dueDate])
+  @@index([organizationId, accountId])
+  @@index([organizationId, opportunityId])
+}
+
+model InvoiceLineItem {
   id             String   @id @default(cuid())
-  organizationId String
-  name           String?
-  status         String?
-  amount         Decimal?
+  invoiceId      String
+  productId      String?
+  description    String
+  quantity       Decimal  @db.Decimal(18, 4)
+  unitPrice      Decimal  @db.Decimal(18, 2)
+  discountAmount Decimal  @default(0) @db.Decimal(18, 2)
+  taxRate        Decimal  @default(0) @db.Decimal(7, 4)
+  lineSubtotal   Decimal  @db.Decimal(18, 2)
+  taxAmount      Decimal  @db.Decimal(18, 2)
+  lineTotal      Decimal  @db.Decimal(18, 2)
+  displayOrder   Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product        Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId, displayOrder])
+  @@index([productId])
+}
+
+model InvoicePayment {
+  id              String   @id @default(cuid())
+  invoiceId       String
+  amount          Decimal  @db.Decimal(18, 2)
+  paymentDate     DateTime
+  paymentMethod   String
+  referenceNumber String?
+  notes           String?
+  recordedById    String
+  createdAt       DateTime @default(now())
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId, paymentDate])
+}
+
+model InvoiceNumberSequence {
+  organizationId String   @id
+  nextNumber     Int      @default(1)
+  updatedAt      DateTime @default(now()) @updatedAt
 }
 
 model VideoCall {
+  id               String                 @id @default(cuid())
+  organizationId   String
+  name             String
+  description      String?
+  status           String                 @default("Scheduled")
+  provider         String                 @default("External Link")
+  meetingUrl       String?
+  scheduledStartAt DateTime
+  scheduledEndAt   DateTime
+  startedAt        DateTime?
+  endedAt          DateTime?
+  accountId        String?
+  contactId        String?
+  opportunityId    String?
+  organizerId      String
+  createdById      String
+  recordingUrl     String?
+  notes            String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  account          Account?               @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  contact          Contact?               @relation("VideoCallContact", fields: [contactId], references: [id], onDelete: SetNull)
+  opportunity      Opportunity?           @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  participants     VideoCallParticipant[]
+
+  @@index([organizationId, status, scheduledStartAt])
+  @@index([organizationId, accountId])
+  @@index([organizationId, contactId])
+  @@index([organizationId, opportunityId])
+}
+
+model VideoCallParticipant {
   id             String    @id @default(cuid())
   organizationId String
-  name           String?
-  provider       String?
-  startedAt      DateTime?
+  videoCallId    String
+  userId         String?
+  contactId      String?
+  name           String
+  email          String?
+  role           String    @default("Attendee")
+  attendance     String    @default("Invited")
+  joinedAt       DateTime?
+  leftAt         DateTime?
   createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  videoCall      VideoCall @relation(fields: [videoCallId], references: [id], onDelete: Cascade)
+  contact        Contact?  @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, videoCallId])
+  @@index([organizationId, contactId])
 }
 
 model Partner {
@@ -474,13 +779,194 @@ model Partner {
 }
 
 model MarketingStore {
-  id             String   @id @default(cuid())
+  id             String              @id @default(cuid())
   organizationId String
   name           String
-  currency       String?
-  status         String?
-  createdAt      DateTime @default(now())
+  slug           String
+  currency       String              @default("USD")
+  status         String              @default("Draft")
+  description    String?
+  priceBookId    String?
+  createdById    String
+  launchedAt     DateTime?
+  archivedAt     DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  priceBook      PriceBook?          @relation(fields: [priceBookId], references: [id], onDelete: SetNull)
+  orders         CommerceOrder[]
+  inventoryItems InventoryItem[]
+  promotions     CommercePromotion[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, status])
+}
+
+model CommerceOrderSequence {
+  organizationId String   @id
+  nextNumber     Int      @default(1)
   updatedAt      DateTime @updatedAt
+}
+
+model CommerceOrder {
+  id                  String                   @id @default(cuid())
+  organizationId      String
+  orderNumber         String
+  storeId             String
+  accountId           String
+  contactId           String?
+  status              String                   @default("Draft")
+  fulfillmentStatus   String                   @default("Unfulfilled")
+  orderDate           DateTime                 @default(now())
+  currency            String                   @default("USD")
+  purchaseOrderNumber String?
+  shippingName        String?
+  shippingStreet      String?
+  shippingCity        String?
+  shippingState       String?
+  shippingPostalCode  String?
+  shippingCountry     String?
+  notes               String?
+  subtotal            Decimal                  @default(0) @db.Decimal(18, 2)
+  discountTotal       Decimal                  @default(0) @db.Decimal(18, 2)
+  taxTotal            Decimal                  @default(0) @db.Decimal(18, 2)
+  shippingTotal       Decimal                  @default(0) @db.Decimal(18, 2)
+  total               Decimal                  @default(0) @db.Decimal(18, 2)
+  createdById         String
+  confirmedAt         DateTime?
+  cancelledAt         DateTime?
+  fulfilledAt         DateTime?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  store               MarketingStore           @relation(fields: [storeId], references: [id])
+  account             Account                  @relation(fields: [accountId], references: [id])
+  contact             Contact?                 @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  lines               CommerceOrderLine[]
+  promotions          CommerceOrderPromotion[]
+  fulfillments        CommerceFulfillment[]
+
+  @@unique([organizationId, orderNumber])
+  @@index([organizationId, status, orderDate])
+  @@index([organizationId, storeId])
+  @@index([organizationId, accountId])
+}
+
+model CommerceOrderLine {
+  id                String                    @id @default(cuid())
+  organizationId    String
+  orderId           String
+  productId         String
+  priceBookEntryId  String?
+  description       String
+  quantity          Decimal                   @db.Decimal(18, 3)
+  unitPrice         Decimal                   @db.Decimal(18, 2)
+  discountAmount    Decimal                   @default(0) @db.Decimal(18, 2)
+  taxRate           Decimal                   @default(0) @db.Decimal(7, 4)
+  lineSubtotal      Decimal                   @db.Decimal(18, 2)
+  taxAmount         Decimal                   @db.Decimal(18, 2)
+  lineTotal         Decimal                   @db.Decimal(18, 2)
+  fulfilledQuantity Decimal                   @default(0) @db.Decimal(18, 3)
+  sortOrder         Int                       @default(0)
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  order             CommerceOrder             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product           Product                   @relation(fields: [productId], references: [id])
+  priceBookEntry    PriceBookEntry?           @relation(fields: [priceBookEntryId], references: [id], onDelete: SetNull)
+  fulfillmentLines  CommerceFulfillmentLine[]
+
+  @@index([organizationId, orderId])
+  @@index([organizationId, productId])
+}
+
+model CommercePromotion {
+  id                 String                   @id @default(cuid())
+  organizationId     String
+  storeId            String
+  name               String
+  code               String
+  type               String
+  value              Decimal                  @db.Decimal(18, 2)
+  minimumOrderAmount Decimal?                 @db.Decimal(18, 2)
+  startsAt           DateTime?
+  endsAt             DateTime?
+  maxRedemptions     Int?
+  redemptionCount    Int                      @default(0)
+  active             Boolean                  @default(true)
+  createdById        String
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  store              MarketingStore           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  orders             CommerceOrderPromotion[]
+
+  @@unique([organizationId, storeId, code])
+  @@index([organizationId, storeId, active])
+}
+
+model CommerceOrderPromotion {
+  id             String            @id @default(cuid())
+  organizationId String
+  orderId        String
+  promotionId    String
+  discountAmount Decimal           @db.Decimal(18, 2)
+  createdAt      DateTime          @default(now())
+  order          CommerceOrder     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  promotion      CommercePromotion @relation(fields: [promotionId], references: [id])
+
+  @@unique([organizationId, orderId, promotionId])
+  @@index([organizationId, orderId])
+}
+
+model InventoryItem {
+  id               String         @id @default(cuid())
+  organizationId   String
+  storeId          String
+  productId        String
+  quantityOnHand   Decimal        @default(0) @db.Decimal(18, 3)
+  quantityReserved Decimal        @default(0) @db.Decimal(18, 3)
+  reorderPoint     Decimal        @default(0) @db.Decimal(18, 3)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  store            MarketingStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  product          Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, storeId, productId])
+  @@index([organizationId, storeId])
+}
+
+model CommerceFulfillment {
+  id                String                    @id @default(cuid())
+  organizationId    String
+  orderId           String
+  fulfillmentNumber String
+  status            String                    @default("Draft")
+  carrier           String?
+  trackingNumber    String?
+  notes             String?
+  createdById       String
+  packedAt          DateTime?
+  shippedAt         DateTime?
+  deliveredAt       DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  order             CommerceOrder             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lines             CommerceFulfillmentLine[]
+
+  @@unique([organizationId, fulfillmentNumber])
+  @@index([organizationId, orderId])
+}
+
+model CommerceFulfillmentLine {
+  id             String              @id @default(cuid())
+  organizationId String
+  fulfillmentId  String
+  orderLineId    String
+  quantity       Decimal             @db.Decimal(18, 3)
+  createdAt      DateTime            @default(now())
+  fulfillment    CommerceFulfillment @relation(fields: [fulfillmentId], references: [id], onDelete: Cascade)
+  orderLine      CommerceOrderLine   @relation(fields: [orderLineId], references: [id])
+
+  @@unique([organizationId, fulfillmentId, orderLineId])
+  @@index([organizationId, orderLineId])
 }
 
 model CustomReport {
@@ -506,27 +992,48 @@ model CustomDashboard {
 }
 
 model Campaign {
-  id             String           @id @default(cuid())
-  organizationId String
-  name           String
-  status         String           @default("Planned")
-  ownerId        String
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  members        CampaignMember[]
+  id               String                 @id @default(cuid())
+  organizationId   String
+  name             String
+  status           String                 @default("Planned")
+  type             String                 @default("Email")
+  ownerId          String
+  parentCampaignId String?
+  startDate        DateTime?
+  endDate          DateTime?
+  budgetedCost     Decimal?               @db.Decimal(18, 2)
+  actualCost       Decimal?               @db.Decimal(18, 2)
+  expectedRevenue  Decimal?               @db.Decimal(18, 2)
+  description      String?
+  createdById      String
+  activatedAt      DateTime?
+  completedAt      DateTime?
+  archivedAt       DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  parentCampaign   Campaign?              @relation("CampaignHierarchy", fields: [parentCampaignId], references: [id], onDelete: SetNull)
+  childCampaigns   Campaign[]             @relation("CampaignHierarchy")
+  members          CampaignMember[]
+  landingPages     MarketingLandingPage[]
 
   @@unique([organizationId, name])
+  @@index([organizationId, status, startDate])
+  @@index([organizationId, parentCampaignId])
 }
 
 model CampaignMember {
-  id             String   @id @default(cuid())
-  organizationId String
-  campaignId     String
-  objectType     String
-  recordId       String
-  status         String   @default("Sent")
-  createdAt      DateTime @default(now())
-  campaign       Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  id               String    @id @default(cuid())
+  organizationId   String
+  campaignId       String
+  objectType       String
+  recordId         String
+  status           String    @default("Sent")
+  responded        Boolean   @default(false)
+  firstRespondedAt DateTime?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  campaign         Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, campaignId, objectType, recordId])
 }
@@ -554,6 +1061,47 @@ model MarketingActivation {
   activatedById  String
   activatedAt    DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model MarketingLandingPage {
+  id             String                    @id @default(cuid())
+  organizationId String
+  name           String
+  slug           String
+  status         String                    @default("Draft")
+  headline       String
+  description    String?
+  submitLabel    String                    @default("Submit")
+  successMessage String                    @default("Thanks. Your information was received.")
+  fields         String[]
+  campaignId     String?
+  ownerId        String
+  createdById    String
+  publishedAt    DateTime?
+  archivedAt     DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  campaign       Campaign?                 @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  submissions    MarketingFormSubmission[]
+
+  @@unique([organizationId, name])
+  @@unique([organizationId, slug])
+  @@index([organizationId, status, updatedAt])
+  @@index([organizationId, campaignId])
+}
+
+model MarketingFormSubmission {
+  id             String               @id @default(cuid())
+  organizationId String
+  landingPageId  String
+  leadId         String?
+  data           Json
+  submittedAt    DateTime             @default(now())
+  landingPage    MarketingLandingPage @relation(fields: [landingPageId], references: [id], onDelete: Cascade)
+  lead           Lead?                @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, landingPageId, submittedAt])
+  @@index([organizationId, leadId])
 }
 
 model SubscriptionCheckout {

@@ -48,11 +48,28 @@ export async function POST(request: NextRequest) {
           name,
           type: String(values.type ?? "My") === "Other" ? "Other" : "My",
           color: String(values.color ?? "#0176d3"),
-          visible: values.visible !== false
+          visible: values.visible !== false,
+          provider: "Local",
+          connectionStatus: "Local",
+          readOnly: false
         }
       });
       const calendarSources = await prisma.calendarSource.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, source: JSON.parse(JSON.stringify(source)), calendarSources: JSON.parse(JSON.stringify(calendarSources)) }, { status: 201 });
+    }
+
+    if (payload.action === "toggleQuickTextFavorite") {
+      const quickTextId = String(payload.id ?? values.quickTextId ?? "").trim();
+      if (!quickTextId) return NextResponse.json({ error: "Quick Text is required." }, { status: 400 });
+      const quickText = await prisma.quickText.findFirst({ where: { id: quickTextId, organizationId }, select: { id: true } });
+      if (!quickText) return NextResponse.json({ error: "Quick Text not found." }, { status: 404 });
+      const existing = await prisma.quickTextFavorite.findUnique({
+        where: { organizationId_userId_quickTextId: { organizationId, userId, quickTextId } }
+      });
+      if (existing) await prisma.quickTextFavorite.delete({ where: { id: existing.id } });
+      else await prisma.quickTextFavorite.create({ data: { organizationId, userId, quickTextId } });
+      const quickTextFavorites = await prisma.quickTextFavorite.findMany({ where: personalWhere, orderBy: { createdAt: "desc" } });
+      return NextResponse.json({ ok: true, favorite: !existing, quickTextFavorites: JSON.parse(JSON.stringify(quickTextFavorites)) });
     }
 
     if (payload.action === "updateCalendarSource") {
@@ -102,6 +119,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, report: JSON.parse(JSON.stringify(report)), customReports: JSON.parse(JSON.stringify(reports)) }, { status: 201 });
     }
 
+    if (payload.action === "updateCustomReport") {
+      const id = String(payload.id ?? values.id ?? "").trim();
+      const name = String(values.name ?? "").trim();
+      const object = String(values.object ?? "").trim();
+      const groupField = String(values.groupField ?? "").trim();
+      const columns = Array.isArray(values.columns) ? values.columns.map(String).filter(Boolean) : [];
+      if (!id || !name || !object || !groupField || columns.length === 0) return NextResponse.json({ error: "Report, name, object, group field, and columns are required." }, { status: 400 });
+      const changed = await prisma.customReport.updateMany({ where: { id, ...personalWhere }, data: { name, object, groupField, columns } });
+      if (!changed.count) return NextResponse.json({ error: "Report not found." }, { status: 404 });
+      const report = await prisma.customReport.findFirst({ where: { id, ...personalWhere } });
+      const reports = await prisma.customReport.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
+      return NextResponse.json({ ok: true, report: JSON.parse(JSON.stringify(report)), customReports: JSON.parse(JSON.stringify(reports)) });
+    }
+
+    if (payload.action === "deleteCustomReport") {
+      const id = String(payload.id ?? values.id ?? "").trim();
+      if (!id) return NextResponse.json({ error: "Report is required." }, { status: 400 });
+      const existing = await prisma.customReport.findFirst({ where: { id, ...personalWhere }, select: { id: true } });
+      if (!existing) return NextResponse.json({ error: "Report not found." }, { status: 404 });
+      const componentId = `custom-report-${id}`;
+      const dashboards = await prisma.customDashboard.findMany({ where: personalWhere });
+      await prisma.$transaction([
+        ...dashboards.map((dashboard) => prisma.customDashboard.update({ where: { id: dashboard.id }, data: { reportIds: Array.isArray(dashboard.reportIds) ? (dashboard.reportIds as Prisma.JsonArray).map(String).filter((item) => item !== componentId && item !== id) : [] } })),
+        prisma.customReport.delete({ where: { id } })
+      ]);
+      const reports = await prisma.customReport.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
+      const customDashboards = await prisma.customDashboard.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
+      return NextResponse.json({ ok: true, customReports: JSON.parse(JSON.stringify(reports)), customDashboards: JSON.parse(JSON.stringify(customDashboards)) });
+    }
+
     if (payload.action === "saveCustomDashboard") {
       const name = String(values.name ?? "").trim();
       const reportIds = Array.isArray(values.reportIds) ? values.reportIds.map(String).filter(Boolean) : [];
@@ -116,6 +163,27 @@ export async function POST(request: NextRequest) {
       });
       const dashboards = await prisma.customDashboard.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
       return NextResponse.json({ ok: true, dashboard: JSON.parse(JSON.stringify(dashboard)), customDashboards: JSON.parse(JSON.stringify(dashboards)) }, { status: 201 });
+    }
+
+    if (payload.action === "updateCustomDashboard") {
+      const id = String(payload.id ?? values.id ?? "").trim();
+      const name = String(values.name ?? "").trim();
+      const reportIds = Array.isArray(values.reportIds) ? values.reportIds.map(String).filter(Boolean) : [];
+      if (!id || !name || reportIds.length === 0) return NextResponse.json({ error: "Dashboard, name, and at least one component are required." }, { status: 400 });
+      const changed = await prisma.customDashboard.updateMany({ where: { id, ...personalWhere }, data: { name, reportIds } });
+      if (!changed.count) return NextResponse.json({ error: "Dashboard not found." }, { status: 404 });
+      const dashboard = await prisma.customDashboard.findFirst({ where: { id, ...personalWhere } });
+      const dashboards = await prisma.customDashboard.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
+      return NextResponse.json({ ok: true, dashboard: JSON.parse(JSON.stringify(dashboard)), customDashboards: JSON.parse(JSON.stringify(dashboards)) });
+    }
+
+    if (payload.action === "deleteCustomDashboard") {
+      const id = String(payload.id ?? values.id ?? "").trim();
+      if (!id) return NextResponse.json({ error: "Dashboard is required." }, { status: 400 });
+      const removed = await prisma.customDashboard.deleteMany({ where: { id, ...personalWhere } });
+      if (!removed.count) return NextResponse.json({ error: "Dashboard not found." }, { status: 404 });
+      const dashboards = await prisma.customDashboard.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } });
+      return NextResponse.json({ ok: true, customDashboards: JSON.parse(JSON.stringify(dashboards)) });
     }
 
     if (payload.action === "markNotificationRead" && payload.id) {
@@ -437,11 +505,22 @@ export async function POST(request: NextRequest) {
     }
 
     if (payload.action === "updateProfile") {
+      const alias = values.alias === undefined ? undefined : String(values.alias).trim();
+      if (alias !== undefined && (!alias || alias.length > 8)) return NextResponse.json({ error: "Alias is required and cannot exceed 8 characters." }, { status: 400 });
+      const avatarUrl = values.avatarUrl === null ? null : values.avatarUrl === undefined ? undefined : String(values.avatarUrl).trim();
+      if (avatarUrl) {
+        try {
+          const url = new URL(avatarUrl);
+          if (!["http:", "https:"].includes(url.protocol)) throw new Error("unsupported protocol");
+        } catch {
+          return NextResponse.json({ error: "Avatar URL must be a valid HTTP or HTTPS URL." }, { status: 400 });
+        }
+      }
       const user = await prisma.user.update({
         where: { id: userId },
         data: {
-          alias: values.alias ? String(values.alias) : undefined,
-          avatarUrl: values.avatarUrl === null ? null : values.avatarUrl ? String(values.avatarUrl) : undefined
+          alias,
+          avatarUrl
         }
       });
       return NextResponse.json({ ok: true, user: JSON.parse(JSON.stringify(user)) });

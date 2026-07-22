@@ -1,5 +1,6 @@
 import { AppAuthorizationError, authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
 import { prisma } from "@/lib/prisma";
+import { commerceErrorResponse, createCommerceStore } from "@/lib/commerce";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,13 @@ type WorkflowPayload = {
   values?: Record<string, unknown>;
 };
 
+class WorkflowValidationError extends Error {
+  constructor(message: string, readonly status: 400 | 409 = 400) {
+    super(message);
+    this.name = "WorkflowValidationError";
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const context = await requireOrganizationContext();
@@ -18,20 +26,27 @@ export async function POST(request: NextRequest) {
     const values = payload.values ?? {};
     const selectedIds = payload.selectedIds ?? [];
     if (payload.action === "Buy Now") return NextResponse.json({ error: "Purchase, plan, and checkout workflows are out of scope for this CRM clone." }, { status: 400 });
-    const result = await runWorkflow(payload.action, payload.object, selectedIds, values, context.organizationId, context.userId, context.user.name);
+    const result = await runWorkflow(payload.action, payload.object, selectedIds, values, context.organizationId, context.userId);
     return NextResponse.json({ ok: true, ...JSON.parse(JSON.stringify(result)) });
   } catch (error) {
     console.error(error);
     const response = authorizationErrorResponse(error);
     if (response) return response;
+    const commerce = commerceErrorResponse(error);
+    if (commerce) return NextResponse.json({ error: commerce.error, field: commerce.field }, { status: commerce.status });
+    if (error instanceof WorkflowValidationError) return NextResponse.json({ error: error.message }, { status: error.status });
     return NextResponse.json({ error: "Unable to complete workflow." }, { status: 500 });
   }
 }
 
-async function runWorkflow(action: string, object: string, selectedIds: string[], values: Record<string, unknown>, organizationId: string, userId: string, userName: string) {
+async function runWorkflow(action: string, object: string, selectedIds: string[], values: Record<string, unknown>, organizationId: string, userId: string) {
   await assertSelectedRecords(object, selectedIds, organizationId);
+  if (["Assign Label", "Add to Campaign", "Change Owner", "Add to Category", "Convert Lead", "Publish", "Assign", "Archive", "Delete Article", "Delete Draft", "Restore", "Merge Cases"].includes(action) && selectedIds.length === 0) {
+    throw new WorkflowValidationError("Select at least one record before running this action.");
+  }
   if (action === "Assign Label") {
-    const label = String(values.label ?? "Important");
+    const label = String(values.label ?? "").trim();
+    if (!label) throw new WorkflowValidationError("Label is required.");
     const color = String(values.color ?? "blue");
     const labels = await Promise.all(
       selectedIds.map((recordId) =>
@@ -46,12 +61,14 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
   }
 
   if (action === "Add to Campaign") {
-    const campaignName = String(values.campaign ?? "Starter Outreach");
+    if (!["Contact", "Lead"].includes(object)) throw new WorkflowValidationError("Only Contacts and Leads can be added to a campaign.");
+    const campaignName = String(values.campaign ?? "").trim();
+    if (!campaignName) throw new WorkflowValidationError("Campaign name is required.");
     const status = String(values.status ?? "Sent");
     const campaign = await prisma.campaign.upsert({
       where: { organizationId_name: { organizationId, name: campaignName } },
       update: { status: "In Progress", ownerId: userId },
-      create: { organizationId, name: campaignName, status: "In Progress", ownerId: userId }
+      create: { organizationId, name: campaignName, status: "In Progress", ownerId: userId, createdById: userId, activatedAt: new Date() }
     });
     const campaignMembers = await Promise.all(
       selectedIds.map((recordId) =>
@@ -85,10 +102,12 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
   }
 
   if (action === "New Folder") {
+    const name = String(values.name ?? "").trim();
+    if (!name) throw new WorkflowValidationError("Folder name is required.");
     const folder = await prisma.quickTextFolder.create({
       data: {
         organizationId,
-        name: String(values.name ?? "Personal Quick Text"),
+        name,
         ownerId: userId,
         sharing: String(values.sharing ?? "Private")
       }
@@ -97,34 +116,28 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
   }
 
   if (action === "Create Store") {
-    const store = await prisma.marketingStore.create({
-      data: {
-        organizationId,
-        name: String(values.name ?? "Starter Store"),
-        currency: String(values.currency ?? "USD"),
-        status: String(values.status ?? "Draft")
-      }
-    });
-    return { store };
+    return createCommerceStore(organizationId, userId, values);
   }
 
   if (action === "Activate Marketing") {
-    const activation = await prisma.marketingActivation.create({
-      data: {
-        organizationId,
-        senderName: String(values.senderName ?? userName),
-        senderEmail: String(values.senderEmail ?? "crm@example.com"),
-        tracking: values.tracking !== false,
-        active: true,
-        activatedById: userId
-      }
-    });
+    const senderName = String(values.senderName ?? "").trim();
+    const senderEmail = String(values.senderEmail ?? "").trim();
+    if (!senderName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail)) throw new WorkflowValidationError("A sender name and valid sender email are required.");
+    const activationId = String(values.id ?? "").trim();
+    const existing = activationId ? await prisma.marketingActivation.findFirst({ where: { id: activationId, organizationId } }) : null;
+    if (activationId && !existing) throw new WorkflowValidationError("Marketing activation not found.", 409);
+    const activation = existing
+      ? await prisma.marketingActivation.update({ where: { id: existing.id }, data: { senderName, senderEmail, tracking: values.tracking !== false, active: true, activatedById: userId } })
+      : await prisma.marketingActivation.create({ data: { organizationId, senderName, senderEmail, tracking: values.tracking !== false, active: true, activatedById: userId } });
     return { activation };
   }
 
   if (action === "Publish") {
+    const articles = await prisma.knowledgeArticle.findMany({ where: { organizationId, id: { in: selectedIds } } });
+    if (articles.some((article) => article.publicationStatus !== "Draft")) throw new WorkflowValidationError("Only Draft articles can be published.", 409);
+    if (articles.some((article) => !article.title.trim() || !article.urlName.trim() || !article.bodyRichText?.trim())) throw new WorkflowValidationError("Title, URL Name, and article body are required before publishing.");
     await prisma.knowledgeArticle.updateMany({
-      where: { organizationId, ...(selectedIds.length ? { id: { in: selectedIds } } : {}) },
+      where: { organizationId, id: { in: selectedIds } },
       data: { publicationStatus: "Published", publishedAt: new Date(), validationStatus: "Validated" }
     });
     return {};
@@ -133,15 +146,17 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
   if (action === "Assign") {
     const assignee = await resolveOwner(organizationId, String(values.assigneeId ?? values.assignee ?? userId));
     await prisma.knowledgeArticle.updateMany({
-      where: { organizationId, ...(selectedIds.length ? { id: { in: selectedIds } } : {}) },
+      where: { organizationId, id: { in: selectedIds } },
       data: { updatedById: assignee.id }
     });
     return {};
   }
 
   if (action === "Archive") {
+    const invalid = await prisma.knowledgeArticle.count({ where: { organizationId, id: { in: selectedIds }, publicationStatus: { not: "Published" } } });
+    if (invalid) throw new WorkflowValidationError("Only Published articles can be archived.", 409);
     await prisma.knowledgeArticle.updateMany({
-      where: { organizationId, ...(selectedIds.length ? { id: { in: selectedIds } } : {}) },
+      where: { organizationId, id: { in: selectedIds } },
       data: { publicationStatus: "Archived", archivedAt: new Date(), archivedById: userId }
     });
     return {};
@@ -149,7 +164,7 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
 
   if (action === "Delete Article") {
     await prisma.knowledgeArticle.deleteMany({
-      where: { organizationId, ...(selectedIds.length ? { id: { in: selectedIds } } : {}) }
+      where: { organizationId, id: { in: selectedIds } }
     });
     return {};
   }
@@ -158,7 +173,7 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
     await prisma.knowledgeArticle.deleteMany({
       where: {
         organizationId,
-        ...(selectedIds.length ? { id: { in: selectedIds } } : {}),
+        id: { in: selectedIds },
         publicationStatus: "Draft"
       }
     });
@@ -166,8 +181,10 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
   }
 
   if (action === "Restore") {
+    const invalid = await prisma.knowledgeArticle.count({ where: { organizationId, id: { in: selectedIds }, publicationStatus: { not: "Archived" } } });
+    if (invalid) throw new WorkflowValidationError("Only Archived articles can be restored.", 409);
     await prisma.knowledgeArticle.updateMany({
-      where: { organizationId, ...(selectedIds.length ? { id: { in: selectedIds } } : { publicationStatus: "Archived" }) },
+      where: { organizationId, id: { in: selectedIds } },
       data: {
         publicationStatus: "Draft",
         validationStatus: "Not Validated",
@@ -180,11 +197,10 @@ async function runWorkflow(action: string, object: string, selectedIds: string[]
   }
 
   if (action === "Merge Cases") {
-    await mergeCases(selectedIds, values, organizationId, userId);
-    return {};
+    return mergeCases(selectedIds, values, organizationId, userId);
   }
 
-  return {};
+  throw new WorkflowValidationError(`Unsupported workflow action: ${action || "(empty)"}.`);
 }
 
 async function assertSelectedRecords(object: string, ids: string[], organizationId: string) {
@@ -209,6 +225,7 @@ async function convertLeads(ids: string[], values: Record<string, unknown>, orga
   if (ids.length === 0) return { accounts: [], contacts: [], opportunities: [], leads: [] };
   return prisma.$transaction(async (tx) => {
     const leads = await tx.lead.findMany({ where: { organizationId, id: { in: ids } } });
+    if (leads.some((lead) => lead.convertedAt)) throw new WorkflowValidationError("A converted Lead cannot be converted again.", 409);
     const accounts = [];
     const contacts = [];
     const opportunities = [];
@@ -290,6 +307,10 @@ async function convertLeads(ids: string[], values: Record<string, unknown>, orga
         where: { id: lead.id },
         data: {
           status,
+          convertedAt: new Date(),
+          convertedAccountId: account.id,
+          convertedContactId: contact.id,
+          convertedOpportunityId: opportunity?.id ?? null,
           updatedById: userId
         }
       });
@@ -361,28 +382,36 @@ function daysFromNow(days: number) {
 }
 
 async function mergeCases(ids: string[], values: Record<string, unknown>, organizationId: string, userId: string) {
-  if (ids.length < 2) return;
-  const cases = await prisma.caseRecord.findMany({ where: { organizationId, id: { in: ids } } });
-  const primaryHint = String(values.primaryCase ?? "");
-  const primary = cases.find((item) => item.id === primaryHint || item.caseNumber === primaryHint) ?? cases[0];
-  const mergedIds = cases.filter((item) => item.id !== primary.id).map((item) => item.id);
+  if (ids.length < 2) throw new WorkflowValidationError("Select at least two cases to merge.");
+  return prisma.$transaction(async (tx) => {
+    const cases = await tx.caseRecord.findMany({ where: { organizationId, id: { in: ids } } });
+    if (cases.length !== new Set(ids).size) throw new WorkflowValidationError("One or more cases could not be found.", 409);
+    const primaryHint = String(values.primaryCase ?? "");
+    const primary = cases.find((item) => item.id === primaryHint || item.caseNumber === primaryHint) ?? cases[0];
+    const mergedIds = cases.filter((item) => item.id !== primary.id).map((item) => item.id);
 
-  await prisma.caseRecord.update({
-    where: { id: primary.id },
-    data: {
-      subject: primary.subject ? `${primary.subject} (merged)` : "Merged Case",
-      description: [primary.description, `Merged cases: ${mergedIds.join(", ")}`].filter(Boolean).join("\n"),
-      updatedById: userId
-    }
-  });
+    await Promise.all([
+      tx.task.updateMany({ where: { organizationId, relatedObjectType: "Case", relatedRecordId: { in: mergedIds } }, data: { relatedRecordId: primary.id } }),
+      tx.emailActivity.updateMany({ where: { organizationId, relatedObjectType: "Case", relatedRecordId: { in: mergedIds } }, data: { relatedRecordId: primary.id } }),
+      tx.callActivity.updateMany({ where: { organizationId, relatedObjectType: "Case", relatedRecordId: { in: mergedIds } }, data: { relatedRecordId: primary.id } }),
+      tx.event.updateMany({ where: { organizationId, relatedObjectType: "Case", relatedRecordId: { in: mergedIds } }, data: { relatedRecordId: primary.id } }),
+      tx.event.updateMany({ where: { organizationId, nameObjectType: "Case", nameRecordId: { in: mergedIds } }, data: { nameRecordId: primary.id } }),
+      tx.fileRecord.updateMany({ where: { organizationId, relatedObjectType: "Case", relatedRecordId: { in: mergedIds } }, data: { relatedRecordId: primary.id } }),
+      tx.attachmentRecord.updateMany({ where: { organizationId, relatedObjectType: "Case", relatedRecordId: { in: mergedIds } }, data: { relatedRecordId: primary.id } })
+    ]);
 
-  await prisma.caseRecord.updateMany({
-    where: { organizationId, id: { in: mergedIds } },
-    data: {
-      status: "Closed",
-      closedAt: new Date(),
-      subject: `Merged into ${primary.caseNumber}`,
-      updatedById: userId
-    }
+    await tx.caseRecord.update({
+      where: { id: primary.id },
+      data: {
+        subject: primary.subject ? `${primary.subject} (merged)` : "Merged Case",
+        description: [primary.description, `Merged cases: ${mergedIds.join(", ")}`].filter(Boolean).join("\n"),
+        updatedById: userId
+      }
+    });
+    await tx.caseRecord.updateMany({
+      where: { organizationId, id: { in: mergedIds } },
+      data: { status: "Closed", closedAt: new Date(), subject: `Merged into ${primary.caseNumber}`, updatedById: userId }
+    });
+    return { primaryCaseId: primary.id, mergedCaseIds: mergedIds };
   });
 }

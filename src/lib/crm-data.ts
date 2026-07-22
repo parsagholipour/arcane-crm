@@ -3,6 +3,7 @@ import type { BootstrapData, CrmObject, RecordData } from "@/lib/crm-types";
 export function decorateBootstrap(data: BootstrapData): BootstrapData {
   const accountsById = new Map(data.accounts.map((account) => [String(account.id), account]));
   const contactsById = new Map(data.contacts.map((contact) => [String(contact.id), contact]));
+  const opportunitiesById = new Map(data.opportunities.map((opportunity) => [String(opportunity.id), opportunity]));
   const priceBooksById = new Map(data.priceBooks.map((priceBook) => [String(priceBook.id), priceBook]));
   const usersById = new Map(data.users.map((user) => [user.id, user]));
   const priceBookEntriesByProductId = new Map<string, RecordData[]>();
@@ -65,7 +66,37 @@ export function decorateBootstrap(data: BootstrapData): BootstrapData {
         priceBookEntryCount: entries.length
       };
     }),
-    messagingSessions: data.messagingSessions.map((record) => ({ ...record, ownerAlias: ownerAlias(record.ownerId) }))
+    messagingSessions: data.messagingSessions.map((record) => ({
+      ...record,
+      accountName: accountsById.get(String(record.accountId))?.name ?? (record.account as RecordData | undefined)?.name ?? "",
+      contactName: contactsById.get(String(record.contactId)) ? contactName(contactsById.get(String(record.contactId))!) : "",
+      ownerAlias: ownerAlias(record.ownerId),
+      ownerName: ownerName(record.ownerId)
+    })),
+    videoCalls: data.videoCalls.map((record) => ({
+      ...record,
+      accountName: accountsById.get(String(record.accountId))?.name ?? (record.account as RecordData | undefined)?.name ?? "",
+      contactName: contactsById.get(String(record.contactId)) ? contactName(contactsById.get(String(record.contactId))!) : "",
+      opportunityName: opportunitiesById.get(String(record.opportunityId))?.name ?? (record.opportunity as RecordData | undefined)?.name ?? "",
+      organizerName: ownerName(record.organizerId)
+    })),
+    campaigns: data.campaigns.map((record) => {
+      const members = Array.isArray(record.members) ? record.members as RecordData[] : [];
+      const respondedCount = members.filter((member) => member.responded).length;
+      return {
+        ...record,
+        memberCount: (record.metrics as RecordData | undefined)?.memberCount ?? members.length,
+        responseRate: (record.metrics as RecordData | undefined)?.responseRate ?? (members.length ? Math.round((respondedCount / members.length) * 1000) / 10 : 0),
+        ownerAlias: ownerAlias(record.ownerId),
+        ownerName: ownerName(record.ownerId)
+      };
+    }),
+    invoices: data.invoices.map((invoice) => ({
+      ...invoice,
+      name: invoice.invoiceNumber,
+      accountName: accountsById.get(String(invoice.accountId))?.name ?? (invoice.account as RecordData | undefined)?.name ?? "",
+      opportunityName: opportunitiesById.get(String(invoice.opportunityId))?.name ?? (invoice.opportunity as RecordData | undefined)?.name ?? ""
+    }))
   };
 }
 
@@ -99,6 +130,8 @@ export function dataKeyForObject(object: CrmObject): keyof BootstrapData {
       return "knowledgeArticles";
     case "ListEmail":
       return "listEmails";
+    case "Campaign":
+      return "campaigns";
     case "Invoice":
       return "invoices";
     case "VideoCall":
@@ -111,6 +144,8 @@ export function recordTitle(object: CrmObject, record: RecordData) {
   if (object === "Case") return String(record.caseNumber ?? record.subject ?? "Case");
   if (object === "Knowledge__kav") return String(record.title ?? "Knowledge");
   if (object === "ListEmail") return String(record.subject ?? "List Email");
+  if (object === "Campaign") return String(record.name ?? "Campaign");
+  if (object === "Invoice") return String(record.invoiceNumber ?? "Invoice");
   return String(record.name ?? record.title ?? record.id);
 }
 
