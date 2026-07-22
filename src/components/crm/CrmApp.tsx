@@ -5467,6 +5467,12 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast, onRefreshData 
 
 function MarketingPage({ data, onCreate, onActivate, onDataChange, onToast }: { data: BootstrapData; onCreate: (object: CrmObject) => void; onActivate: () => void; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void }) {
   const latestActivation = data.marketingActivations[0];
+  function manageLandingPages() {
+    const panel = document.getElementById("marketing-landing-pages");
+    if (!panel) return;
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    panel.focus({ preventScroll: true });
+  }
   const growthEngines = [
     {
       title: "Email Campaigns",
@@ -5478,7 +5484,7 @@ function MarketingPage({ data, onCreate, onActivate, onDataChange, onToast }: { 
       title: "Custom Landing Pages with Forms",
       body: "Create, publish, and monitor branded lead-capture forms with optional Campaign attribution.",
       action: "Manage Pages",
-      href: "#marketing-landing-pages"
+      onClick: manageLandingPages
     },
     {
       title: "Audience Building",
@@ -8716,6 +8722,7 @@ function NativeSelect({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const searchId = useId();
   const listId = `${searchId}-list`;
   const normalizedOptions = normalizeSelectOptions(options);
@@ -8849,7 +8856,10 @@ function NativeSelect({
           align="start"
           sideOffset={4}
           className="z-[70] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded border border-[#d8dde6] bg-white shadow-popover"
-          onOpenAutoFocus={(event) => event.preventDefault()}
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            searchRef.current?.focus();
+          }}
           onCloseAutoFocus={(event) => event.preventDefault()}
           onWheel={(event) => event.stopPropagation()}
         >
@@ -8859,6 +8869,7 @@ function NativeSelect({
                 <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#706e6b]" />
                 <input
                   id={searchId}
+                  ref={searchRef}
                   autoFocus
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
