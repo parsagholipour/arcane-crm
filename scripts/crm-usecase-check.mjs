@@ -368,6 +368,12 @@ async function main() {
       assert(!data.accounts.some((record) => record.id === isolatedAccount.id), "bootstrap leaked another organization's account");
       await request(`/api/records/Account/${isolatedAccount.id}`, { method: "PATCH", body: { name: "Cross tenant update" }, expected: [404] });
       await request(`/api/records/Account/${isolatedAccount.id}`, { method: "DELETE", expected: [404] });
+      const isolatedInsight = await request("/api/ai/insights", {
+        method: "POST",
+        body: { surface: "activity", object: "Account", recordId: isolatedAccount.id },
+        expected: [404]
+      });
+      assert(isolatedInsight.code === "record_not_found", "AI activity lookup exposed another organization's record");
       await request("/api/organizations/active", { method: "POST", body: { organizationId: isolatedOrganization.id }, expected: [404] });
       await request("/api/workflows", { method: "POST", body: { action: "Add to Category", object: "Product2", selectedIds: [isolatedProduct.id], values: { category: "Cross tenant category" } }, expected: [404] });
       const unchangedProduct = await prisma.product.findUnique({ where: { id: isolatedProduct.id } });
@@ -725,9 +731,65 @@ async function main() {
     const searchResult = await utility("saveGlobalSearchRecent", { href: `/lightning/o/Lead/list?search=${tag}`, label: tag, context: "Lead", category: "Record", query: tag });
     remember("globalSearchRecents", searchResult.recent);
 
-    const agentforceResult = await utility("sendAgentforceMessage", { text: `summarize ${tag}` });
-    agentforceResult.messages?.forEach((message) => remember("agentforceMessages", message));
-    assert(agentforceResult.messages?.length === 2, "Agentforce did not return user and assistant messages");
+    const invalidChat = await request("/api/ai/chat", { method: "POST", body: { message: "", pathname: "/lightning/page/home" }, expected: [400] });
+    assert(invalidChat.code === "invalid_request", "AI chat did not validate an empty message before provider access");
+    const oversizedChat = await request("/api/ai/chat", { method: "POST", body: { message: "x".repeat(2001), pathname: "/lightning/page/home" }, expected: [400] });
+    assert(oversizedChat.code === "invalid_request", "AI chat did not enforce its 2,000-character prompt limit");
+    const invalidInsight = await request("/api/ai/insights", { method: "POST", body: { surface: "unknown" }, expected: [400] });
+    assert(invalidInsight.code === "invalid_request", "AI insights did not reject an unsupported surface");
+
+    const rateLimitTexts = Array.from({ length: 10 }, (_, index) => `${tag} rate limit ${index}`);
+    await prisma.agentforceMessage.createMany({
+      data: rateLimitTexts.map((text) => ({ organizationId, userId: currentUserId, role: "user", text }))
+    });
+    try {
+      const limitedChat = await request("/api/ai/chat", {
+        method: "POST",
+        body: { message: "This must be rejected before provider access.", pathname: "/lightning/page/home" },
+        expected: [429]
+      });
+      assert(limitedChat.code === "rate_limit", "AI chat did not enforce 10 requests per minute");
+    } finally {
+      await prisma.agentforceMessage.deleteMany({ where: { organizationId, userId: currentUserId, text: { in: rateLimitTexts } } });
+    }
+
+    if (process.env.CRM_AI_LIVE_CHECK === "1") {
+      const agentforceResult = await request("/api/ai/chat", {
+        method: "POST",
+        body: { message: "Summarize the open pipeline with exact CRM facts.", pathname: "/lightning/page/home" },
+        expected: [200]
+      });
+      agentforceResult.messages?.forEach((message) => remember("agentforceMessages", message));
+      assert(agentforceResult.messages?.length === 2, "Agentforce did not return user and assistant messages");
+      assert(agentforceResult.messages[1]?.metadata?.model, "Agentforce response did not include model metadata");
+
+      const draftResult = await request("/api/ai/chat", {
+        method: "POST",
+        body: { message: "Draft a concise follow-up email for Rober Antonio about next steps.", pathname: "/lightning/r/Contact/con-rober-antonio/view" },
+        expected: [200]
+      });
+      draftResult.messages?.forEach((message) => remember("agentforceMessages", message));
+      const draft = draftResult.messages?.[1]?.metadata?.draft;
+      assert(draft?.subject && draft?.body, "Agentforce did not return a follow-up draft");
+      assert(draft?.recipientIds?.includes("con-rober-antonio"), "Agentforce did not securely resolve the draft recipient");
+
+      const homeInsight = await request("/api/ai/insights", { method: "POST", body: { surface: "home" }, expected: [200] });
+      assert(homeInsight.payload?.summary, "Home AI did not return a summary");
+      const cachedHomeInsight = await request("/api/ai/insights", { method: "POST", body: { surface: "home" }, expected: [200] });
+      assert(cachedHomeInsight.cached === true, "Home AI did not reuse its validated cache");
+      const activityInsight = await request("/api/ai/insights", {
+        method: "POST",
+        body: { surface: "activity", object: "Account", recordId: "acc-robert" },
+        expected: [200]
+      });
+      assert(activityInsight.payload?.summary, "Activity AI did not return a summary");
+      const cachedActivityInsight = await request("/api/ai/insights", {
+        method: "POST",
+        body: { surface: "activity", object: "Account", recordId: "acc-robert" },
+        expected: [200]
+      });
+      assert(cachedActivityInsight.cached === true, "Activity AI did not reuse its validated cache");
+    }
   });
 
   await check("profile and preference utilities restore cleanly", async () => {
@@ -811,6 +873,7 @@ async function cleanup() {
   await restoreLeadGuidanceState();
 
   await prisma.agentforceMessage.deleteMany({ where: { OR: [{ id: { in: created.agentforceMessages } }, { text: { contains: tag } }] } });
+  await prisma.aiInsightCache.deleteMany({ where: { organizationId, userId: currentUserId } });
   await prisma.globalSearchRecent.deleteMany({ where: { OR: [{ id: { in: created.globalSearchRecents } }, { query: tag }, { label: tag }] } });
   await prisma.listViewPreference.deleteMany({ where: { OR: [{ id: { in: created.listViewPreferences } }, { viewName: { contains: tag } }] } });
   await prisma.appNavPreference.deleteMany({ where: { id: { in: created.appNavPreferences } } });

@@ -102,7 +102,7 @@ export async function loadBootstrapData(): Promise<BootstrapData> {
     prisma.appNavPreference.findMany({ where: personalWhere }),
     prisma.listViewPreference.findMany({ where: personalWhere }),
     prisma.globalSearchRecent.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" }, take: 8 }),
-    prisma.agentforceMessage.findMany({ where: personalWhere, orderBy: { createdAt: "asc" }, take: 30 })
+    prisma.agentforceMessage.findMany({ where: personalWhere, orderBy: { createdAt: "desc" }, take: 30 }).then((rows) => rows.reverse())
   ]);
 
   const payload: BootstrapData = {

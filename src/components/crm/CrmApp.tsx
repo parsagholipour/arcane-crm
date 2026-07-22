@@ -93,6 +93,7 @@ import {
 } from "@/lib/crm-metadata";
 import { contactName, dataKeyForObject, decorateBootstrap, recordTitle, routeForRecord } from "@/lib/crm-data";
 import type { AppKey, AppNavItem, BootstrapData, CrmObject, FieldDefinition, FormDefinition, ObjectDefinition, RecordData } from "@/lib/crm-types";
+import type { AiActivityInsightPayload, AiEmailDraft, AiHomeInsight, AiInsightResponse } from "@/lib/ai-types";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
 
 type ModalState =
@@ -101,7 +102,7 @@ type ModalState =
   | { type: "event"; relatedObjectType?: CrmObject; relatedRecordId?: string; startDate?: string; startTime?: string; endDate?: string; endTime?: string }
   | { type: "quickText" }
   | { type: "knowledge" }
-  | { type: "listEmail" }
+  | { type: "listEmail"; initialValues?: RecordData; startingStep?: 1 | 2; layout?: string }
   | { type: "listAction"; action: string; object: CrmObject; records: RecordData[]; selectedIds: string[] }
   | { type: "quickTextFolder" }
   | { type: "marketingActivation" }
@@ -239,6 +240,7 @@ type AgentforceMessageMetadata = {
     subject?: string;
     body?: string;
     to?: string;
+    recipientIds?: string[];
   };
 };
 
@@ -710,7 +712,21 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
         <TrialBanner onBuyNow={() => router.push("/lightning/app/your-account")} />
         <GlobalHeader
           data={data}
+          pathname={pathnameWithSearch(pathname, searchParams)}
           onNavigate={(href) => router.push(href)}
+          onOpenDraft={(draft) => setModal({
+            type: "listEmail",
+            startingStep: 2,
+            layout: "Plain Text",
+            initialValues: {
+              recipientType: "Leads and Contacts",
+              status: "Draft",
+              recipients: draft.recipientIds,
+              subject: draft.subject,
+              body: draft.body,
+              scheduleTime: "09:00"
+            }
+          })}
           onDataChange={(updater) => setData((previous) => decorateBootstrap(updater(previous)))}
           onToast={showToast}
         />
@@ -1209,7 +1225,7 @@ function TrialBanner({ onBuyNow }: { onBuyNow: () => void }) {
   );
 }
 
-function GlobalHeader({ data, onNavigate, onDataChange, onToast }: { data: BootstrapData; onNavigate: (href: string) => void; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void }) {
+function GlobalHeader({ data, pathname, onNavigate, onOpenDraft, onDataChange, onToast }: { data: BootstrapData; pathname: string; onNavigate: (href: string) => void; onOpenDraft: (draft: AiEmailDraft) => void; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void }) {
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[#d8dde6] bg-white px-3">
       <div className="flex items-center gap-2 font-semibold text-shell">
@@ -1218,12 +1234,12 @@ function GlobalHeader({ data, onNavigate, onDataChange, onToast }: { data: Boots
       </div>
       <SearchOverlay data={data} onNavigate={onNavigate} onDataChange={onDataChange} onToast={onToast} />
       <div className="ml-auto flex items-center gap-1">
-        <HeaderUtility icon={Sparkles} label="Agentforce" kind="agentforce" data={data} onNavigate={onNavigate} onDataChange={onDataChange} onToast={onToast} />
-        <HeaderUtility icon={Activity} label="Guidance Center" kind="guidance" data={data} onNavigate={onNavigate} onDataChange={onDataChange} onToast={onToast} />
-        <HeaderUtility icon={HelpCircle} label="Salesforce Help" kind="help" data={data} onNavigate={onNavigate} onDataChange={onDataChange} onToast={onToast} />
-        <HeaderUtility icon={Settings} label="Quick Settings" kind="settings" data={data} onNavigate={onNavigate} onDataChange={onDataChange} onToast={onToast} />
-        <HeaderUtility icon={Bell} label="Notifications" kind="notifications" data={data} onNavigate={onNavigate} onDataChange={onDataChange} onToast={onToast} />
-        <HeaderUtility icon={User} label="View profile" kind="profile" data={data} onNavigate={onNavigate} onDataChange={onDataChange} onToast={onToast} />
+        <HeaderUtility icon={Sparkles} label="Agentforce" kind="agentforce" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
+        <HeaderUtility icon={Activity} label="Guidance Center" kind="guidance" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
+        <HeaderUtility icon={HelpCircle} label="Salesforce Help" kind="help" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
+        <HeaderUtility icon={Settings} label="Quick Settings" kind="settings" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
+        <HeaderUtility icon={Bell} label="Notifications" kind="notifications" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
+        <HeaderUtility icon={User} label="View profile" kind="profile" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
       </div>
     </header>
   );
@@ -2059,7 +2075,8 @@ function agentforceMetadata(message: RecordData): AgentforceMessageMetadata {
     ? {
         subject: metadata.draft.subject ? String(metadata.draft.subject) : undefined,
         body: metadata.draft.body ? String(metadata.draft.body) : undefined,
-        to: metadata.draft.to ? String(metadata.draft.to) : undefined
+        to: metadata.draft.to ? String(metadata.draft.to) : undefined,
+        recipientIds: Array.isArray(metadata.draft.recipientIds) ? metadata.draft.recipientIds.map(String) : []
       }
     : undefined;
   return {
@@ -2075,7 +2092,9 @@ function HeaderUtility({
   label,
   kind,
   data,
+  pathname,
   onNavigate,
+  onOpenDraft,
   onDataChange,
   onToast
 }: {
@@ -2083,15 +2102,20 @@ function HeaderUtility({
   label: string;
   kind: UtilityKind;
   data: BootstrapData;
+  pathname: string;
   onNavigate: (href: string) => void;
+  onOpenDraft: (draft: AiEmailDraft) => void;
   onDataChange: BootstrapDataUpdater;
   onToast: (toast: ToastState) => void;
 }) {
   const [assistantInput, setAssistantInput] = useState("");
+  const [assistantLoading, setAssistantLoading] = useState(false);
+  const [assistantError, setAssistantError] = useState("");
+  const assistantScrollRef = useRef<HTMLDivElement | null>(null);
   const [assistantMessages, setAssistantMessages] = useState<Array<RecordData>>(() =>
     data.agentforceMessages.length > 0
       ? data.agentforceMessages
-      : [{ id: "local-agent-welcome", role: "assistant", text: "I can summarize CRM records, draft follow-up email copy, or suggest next actions from the current workspace." }]
+      : [{ id: "local-agent-welcome", role: "assistant", text: "I can analyze CRM records, draft follow-up email copy, suggest next actions, and navigate the workspace. I will never change data without you." }]
   );
   const [helpQuery, setHelpQuery] = useState("");
   const [helpView, setHelpView] = useState<"All" | "Saved" | "Recent">("All");
@@ -2120,6 +2144,14 @@ function HeaderUtility({
   }, [data.notifications]);
 
   useEffect(() => {
+    if (data.agentforceMessages.length) setAssistantMessages(data.agentforceMessages);
+  }, [data.agentforceMessages]);
+
+  useEffect(() => {
+    assistantScrollRef.current?.scrollTo({ top: assistantScrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [assistantMessages, assistantLoading]);
+
+  useEffect(() => {
     setNotificationPreferences(buildNotificationPreferences(data.notificationPreferences));
   }, [data.notificationPreferences]);
 
@@ -2142,32 +2174,55 @@ function HeaderUtility({
   }, [data.user]);
 
   async function sendAssistantMessage() {
-    if (!assistantInput.trim()) return;
+    if (!assistantInput.trim() || assistantLoading) return;
     const text = assistantInput.trim();
     setAssistantInput("");
+    setAssistantError("");
+    setAssistantLoading(true);
     const optimisticUser = { id: `pending-user-${Date.now()}`, role: "user", text };
     setAssistantMessages((messages) => [...messages, optimisticUser]);
-    const response = await postUtility("sendAgentforceMessage", undefined, { text });
-    if (Array.isArray(response?.messages)) {
-      const nextMessages = response.messages as RecordData[];
+    try {
+      const response = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, pathname })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(payload.messages)) throw new Error(String(payload.error ?? "Agentforce couldn't answer that request."));
+      const nextMessages = payload.messages as RecordData[];
       setAssistantMessages((messages) => [...messages.filter((message) => message.id !== optimisticUser.id), ...nextMessages]);
-      onDataChange((previous) => ({
-        ...previous,
-        agentforceMessages: [...previous.agentforceMessages, ...nextMessages]
-      }));
-    } else {
+      onDataChange((previous) => ({ ...previous, agentforceMessages: [...previous.agentforceMessages, ...nextMessages] }));
+    } catch (error) {
       setAssistantMessages((messages) => messages.filter((message) => message.id !== optimisticUser.id));
-      onToast({ tone: "error", message: "Agentforce couldn't answer that request." });
+      setAssistantInput(text);
+      setAssistantError(error instanceof Error ? error.message : "Agentforce couldn't answer that request.");
+    } finally {
+      setAssistantLoading(false);
     }
   }
 
   async function clearAssistantMessages() {
-    const response = await postUtility("clearAgentforceMessages");
-    if (Array.isArray(response?.messages)) {
-      const messages = response.messages as RecordData[];
+    if (assistantLoading) return;
+    setAssistantError("");
+    try {
+      const response = await fetch("/api/ai/chat", { method: "DELETE" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !Array.isArray(payload.messages)) throw new Error(String(payload.error ?? "The conversation couldn't be cleared."));
+      const messages = payload.messages as RecordData[];
       setAssistantMessages(messages);
       onDataChange((previous) => ({ ...previous, agentforceMessages: messages }));
       onToast({ tone: "success", message: "Agentforce conversation cleared." });
+    } catch (error) {
+      setAssistantError(error instanceof Error ? error.message : "The conversation couldn't be cleared.");
+    }
+  }
+
+  async function copyAssistantDraft(draft: NonNullable<AgentforceMessageMetadata["draft"]>) {
+    try {
+      await navigator.clipboard.writeText([draft.subject, "", draft.body].filter(Boolean).join("\n"));
+      onToast({ tone: "success", message: "AI draft copied." });
+    } catch {
+      onToast({ tone: "error", message: "The AI draft couldn't be copied." });
     }
   }
 
@@ -2401,7 +2456,7 @@ function HeaderUtility({
         </button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content align="end" className={cn("z-50 rounded border border-[#d8dde6] bg-white shadow-popover", kind === "help" || kind === "settings" ? "w-[460px]" : "w-[360px]")}>
+        <Popover.Content align="end" className={cn("z-50 rounded border border-[#d8dde6] bg-white shadow-popover", kind === "help" || kind === "settings" ? "w-[460px]" : kind === "agentforce" ? "w-[420px]" : "w-[360px]")}>
           <div className="flex items-center justify-between border-b border-[#d8dde6] px-3 py-2">
             <div className="font-semibold">{label}</div>
             <Popover.Close asChild>
@@ -2412,7 +2467,7 @@ function HeaderUtility({
           </div>
           {kind === "agentforce" && (
             <div className="p-3">
-              <div className="max-h-64 space-y-2 overflow-auto rounded border border-[#d8dde6] bg-[#f8f8f8] p-2">
+              <div ref={assistantScrollRef} className="max-h-80 space-y-2 overflow-auto rounded border border-[#d8dde6] bg-[#f8f8f8] p-2" aria-live="polite" aria-busy={assistantLoading}>
                 {assistantMessages.map((message, index) => {
                   const metadata = agentforceMetadata(message);
                   return (
@@ -2435,6 +2490,24 @@ function HeaderUtility({
                           {metadata.draft.to && <div className="mt-1 text-xs text-[#706e6b]">To: {metadata.draft.to}</div>}
                           <div className="mt-1 font-semibold">{metadata.draft.subject ?? "Follow up"}</div>
                           <pre className="mt-1 whitespace-pre-wrap font-sans text-xs text-[#444]">{metadata.draft.body ?? ""}</pre>
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            <Button onClick={() => void copyAssistantDraft(metadata.draft!)}>Copy</Button>
+                            <Button
+                              variant="primary"
+                              disabled={!metadata.draft.subject || !metadata.draft.body}
+                              onClick={() => {
+                                if (!metadata.draft?.subject || !metadata.draft.body) return;
+                                onOpenDraft({
+                                  subject: metadata.draft.subject,
+                                  body: metadata.draft.body,
+                                  to: metadata.draft.to,
+                                  recipientIds: metadata.draft.recipientIds ?? []
+                                });
+                              }}
+                            >
+                              Edit in Composer
+                            </Button>
+                          </div>
                         </div>
                       )}
                       {message.role === "assistant" && metadata.actions && metadata.actions.length > 0 && (
@@ -2449,16 +2522,37 @@ function HeaderUtility({
                     </div>
                   );
                 })}
+                {assistantLoading && (
+                  <div className="flex items-center gap-2 rounded bg-white px-2 py-2 text-sm text-[#706e6b]">
+                    <RefreshCw size={14} className="animate-spin" /> Agentforce is analyzing the CRM…
+                  </div>
+                )}
               </div>
-              <div className="mt-2 flex gap-2">
-                <input className={inputClass} value={assistantInput} onChange={(event) => setAssistantInput(event.target.value)} placeholder="Ask about this CRM..." onKeyDown={(event) => event.key === "Enter" && sendAssistantMessage()} />
-                <Button variant="primary" onClick={sendAssistantMessage}>Send</Button>
+              {assistantError && <div className="mt-2 flex items-start gap-1 rounded border border-[#ea001e] bg-[#fff1f1] p-2 text-xs text-[#8e030f]" role="alert"><AlertCircle size={14} className="mt-0.5 shrink-0" />{assistantError}</div>}
+              <div className="mt-2 flex items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <textarea
+                    className={cn(inputClass, "min-h-16 resize-y")}
+                    value={assistantInput}
+                    maxLength={2000}
+                    onChange={(event) => setAssistantInput(event.target.value)}
+                    placeholder="Ask about this CRM..."
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void sendAssistantMessage();
+                      }
+                    }}
+                  />
+                  <div className="text-right text-[10px] text-[#706e6b]">{assistantInput.length}/2000</div>
+                </div>
+                <Button variant="primary" disabled={assistantLoading || !assistantInput.trim()} onClick={() => void sendAssistantMessage()}>Send</Button>
               </div>
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <Button onClick={() => setAssistantInput("Summarize my open pipeline")}>Summarize pipeline</Button>
-                <Button onClick={() => setAssistantInput("Draft a follow-up email for Robert")}>Draft follow-up</Button>
-                <Button onClick={() => setAssistantInput("What support cases need attention?")}>Support cases</Button>
-                <Button onClick={() => void clearAssistantMessages()}>Clear chat</Button>
+                <Button disabled={assistantLoading} onClick={() => setAssistantInput("Summarize my open pipeline")}>Summarize pipeline</Button>
+                <Button disabled={assistantLoading} onClick={() => setAssistantInput("Draft a follow-up email for Robert")}>Draft follow-up</Button>
+                <Button disabled={assistantLoading} onClick={() => setAssistantInput("What support cases need attention?")}>Support cases</Button>
+                <Button disabled={assistantLoading} onClick={() => void clearAssistantMessages()}>Clear chat</Button>
               </div>
             </div>
           )}
@@ -4096,7 +4190,7 @@ function RecordPage({
           </Tabs.Content>
         </Tabs.Root>
       </div>
-      <ActivityPanel object={object} record={record} data={data} onSaveActivity={onSaveActivity} onOpenEvent={onOpenEvent} />
+      <ActivityPanel object={object} record={record} data={data} onSaveActivity={onSaveActivity} onOpenEvent={onOpenEvent} onToast={onToast} />
       {dialog?.type === "hierarchy" && <RecordHierarchyDialog object={object} record={record} data={data} onClose={() => setDialog(null)} />}
       {dialog?.type === "relatedList" && (
         <RelatedListDialog
@@ -4510,7 +4604,7 @@ function DetailsSections({ object, record, onEdit, onChangeOwner }: { object: "A
   );
 }
 
-function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { object: CrmObject; record: RecordData; data: BootstrapData; onSaveActivity: (activity: RecordData) => Promise<void>; onOpenEvent: () => void }) {
+function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent, onToast }: { object: "Account" | "Contact"; record: RecordData; data: BootstrapData; onSaveActivity: (activity: RecordData) => Promise<void>; onOpenEvent: () => void; onToast: (toast: ToastState) => void }) {
   const [mode, setMode] = useState<"email" | "call" | "task">("email");
   const [emailAction, setEmailAction] = useState<"send" | "log">("send");
   const [subject, setSubject] = useState("");
@@ -4528,6 +4622,9 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
   const [showAllActivities, setShowAllActivities] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [refreshedAt, setRefreshedAt] = useState(new Date());
+  const [activityInsight, setActivityInsight] = useState<AiInsightResponse<AiActivityInsightPayload> | null>(null);
+  const [activityInsightLoading, setActivityInsightLoading] = useState(false);
+  const [activityInsightError, setActivityInsightError] = useState("");
   const related = { relatedObjectType: object, relatedRecordId: record.id };
   const relatedTypes = [object, OBJECT_DEFINITIONS[object]?.plural].filter(Boolean).map(String);
   const activities: TimelineActivity[] = [
@@ -4538,15 +4635,17 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
       .filter((item) => {
         const relatedMatch = relatedTypes.includes(String(item.relatedObjectType)) && String(item.relatedRecordId) === String(record.id);
         const nameMatch =
-          (object === "Contact" || object === "Lead") &&
+          object === "Contact" &&
           String(item.nameRecordId) === String(record.id) &&
           (String(item.nameObjectType) === OBJECT_DEFINITIONS[object].plural || String(item.nameObjectType) === object);
         return relatedMatch || nameMatch;
       })
       .map((item) => ({ ...item, kind: "Event" as const, date: item.startAt }))
   ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const activitySourceKey = activities.map((activity) => `${requiredId(activity)}:${String(activity.date ?? "")}`).join("|");
+  const insightByActivityId = new Map((activityInsight?.payload.insights ?? []).map((insight) => [insight.activityId, insight]));
   const filteredActivities = activities.filter((activity) => {
-    if (insightsOnly && !activityHasInsight(activity)) return false;
+    if (insightsOnly && !insightByActivityId.has(requiredId(activity))) return false;
     if (typeFilter !== "All types" && activity.kind !== typeFilter) return false;
     if (!activityWithinRange(activity, rangeFilter)) return false;
     return activityMatchesStatus(activity, statusFilter);
@@ -4562,6 +4661,38 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
     setExpandedIds([]);
     setShowAllActivities(false);
   }, [record.id, record.email]);
+
+  useEffect(() => {
+    setActivityInsight(null);
+    setActivityInsightError("");
+    void loadActivityInsights(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record.id, activitySourceKey]);
+
+  async function loadActivityInsights(force: boolean) {
+    setActivityInsightLoading(true);
+    setActivityInsightError("");
+    try {
+      const response = await fetch("/api/ai/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ surface: "activity", object, recordId: requiredId(record), force })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setActivityInsightError(String(payload.error ?? "Activity insights are unavailable."));
+        return;
+      }
+      const nextInsight = payload as AiInsightResponse<AiActivityInsightPayload>;
+      setActivityInsight(nextInsight);
+      setRefreshedAt(new Date(nextInsight.generatedAt));
+      if (nextInsight.warning) onToast({ tone: "warning", message: nextInsight.warning });
+    } catch {
+      setActivityInsightError("Activity insights are unavailable. Check your connection and retry.");
+    } finally {
+      setActivityInsightLoading(false);
+    }
+  }
 
   async function submit() {
     const id = `${mode}-${Date.now()}`;
@@ -4659,8 +4790,18 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
         </div>
       </div>
       <div className="border-t border-[#d8dde6] p-3">
+        <div className="mb-2 rounded border border-[#d8dde6] bg-[#f8f8f8] p-2 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-semibold text-[#444]">AI Activity Insights</span>
+            <button className="rounded p-1 text-brand-700 hover:bg-white disabled:opacity-50" disabled={activityInsightLoading} aria-label="Refresh AI activity insights" onClick={() => void loadActivityInsights(true)}><RefreshCw size={13} className={cn(activityInsightLoading && "animate-spin")} /></button>
+          </div>
+          {activityInsightLoading && !activityInsight && <div className="mt-1 flex items-center gap-1 text-[#706e6b]" aria-live="polite"><RefreshCw size={12} className="animate-spin" />Analyzing recent activity…</div>}
+          {activityInsight && <p className="mt-1 text-[#444]">{activityInsight.payload.summary}</p>}
+          {activityInsight && <div className="mt-1 text-[10px] text-[#706e6b]">{activityInsight.stale ? "Stale saved insight" : activityInsight.cached ? "Cached insight" : "Fresh insight"} · {formatDateTime(activityInsight.generatedAt)}</div>}
+          {activityInsightError && <div className="mt-1 flex items-start gap-1 text-[#8e030f]" role="alert"><AlertCircle size={12} className="mt-0.5 shrink-0" />{activityInsightError} <button className="font-semibold underline" onClick={() => void loadActivityInsights(false)}>Retry</button></div>}
+        </div>
         <div className="mb-2 flex items-center gap-1 text-xs text-[#706e6b]">
-          <input type="checkbox" checked={insightsOnly} onChange={(event) => setInsightsOnly(event.target.checked)}  className={checkboxClass} /> Only show activities with insights
+          <input type="checkbox" checked={insightsOnly} disabled={activityInsightLoading && !activityInsight} onChange={(event) => setInsightsOnly(event.target.checked)} className={checkboxClass} /> Only show activities with insights
         </div>
         <div className="mb-2 flex flex-wrap items-center gap-1 text-xs text-[#706e6b]">
           <span>{filterSummary}</span>
@@ -4680,7 +4821,7 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
               </Popover.Content>
             </Popover.Portal>
           </Popover.Root>
-          <button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label="Refresh" onClick={() => setRefreshedAt(new Date())}><RefreshCw size={13} /></button>
+          <button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label="Refresh" onClick={() => { setRefreshedAt(new Date()); void loadActivityInsights(true); }}><RefreshCw size={13} /></button>
           <button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label="Expand All" onClick={expandAll}><ChevronsUpDown size={13} /></button>
         </div>
         <div className="mb-2 flex items-center justify-between gap-2">
@@ -4700,6 +4841,7 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
                 {group.activities.map((activity) => {
                   const id = requiredId(activity);
                   const expanded = expandedIds.includes(id);
+                  const insight = insightByActivityId.get(id);
                   return (
                     <div key={id} className="rounded border border-[#d8dde6] p-2 text-sm">
                       <button className="flex w-full items-start justify-between gap-2 text-left" onClick={() => toggleActivity(id)}>
@@ -4712,7 +4854,12 @@ function ActivityPanel({ object, record, data, onSaveActivity, onOpenEvent }: { 
                       {expanded && (
                         <div className="mt-2 rounded bg-[#f8f8f8] p-2 text-xs text-[#444]">
                           <div>{activityDetail(activity)}</div>
-                          {activityHasInsight(activity) && <div className="mt-1 font-semibold text-brand-700">Insight: {activityInsight(activity)}</div>}
+                          {insight && (
+                            <div className={cn("mt-2 rounded border-l-2 bg-white p-2", insight.signal === "attention" ? "border-l-[#ba0517]" : insight.signal === "positive" ? "border-l-[#2e844a]" : "border-l-brand-500")}>
+                              <div className="font-semibold text-brand-700">AI Insight: {insight.summary}</div>
+                              {insight.nextStep && <div className="mt-1 text-[#706e6b]">Suggested next step: {insight.nextStep}</div>}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -4741,6 +4888,9 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast }: { data: Boot
   const [goalDialogOpen, setGoalDialogOpen] = useState(false);
   const [refreshedAt, setRefreshedAt] = useState(new Date());
   const [taskView, setTaskView] = useState("Due Today");
+  const [homeInsight, setHomeInsight] = useState<AiInsightResponse<AiHomeInsight> | null>(null);
+  const [homeInsightLoading, setHomeInsightLoading] = useState(false);
+  const [homeInsightError, setHomeInsightError] = useState("");
   const closedWonAmount = sumReportAmount(data.opportunities.filter((record) => String(record.stage ?? "") === "Closed Won"), "amount");
   const openHighProbabilityAmount = sumReportAmount(data.opportunities.filter((record) => !isClosedOpportunity(record) && numberFromRecord(record.probability) >= 70), "amount");
   const suggestedGoal = Math.max(100000, closedWonAmount + openHighProbabilityAmount);
@@ -4761,7 +4911,6 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast }: { data: Boot
   });
   const recentRecords = buildHomeRecentRecords(data);
   const keyDeals = data.opportunities.filter((record) => !isClosedOpportunity(record)).slice(0, 3);
-  const openCases = data.cases.filter((record) => !isClosedCase(record));
   const suggestionCards = [
     { id: "lead", title: "Create your first lead", body: "Convert leads into contacts, accounts, and opportunities.", href: "/lightning/o/Lead/new" },
     { id: "marketing", title: "Turn on marketing features", body: "Access tools to reach audiences and engage customers.", href: "/lightning/app/marketing", newTab: true },
@@ -4770,17 +4919,40 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast }: { data: Boot
     { id: "reports", title: "Review analytics", body: "Open reports for pipeline, service, contacts, and lead generation.", href: "/lightning/page/analytics" }
   ];
   const visibleSuggestions = suggestionCards.filter((card) => !dismissedSuggestions.includes(card.id));
-  const assistantItems = [
-    data.leads.length === 0 ? "Create a lead to start tracking prospecting work." : `${data.leads.length} lead${data.leads.length === 1 ? "" : "s"} in the workspace.`,
-    openCases.length > 0 ? `${openCases.length} open case${openCases.length === 1 ? "" : "s"} need support follow-up.` : "",
-    keyDeals.length > 0 ? `${keyDeals.length} open opportunit${keyDeals.length === 1 ? "y" : "ies"} in pipeline.` : ""
-  ].filter(Boolean);
-
   useEffect(() => {
     setHomeMode(preferredMode);
     setGoalInput(String(numberFromRecord(preferences?.quarterlyGoal) || suggestedGoal));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferences?.id, preferences?.homeMode, preferences?.quarterlyGoal]);
+
+  useEffect(() => {
+    if (homeMode !== "Dashboard" || homeInsight || homeInsightLoading) return;
+    void loadHomeInsight(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homeMode]);
+
+  async function loadHomeInsight(force: boolean) {
+    setHomeInsightLoading(true);
+    setHomeInsightError("");
+    try {
+      const response = await fetch("/api/ai/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ surface: "home", force })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setHomeInsightError(String(payload.error ?? "Home AI insights are unavailable."));
+        return;
+      }
+      setHomeInsight(payload as AiInsightResponse<AiHomeInsight>);
+      if (payload.warning) onToast({ tone: "warning", message: String(payload.warning) });
+    } catch {
+      setHomeInsightError("Home AI insights are unavailable. Check your connection and retry.");
+    } finally {
+      setHomeInsightLoading(false);
+    }
+  }
 
   async function saveHomePreferences(values: RecordData) {
     const response = await postUtility("updatePreferences", undefined, values);
@@ -4897,12 +5069,35 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast }: { data: Boot
           )}
         </DashboardPanel>
         <DashboardPanel title="Assistant">
-          {assistantItems.length === 0 ? (
-            <p className="text-sm text-[#706e6b]">Nothing needs your attention.</p>
-          ) : (
-            <ul className="space-y-2 text-sm text-[#706e6b]">
-              {assistantItems.map((item) => <li key={item}>{item}</li>)}
-            </ul>
+          {homeInsightLoading && <div className="flex items-center gap-2 text-sm text-[#706e6b]" aria-live="polite"><RefreshCw size={14} className="animate-spin" /> Analyzing your CRM workspace…</div>}
+          {!homeInsightLoading && homeInsightError && (
+            <div className="space-y-2">
+              <div className="flex items-start gap-1 rounded border border-[#ea001e] bg-[#fff1f1] p-2 text-xs text-[#8e030f]" role="alert"><AlertCircle size={14} className="mt-0.5 shrink-0" />{homeInsightError}</div>
+              <Button onClick={() => void loadHomeInsight(false)}>Retry</Button>
+            </div>
+          )}
+          {!homeInsightLoading && homeInsight && (
+            <div className="space-y-3">
+              <p className="text-sm text-[#444]">{homeInsight.payload.summary}</p>
+              {homeInsight.payload.facts.length > 0 && (
+                <div className="grid grid-cols-2 gap-1">
+                  {homeInsight.payload.facts.map((fact) => <div key={fact.id} className="rounded border border-[#d8dde6] p-2"><div className="text-[10px] uppercase text-[#706e6b]">{fact.label}</div><div className="font-semibold">{fact.value}</div></div>)}
+                </div>
+              )}
+              <div className="space-y-2">
+                {homeInsight.payload.recommendations.map((item, index) => (
+                  <div key={`${item.title}-${index}`} className="rounded border border-[#d8dde6] p-2 text-sm">
+                    <div className="flex items-center justify-between gap-2"><span className="font-semibold">{item.title}</span><span className={cn("rounded px-1.5 py-0.5 text-[10px] uppercase", item.priority === "high" ? "bg-[#fff1f1] text-[#ba0517]" : item.priority === "medium" ? "bg-[#fff7e5] text-[#8a4b00]" : "bg-[#eef4ff] text-brand-700")}>{item.priority}</span></div>
+                    <p className="mt-1 text-xs text-[#706e6b]">{item.rationale}</p>
+                    {item.action && <Link href={item.action.href} className="mt-2 inline-block text-xs font-semibold text-brand-700 hover:underline">{item.action.label}</Link>}
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between gap-2 border-t border-[#e4e7ec] pt-2 text-[10px] text-[#706e6b]">
+                <span>{homeInsight.stale ? "Stale saved insight" : homeInsight.cached ? "Cached insight" : "Fresh insight"} · {formatDateTime(homeInsight.generatedAt)}</span>
+                <Button onClick={() => void loadHomeInsight(true)}>Refresh AI</Button>
+              </div>
+            </div>
           )}
         </DashboardPanel>
         <DashboardPanel title="Home Settings">
@@ -5969,7 +6164,7 @@ function ModalHost({
   if (modal.type === "event") return <EventModal data={data} relatedObjectType={modal.relatedObjectType} relatedRecordId={modal.relatedRecordId} startDate={modal.startDate} startTime={modal.startTime} endDate={modal.endDate} endTime={modal.endTime} onClose={onClose} onSave={(values) => onSaveRecord("Event", values)} />;
   if (modal.type === "quickText") return <QuickTextModal data={data} onClose={onClose} onSave={(values) => onSaveRecord("QuickText", values)} />;
   if (modal.type === "knowledge") return <KnowledgeModal onClose={onClose} onSave={(values) => onSaveRecord("Knowledge__kav", values)} />;
-  if (modal.type === "listEmail") return <ListEmailWizard data={data} onClose={onClose} onSave={(values) => onSaveRecord("ListEmail", values)} />;
+  if (modal.type === "listEmail") return <ListEmailWizard data={data} initialValues={modal.initialValues} startingStep={modal.startingStep} initialLayout={modal.layout} onClose={onClose} onSave={(values) => onSaveRecord("ListEmail", values)} />;
   if (modal.type === "listAction") return <ListActionModal modal={modal} data={data} recordLabels={recordLabels} campaignMembers={campaignMembers} onClose={onClose} onSaveRecord={onSaveRecord} onApply={onApplyListAction} />;
   if (modal.type === "quickTextFolder") return <QuickTextFolderModal onClose={onClose} onSave={(values) => onApplyListAction("New Folder", "QuickText", [], values)} />;
   if (modal.type === "marketingActivation") return <MarketingActivationModal user={data.user} onClose={onClose} onSave={(values) => onApplyListAction("Activate Marketing", "ListEmail", [], values)} />;
@@ -7321,13 +7516,13 @@ function KnowledgeModal({ onClose, onSave }: { onClose: () => void; onSave: (val
   );
 }
 
-function ListEmailWizard({ data, onClose, onSave }: { data: BootstrapData; onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
-  const [step, setStep] = useState(1);
-  const [layout, setLayout] = useState("Sales");
+function ListEmailWizard({ data, initialValues: providedInitialValues, startingStep = 1, initialLayout = "Sales", onClose, onSave }: { data: BootstrapData; initialValues?: RecordData; startingStep?: 1 | 2; initialLayout?: string; onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
+  const [step, setStep] = useState<1 | 2>(startingStep);
+  const [layout, setLayout] = useState(initialLayout);
   const [layoutQuery, setLayoutQuery] = useState("");
   const [savedQuery, setSavedQuery] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [initialValues] = useState<RecordData>(() => ({ recipientType: "Leads and Contacts", status: "Draft", recipients: [], scheduleTime: "09:00" }));
+  const [initialValues] = useState<RecordData>(() => ({ recipientType: "Leads and Contacts", status: "Draft", recipients: [], scheduleTime: "09:00", ...providedInitialValues }));
   const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const recipientOptions = [
@@ -7346,7 +7541,7 @@ function ListEmailWizard({ data, onClose, onSave }: { data: BootstrapData; onClo
   const selectedLayout = LIST_EMAIL_LAYOUTS.find((item) => item.name === layout) ?? LIST_EMAIL_LAYOUTS[0];
   const previewSubject = String(values.subject ?? defaultListEmailSubject(layout));
   const previewBody = String(values.body ?? defaultListEmailBody(layout));
-  const isDirty = layout !== "Sales" || !recordDataShallowEqual(values, initialValues);
+  const isDirty = layout !== initialLayout || !recordDataShallowEqual(values, initialValues);
   const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
 
   function toggleRecipient(id: string) {
@@ -8043,12 +8238,13 @@ function BaseDialog({ open, title, children, footer, onClose, wide = false }: { 
   );
 }
 
-function Button({ children, onClick, variant = "secondary", className }: { children: ReactNode; onClick?: () => void; variant?: "primary" | "secondary" | "destructive"; className?: string }) {
+function Button({ children, onClick, variant = "secondary", className, disabled = false }: { children: ReactNode; onClick?: () => void; variant?: "primary" | "secondary" | "destructive"; className?: string; disabled?: boolean }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       className={cn(
-        "inline-flex min-h-8 items-center justify-center gap-1 rounded border px-3.5 py-1 text-xs font-semibold active:scale-[0.97]",
+        "inline-flex min-h-8 items-center justify-center gap-1 rounded border px-3.5 py-1 text-xs font-semibold active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
         variant === "primary" &&
           "border-brand-700/60 bg-gradient-to-b from-brand-500 to-brand-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_1px_2px_rgba(3,45,96,0.24)] hover:from-brand-600 hover:to-brand-700 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_2px_6px_rgba(3,45,96,0.3)]",
         variant === "secondary" &&
@@ -9575,18 +9771,6 @@ function activityDetail(activity: TimelineActivity) {
   if (activity.kind === "Call") return String(activity.comments ?? "No call comments");
   if (activity.kind === "Task") return `Due: ${formatDate(String(activity.dueDate ?? activity.date))} - Priority: ${String(activity.priority ?? "Normal")}`;
   return `Scheduled for ${formatDateTime(String(activity.date))}`;
-}
-
-function activityHasInsight(activity: TimelineActivity) {
-  return Boolean(activity.body || activity.comments || String(activity.priority ?? "") === "High" || activityMatchesStatus(activity, "Overdue"));
-}
-
-function activityInsight(activity: TimelineActivity) {
-  if (activityMatchesStatus(activity, "Overdue")) return "This activity needs attention.";
-  if (String(activity.priority ?? "") === "High") return "High-priority follow-up.";
-  if (activity.kind === "Email") return "Recent email content is available in the timeline.";
-  if (activity.kind === "Call") return "Call notes are available for follow-up.";
-  return "Activity details are available.";
 }
 
 function slugify(value: string) {

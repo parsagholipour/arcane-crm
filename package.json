@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "test:usecases": "node scripts/crm-usecase-check.mjs",
+    "test:ai": "tsx --conditions=react-server --test src/lib/ai/*.test.ts",
     "lint": "next lint",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -33,7 +34,9 @@
     "next-auth": "^5.0.0-beta.30",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "tailwind-merge": "^2.6.0"
+    "server-only": "^0.0.1",
+    "tailwind-merge": "^2.6.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^24.0.13",

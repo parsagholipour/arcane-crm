@@ -180,14 +180,16 @@ async function main() {
     update: {
       organizationId: organization.id,
       role: "assistant",
-      text: "I can summarize CRM records, draft follow-up email copy, or suggest next actions from the current workspace.",
+      text: "I can analyze CRM records, draft follow-up email copy, suggest next actions, and take you to the right workspace. I will never change data without you.",
+      metadata: { kind: "summary", facts: [], actions: [{ id: "open_home", label: "Open Home", href: "/lightning/page/home" }] },
       userId: user.id
     },
     create: {
       id: "agent-welcome",
       organizationId: organization.id,
       role: "assistant",
-      text: "I can summarize CRM records, draft follow-up email copy, or suggest next actions from the current workspace.",
+      text: "I can analyze CRM records, draft follow-up email copy, suggest next actions, and take you to the right workspace. I will never change data without you.",
+      metadata: { kind: "summary", facts: [], actions: [{ id: "open_home", label: "Open Home", href: "/lightning/page/home" }] },
       userId: user.id
     }
   });

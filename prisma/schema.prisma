@@ -712,3 +712,22 @@ model AgentforceMessage {
   metadata       Json?
   createdAt      DateTime @default(now())
 }
+
+model AiInsightCache {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  surface        String
+  scopeKey       String
+  sourceHash     String
+  payload        Json
+  model          String
+  usage          Json?
+  generatedAt    DateTime @default(now())
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@unique([organizationId, userId, surface, scopeKey])
+  @@index([organizationId, userId, surface])
+}
