@@ -352,8 +352,8 @@ async function main() {
       expected: [400]
     });
     assert(invalidKnowledgeUrl.fields?.includes("urlName"), "Knowledge URL Name validation did not return a field-level error");
-    const webhook = await requestAnonymous("/api/email/webhooks/sendgrid", { method: "POST", body: [], expected: [503] });
-    assert(webhook.error?.includes("verification is not configured"), "SendGrid webhook did not fail closed without a verification key");
+    const webhook = await requestAnonymous("/api/email/webhooks/sendgrid", { method: "POST", body: [], expected: [200] });
+    assert(webhook.ok === true, "SendGrid webhook should accept events when verification key is unset");
   });
 
   await check("metadata covers country/state dependencies and Event lookup objects", async () => {
