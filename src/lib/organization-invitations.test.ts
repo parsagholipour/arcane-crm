@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { sendOrganizationInvitation } from "@/lib/organization-invitations";
+import { resolvePublicAppUrl } from "@/lib/public-app-url";
 import { deliverMembershipOnboarding } from "@/lib/user-management";
 
 const acceptedAt = new Date("2026-07-24T12:00:00.000Z");
@@ -60,6 +61,27 @@ test("organization invitation uses a tenant activation link and records provider
   });
   assert.deepEqual(marked, { membershipId: "membership-1", sentAt: acceptedAt });
   assert.equal(delivery.invitationDelivery.status, "Accepted");
+});
+
+test("public app URL prefers explicit configuration and Railway's public domain", () => {
+  assert.equal(resolvePublicAppUrl(undefined, {
+    NODE_ENV: "production",
+    PUBLIC_APP_URL: "https://configured.example.com/path",
+    RAILWAY_PUBLIC_DOMAIN: "railway.example.com",
+    AUTH_URL: "https://localhost:8080"
+  }), "https://configured.example.com");
+  assert.equal(resolvePublicAppUrl(undefined, {
+    NODE_ENV: "production",
+    RAILWAY_PUBLIC_DOMAIN: "af-crm.up.railway.app",
+    AUTH_URL: "https://localhost:8080"
+  }), "https://af-crm.up.railway.app");
+});
+
+test("public app URL refuses loopback links in production", () => {
+  assert.throws(() => resolvePublicAppUrl(undefined, {
+    NODE_ENV: "production",
+    AUTH_URL: "https://localhost:8080"
+  }), /must use a public host in production/);
 });
 
 const onboardingInput = {

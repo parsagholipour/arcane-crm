@@ -1,5 +1,6 @@
 import "server-only";
 
+import { resolvePublicAppUrl } from "@/lib/public-app-url";
 import { normalizeEmail } from "@/lib/super-admin-constants";
 
 type KeycloakLocation = {
@@ -145,7 +146,7 @@ export async function sendKeycloakActionsEmail(
 ) {
   const config = location();
   const lifespan = Number(process.env.KEYCLOAK_INVITE_LIFESPAN_SECONDS ?? 86400);
-  const returnUrl = `${(process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "")}/auth/keycloak?callbackUrl=${encodeURIComponent(callbackPath)}`;
+  const returnUrl = `${resolvePublicAppUrl()}/auth/keycloak?callbackUrl=${encodeURIComponent(callbackPath)}`;
   const query = new URLSearchParams({
     client_id: process.env.AUTH_KEYCLOAK_ID ?? "",
     redirect_uri: returnUrl,

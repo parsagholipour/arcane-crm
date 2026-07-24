@@ -14,6 +14,8 @@ Copy the authentication variables from `.env.example` and configure two Keycloak
 
 `AUTH_SECRET` must be a long random value and `AUTH_URL` must match the browser-visible origin. Because `trustHost` is enabled, production proxies must provide a trustworthy host.
 
+Set `PUBLIC_APP_URL` to the browser-visible application origin (for example, `https://af-crm.up.railway.app`). Organization invitations and Keycloak action emails use this value for their links. On Railway, `RAILWAY_PUBLIC_DOMAIN` is used as a fallback before `AUTH_URL`; production email delivery refuses loopback origins such as `localhost`.
+
 ## Invitation email configuration
 
 Set `SENDGRID_API_KEY` and `SENDGRID_EMAIL` to a verified SendGrid sender. Configure the Keycloak realm to use the same provider as an SMTP relay:

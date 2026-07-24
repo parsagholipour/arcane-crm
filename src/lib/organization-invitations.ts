@@ -4,6 +4,7 @@ import type { OrganizationRole } from "@prisma/client";
 import { organizationInvitationTemplate } from "@/lib/email/templates";
 import { sendTrackedEmail, type TrackedEmailResult } from "@/lib/email/tracking";
 import { prisma } from "@/lib/prisma";
+import { resolvePublicAppUrl } from "@/lib/public-app-url";
 
 export const ORGANIZATION_INVITATION_SOURCE = "OrganizationInvitation";
 
@@ -31,7 +32,7 @@ export async function sendOrganizationInvitation(input: {
   markSent?: (membershipId: string, sentAt: Date) => Promise<void>;
   appUrl?: string;
 } = {}) {
-  const appUrl = (dependencies.appUrl ?? process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const appUrl = resolvePublicAppUrl(dependencies.appUrl);
   const activationUrl = `${appUrl}/organizations/activate?organizationId=${encodeURIComponent(input.organizationId)}`;
   const message = organizationInvitationTemplate({
     recipientName: input.recipientName,
