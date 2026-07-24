@@ -28,3 +28,12 @@ export function formatDate(value?: string | Date | null) {
 export function sentenceCase(value: string) {
   return value.replace(/([A-Z])/g, " $1").replace(/^./, (match) => match.toUpperCase()).trim();
 }
+
+/** Lowercase URL slug from a display name (letters, numbers, single hyphens). */
+export function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}

@@ -55,7 +55,10 @@ export async function updateOrganizationAction(organizationId: string, formData:
   await assertSuperAdmin();
   try {
     const name = value(formData, "name");
-    const slug = value(formData, "slug").toLowerCase();
+    const slug = (value(formData, "slug") || name)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
     const status = value(formData, "status") === "SUSPENDED" ? "SUSPENDED" : "ACTIVE";
     if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new UserManagementError("A valid name and slug are required.");
     await prisma.organization.update({ where: { id: organizationId }, data: { name, slug, status } });

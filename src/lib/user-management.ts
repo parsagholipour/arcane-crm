@@ -79,7 +79,10 @@ export async function inviteOrganizationMember(input: {
 
 export async function createOrganizationWithAdmin(input: { name: string; slug: string; adminName: string; adminEmail: string }) {
   const name = normalizeName(input.name);
-  const slug = input.slug.trim().toLowerCase();
+  const slug = (input.slug.trim() || name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   const email = normalizeEmail(input.adminEmail);
   const adminName = normalizeName(input.adminName);
   if (!name) throw new UserManagementError("Organization name is required.");

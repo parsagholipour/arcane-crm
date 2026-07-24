@@ -9,6 +9,7 @@ import {
   updateMembershipAction,
   updateOrganizationAction
 } from "@/app/super-admin/actions";
+import { NameSlugFields } from "@/components/forms/NameSlugFields";
 import { prisma } from "@/lib/prisma";
 
 const inputClass = "h-9 rounded border border-[#c9c9c9] bg-white px-3 text-sm outline-none focus:border-brand-500";
@@ -41,8 +42,13 @@ export default async function SuperAdminPage({ searchParams }: { searchParams: P
       <section className="rounded border border-[#d8dde6] bg-white p-4 shadow-sm">
         <h2 className="text-lg font-semibold">Create organization</h2>
         <form action={createOrganizationAction} className="mt-3 grid gap-3 md:grid-cols-5">
-          <input className={inputClass} name="name" placeholder="Organization name" required />
-          <input className={inputClass} name="slug" placeholder="organization-slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required />
+          <NameSlugFields
+            className="contents"
+            nameClassName={inputClass}
+            slugClassName={inputClass}
+            namePlaceholder="Organization name"
+            slugPlaceholder="organization-slug"
+          />
           <input className={inputClass} name="adminName" placeholder="First administrator" required />
           <input className={inputClass} name="adminEmail" type="email" placeholder="admin@example.com" required />
           <button className={primaryClass}>Create and invite admin</button>
@@ -67,8 +73,15 @@ export default async function SuperAdminPage({ searchParams }: { searchParams: P
           return (
             <article key={organization.id} className="rounded border border-[#d8dde6] bg-white p-4 shadow-sm">
               <form action={updateOrganizationAction.bind(null, organization.id)} className="grid gap-3 md:grid-cols-[1fr_1fr_160px_auto]">
-                <input className={inputClass} name="name" defaultValue={organization.name} required />
-                <input className={inputClass} name="slug" defaultValue={organization.slug} required />
+                <NameSlugFields
+                  className="contents"
+                  nameClassName={inputClass}
+                  slugClassName={inputClass}
+                  nameDefault={organization.name}
+                  slugDefault={organization.slug}
+                  namePlaceholder="Organization name"
+                  slugPlaceholder="organization-slug"
+                />
                 <select className={inputClass} name="status" defaultValue={organization.status}><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></select>
                 <button className={buttonClass}>Save organization</button>
               </form>

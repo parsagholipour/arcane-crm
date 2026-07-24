@@ -96,7 +96,7 @@ import {
 import { contactName, dataKeyForObject, decorateBootstrap, recordTitle, routeForRecord } from "@/lib/crm-data";
 import type { AppKey, AppNavItem, BootstrapData, CrmObject, FieldDefinition, FormDefinition, ObjectDefinition, RecordData } from "@/lib/crm-types";
 import type { AiActivityInsightPayload, AiEmailDraft, AiHomeInsight, AiInsightResponse } from "@/lib/ai-types";
-import { cn, formatDate, formatDateTime } from "@/lib/utils";
+import { cn, formatDate, formatDateTime, slugify } from "@/lib/utils";
 import { InvoiceDetailPage, InvoiceEditorModal, InvoicePaymentModal, InvoiceStatusBadge, type InvoiceMutationResult } from "@/components/crm/InvoiceWorkspace";
 import { CommunicationsStatusBadge, MessagingSessionDetailPage, MessagingSessionEditorModal, VideoCallDetailPage, VideoCallEditorModal, type CommunicationsMutationResult } from "@/components/crm/CommunicationsWorkspace";
 import { CampaignDetailPage, CampaignEditorModal, CampaignStatusBadge, type CampaignMutationResult } from "@/components/crm/CampaignWorkspace";
@@ -7824,6 +7824,7 @@ function formatWordCount(count: number) {
 function KnowledgeModal({ initial, onClose, onSave }: { initial?: RecordData; onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
   const [initialValues] = useState<RecordData>(() => initial ? { ...initial } : { visibleInInternalApp: true, visibleToCustomer: false });
   const [values, setValues] = useState<RecordData>(() => initialValues);
+  const [slugManual, setSlugManual] = useState(Boolean(initial?.urlName));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [undoStack, setUndoStack] = useState<string[]>([]);
   const [redoStack, setRedoStack] = useState<string[]>([]);
@@ -7843,6 +7844,7 @@ function KnowledgeModal({ initial, onClose, onSave }: { initial?: RecordData; on
     const ok = await onSave(values);
     if (ok && stayOpen) {
       setValues(initialValues);
+      setSlugManual(false);
       setErrors({});
       setUndoStack([]);
       setRedoStack([]);
@@ -7978,8 +7980,8 @@ function KnowledgeModal({ initial, onClose, onSave }: { initial?: RecordData; on
     <BaseDialog open title={initial ? `Edit ${String(initial.title ?? "Knowledge")}` : "New Knowledge"} onClose={requestClose} wide footer={<><Button onClick={requestClose}>Cancel</Button>{!initial && <Button onClick={() => submit(true)}>Save & New</Button>}<Button variant="primary" onClick={() => submit(false)}>Save</Button></>}>
       <div className="grid gap-4">
         <div className="grid gap-3 md:grid-cols-2">
-          <FieldShell label="Title" required error={errors.title}><input className={inputClass} value={String(values.title ?? "")} onChange={(event) => setValues({ ...values, title: event.target.value, urlName: slugify(event.target.value) })} /></FieldShell>
-          <FieldShell label="URL Name" required error={errors.urlName}><input className={inputClass} value={String(values.urlName ?? "")} onChange={(event) => setValues({ ...values, urlName: event.target.value })} /></FieldShell>
+          <FieldShell label="Title" required error={errors.title}><input className={inputClass} value={String(values.title ?? "")} onChange={(event) => { const title = event.target.value; setValues({ ...values, title, urlName: slugManual ? values.urlName : slugify(title) }); }} /></FieldShell>
+          <FieldShell label="URL Name" required error={errors.urlName}><input className={inputClass} value={String(values.urlName ?? "")} onChange={(event) => { setSlugManual(true); setValues({ ...values, urlName: slugify(event.target.value) }); }} /></FieldShell>
         </div>
         <div className={cn("rounded border border-[#d8dde6] bg-white", fullscreen && "fixed inset-4 z-[90] flex flex-col shadow-modal")}>
           <div className="flex flex-wrap gap-1 border-b border-[#d8dde6] bg-[#f8f8f8] p-2 text-xs">
@@ -10499,8 +10501,4 @@ function activityDetail(activity: TimelineActivity) {
   if (activity.kind === "Call") return String(activity.comments ?? "No call comments");
   if (activity.kind === "Task") return `Due: ${formatDate(String(activity.dueDate ?? activity.date))} - Priority: ${String(activity.priority ?? "Normal")}`;
   return `Scheduled for ${formatDateTime(String(activity.date))}`;
-}
-
-function slugify(value: string) {
-  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
