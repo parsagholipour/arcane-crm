@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
 import { prisma } from "@/lib/prisma";
+import { RECENT_HISTORY_LIMIT } from "@/lib/recent-records";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -488,13 +489,14 @@ export async function POST(request: NextRequest) {
         update: { query, label, context, category },
         create: { organizationId, userId, query, label, context, href, category }
       });
-      const recents = await prisma.globalSearchRecent.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" }, take: 8 });
+      const recents = await prisma.globalSearchRecent.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" }, take: RECENT_HISTORY_LIMIT });
       return NextResponse.json({ ok: true, recent: JSON.parse(JSON.stringify(recent)), globalSearchRecents: JSON.parse(JSON.stringify(recents)) });
     }
 
     if (payload.action === "clearGlobalSearchRecents") {
-      await prisma.globalSearchRecent.deleteMany({ where: personalWhere });
-      return NextResponse.json({ ok: true, globalSearchRecents: [] });
+      await prisma.globalSearchRecent.deleteMany({ where: { ...personalWhere, query: { not: null } } });
+      const recents = await prisma.globalSearchRecent.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" }, take: RECENT_HISTORY_LIMIT });
+      return NextResponse.json({ ok: true, globalSearchRecents: JSON.parse(JSON.stringify(recents)) });
     }
 
     if (payload.action === "resetListViewPreferences") {

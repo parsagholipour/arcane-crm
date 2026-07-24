@@ -1,6 +1,7 @@
 import { decorateBootstrap } from "@/lib/crm-data";
 import { requireOrganizationContext } from "@/lib/organization-context";
 import { prisma } from "@/lib/prisma";
+import { RECENT_HISTORY_LIMIT } from "@/lib/recent-records";
 import { isSuperAdminEmail } from "@/lib/super-admin-constants";
 import { invoiceInclude, markPastDueInvoices } from "@/lib/invoices";
 import { messagingSessionInclude } from "@/lib/messaging";
@@ -130,7 +131,7 @@ export async function loadBootstrapData(): Promise<BootstrapData> {
     prisma.helpArticleState.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } }),
     prisma.appNavPreference.findMany({ where: personalWhere }),
     prisma.listViewPreference.findMany({ where: personalWhere }),
-    prisma.globalSearchRecent.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" }, take: 8 }),
+    prisma.globalSearchRecent.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" }, take: RECENT_HISTORY_LIMIT }),
     prisma.agentforceMessage.findMany({ where: personalWhere, orderBy: { createdAt: "desc" }, take: 30 }).then((rows) => rows.reverse())
   ]);
 

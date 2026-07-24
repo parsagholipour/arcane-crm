@@ -94,6 +94,7 @@ import {
   TIME_SLOTS
 } from "@/lib/crm-metadata";
 import { contactName, dataKeyForObject, decorateBootstrap, recordTitle, routeForRecord } from "@/lib/crm-data";
+import { isRecordRecentlyViewed, recentlyViewedEntryForRecord, recentSearchHistoryEntries } from "@/lib/recent-records";
 import type { AppKey, AppNavItem, BootstrapData, CrmObject, FieldDefinition, FormDefinition, ObjectDefinition, RecordData } from "@/lib/crm-types";
 import type { AiActivityInsightPayload, AiEmailDraft, AiHomeInsight, AiInsightResponse } from "@/lib/ai-types";
 import { cn, formatDate, formatDateTime, slugify } from "@/lib/utils";
@@ -524,6 +525,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
   const [modal, setModal] = useState<ModalState | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const toastTimerRef = useRef<number | null>(null);
+  const recentlyViewedRecordRef = useRef("");
   const [consoleTabs, setConsoleTabs] = useState<ConsoleTab[]>([]);
   const [recordLabels, setRecordLabels] = useState<Record<string, string[]>>(() => labelsFromData(initialData.recordLabels));
   const [campaignMembers, setCampaignMembers] = useState<Record<string, string[]>>(() => campaignMembersFromData(initialData.campaignMembers, initialData.campaigns));
@@ -540,6 +542,21 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
       return [...tabs.slice(-7), tab];
     });
   }, [pathname, screen, searchParams]);
+
+  useEffect(() => {
+    if (screen.kind !== "record") {
+      recentlyViewedRecordRef.current = "";
+      return;
+    }
+
+    const key = `${screen.object}:${screen.id}`;
+    const record = getRecords(screen.object).find((item) => item.id === screen.id);
+    if (!record || recentlyViewedRecordRef.current === key) return;
+    recentlyViewedRecordRef.current = key;
+    void saveRecentlyViewedRecord(screen.object, record);
+    // Record data is available in the initial Bootstrap payload whenever the route changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen]);
 
   useEffect(() => {
     const segments = pathname.split("/").filter(Boolean);
@@ -595,6 +612,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
 
   function applyInvoiceMutation(result: InvoiceMutationResult) {
     if (!result.invoice?.id) return;
+    void saveRecentlyViewedRecord("Invoice", result.invoice);
     setData((previous) => {
       const invoice = result.invoice;
       const invoices = previous.invoices.some((item) => item.id === invoice.id)
@@ -616,6 +634,8 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
   }
 
   function applyCommunicationsMutation(result: CommunicationsMutationResult) {
+    if (result.session?.id) void saveRecentlyViewedRecord("MessagingSession", result.session);
+    if (result.videoCall?.id) void saveRecentlyViewedRecord("VideoCall", result.videoCall);
     setData((previous) => {
       const incomingNotifications = Array.isArray(result.notifications) ? result.notifications : [];
       const incomingIds = new Set(incomingNotifications.map((item) => item.id));
@@ -642,6 +662,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
 
   function applyCampaignMutation(result: CampaignMutationResult) {
     if (!result.campaign?.id) return;
+    void saveRecentlyViewedRecord("Campaign", result.campaign);
     setData((previous) => {
       const campaigns = previous.campaigns.some((item) => item.id === result.campaign!.id)
         ? previous.campaigns.map((item) => item.id === result.campaign!.id ? { ...item, ...result.campaign } : item)
@@ -692,6 +713,14 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
     }
   }
 
+  async function saveRecentlyViewedRecord(object: CrmObject, record: RecordData) {
+    const values = recentlyViewedEntryForRecord(object, record);
+    if (!values) return;
+    const response = await postUtility("saveGlobalSearchRecent", undefined, values);
+    if (!Array.isArray(response?.globalSearchRecents)) return;
+    setData((previous) => ({ ...previous, globalSearchRecents: response.globalSearchRecents as RecordData[] }));
+  }
+
   async function saveRecord(object: CrmObject, values: RecordData, options: { id?: string; stayOpen?: boolean } = {}) {
     const key = dataKeyForObject(object);
     const method = options.id ? "PATCH" : "POST";
@@ -736,6 +765,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
       return decorateBootstrap(nextData);
     });
 
+    if (!options.id) await saveRecentlyViewedRecord(object, record);
     void createAppNotification(notificationForSavedRecord(object, record, Boolean(options.id), values, Boolean(json.delivery)));
     showToast(json.warning
       ? { tone: "warning", message: String(json.warning) }
@@ -1452,7 +1482,7 @@ function SearchOverlay({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const searchIndex = useMemo(() => buildGlobalSearchIndex(data), [data]);
-  const recentResults = useMemo(() => recentSearchResults(data.globalSearchRecents), [data.globalSearchRecents]);
+  const recentResults = useMemo(() => recentSearchResults(recentSearchHistoryEntries(data.globalSearchRecents)), [data.globalSearchRecents]);
   const suggestedResults = useMemo(() => buildSuggestedSearches(data), [data]);
   const results = useMemo(() => {
     if (!query.trim()) return searchIndex.slice(0, 8);
@@ -9633,7 +9663,7 @@ function filtersForListView(definition: ObjectDefinition, preference?: RecordDat
 
 function recordMatchesStandardListView(object: CrmObject, listView: string, record: RecordData, recentRecords: RecordData[], currentUserId: string) {
   const status = String(record.status ?? "Draft");
-  const isRecent = recentRecords.some((recent) => String(recent.href ?? "") === routeForRecord(object, requiredId(record)));
+  const isRecent = isRecordRecentlyViewed(object, record, recentRecords);
   if (listView.includes("Recently Viewed") || listView === "Recently Viewed") return isRecent;
   if (object === "Contact") {
     if (listView === "Birthdays This Month") return isDateInCurrentMonth(record.birthDate);
