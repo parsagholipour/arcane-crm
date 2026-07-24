@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { OrganizationUsersClient } from "@/components/admin/OrganizationUsersClient";
+import { SignOutButton } from "@/components/auth/SignOutButton";
 import { ReloriqLogo } from "@/components/brand/ReloriqLogo";
 import { AppAuthorizationError, requireOrganizationAdmin } from "@/lib/organization-context";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +22,7 @@ export default async function OrganizationUsersPage() {
         <header className="flex min-h-14 items-center gap-4 border-b border-[#d8dde6] bg-white px-5">
           <Link href="/lightning/page/home"><ReloriqLogo wordmarkClassName="text-lg font-bold text-shell" /></Link>
           <span className="rounded bg-brand-50 px-2 py-1 text-xs text-brand-900">{context.organization.name} · Organization Admin</span>
-          <div className="ml-auto flex gap-3 text-sm"><Link href="/lightning/page/home">Back to Reloriq</Link>{isSuperAdminEmail(context.user.email) && <Link href="/super-admin">Super admin</Link>}<Link href="/auth/signout">Sign out</Link></div>
+          <div className="ml-auto flex gap-3 text-sm"><Link href="/lightning/page/home">Back to Reloriq</Link>{isSuperAdminEmail(context.user.email) && <Link href="/super-admin">Super admin</Link>}<SignOutButton /></div>
         </header>
         <main className="mx-auto max-w-6xl p-5">
           <h1 className="text-2xl font-semibold">Organization users</h1>

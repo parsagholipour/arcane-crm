@@ -7,7 +7,7 @@ import { isSuperAdminEmail } from "./lib/super-admin-constants";
 export default auth((request) => {
   const pathname = request.nextUrl.pathname;
   if (request.auth?.forceSignOut) {
-    return NextResponse.redirect(new URL("/auth/signout", request.nextUrl.origin));
+    return NextResponse.redirect(new URL("/auth/signout?forced=1", request.nextUrl.origin));
   }
 
   if (!request.auth?.user && !isPublicAuthPath(pathname)) {

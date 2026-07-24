@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SignOutButton } from "@/components/auth/SignOutButton";
 import { auth } from "@/lib/auth";
 import { ReloriqLogo } from "@/components/brand/ReloriqLogo";
 
@@ -12,7 +13,7 @@ export default async function NoOrganizationPage() {
         <p className="mt-3 text-sm text-slate-600">Your account does not currently have access to an active Reloriq organization.</p>
         <div className="mt-6 flex justify-center gap-3">
           {session?.user?.isSuperAdmin && <Link className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" href="/super-admin">Open super admin</Link>}
-          <Link className="rounded border px-4 py-2 text-sm font-semibold" href="/auth/signout">Sign out</Link>
+          <SignOutButton className="rounded border px-4 py-2 text-sm font-semibold" />
         </div>
       </section>
     </main>

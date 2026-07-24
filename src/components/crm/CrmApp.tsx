@@ -60,6 +60,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { SignOutButton } from "@/components/auth/SignOutButton";
 import {
   cloneElement,
   isValidElement,
@@ -3039,7 +3040,12 @@ function HeaderUtility({
                     <Button onClick={() => onNavigate("/account/sessions")}>Manage Sessions</Button>
                     {data.organizationRole === "ADMIN" && <Button onClick={() => onNavigate("/lightning/setup/users")}>Manage Users</Button>}
                     {data.isSuperAdmin && <Button onClick={() => onNavigate("/super-admin")}>Super Admin</Button>}
-                    <Button onClick={() => { window.location.href = "/auth/signout"; }}>Sign Out</Button>
+                    <SignOutButton
+                      formClassName="contents"
+                      className="inline-flex min-h-8 items-center justify-center gap-1 rounded border border-[#cfd4dc] bg-white px-3.5 py-1 text-xs font-semibold text-brand-700 shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-[#b5bcc7] hover:bg-[#f8f9fb] active:scale-[0.97]"
+                    >
+                      Sign Out
+                    </SignOutButton>
                   </div>
                 </div>
               )}
@@ -5832,7 +5838,12 @@ function YourAccountPage({ data, onDataChange, onToast }: { data: BootstrapData;
             <Link className={actionLinkClass} href="/account/sessions">Manage Sessions</Link>
             {data.organizationRole === "ADMIN" && <Link className={actionLinkClass} href="/lightning/setup/users">Manage Users</Link>}
             {data.isSuperAdmin && <Link className={actionLinkClass} href="/super-admin">Super Admin</Link>}
-            <Link className={`${actionLinkClass} border-[#ea001e] text-[#ba0517] hover:bg-[#fff1f1]`} href="/auth/signout">Sign Out</Link>
+            <SignOutButton
+              formClassName="contents"
+              className={`${actionLinkClass} border-[#ea001e] text-[#ba0517] hover:bg-[#fff1f1]`}
+            >
+              Sign Out
+            </SignOutButton>
           </div>
           <p className="mt-4 border-t border-[#eef1f6] pt-4 text-xs text-[#706e6b]">Use Manage Sessions to review browsers and revoke access without signing out of this session.</p>
         </section>
