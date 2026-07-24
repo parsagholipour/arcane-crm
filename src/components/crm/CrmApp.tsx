@@ -9514,7 +9514,9 @@ function resolveRequestedListView(object: CrmObject, requested: string | null) {
   if (!requested) return "";
   const definition = OBJECT_DEFINITIONS[object];
   const normalized = requested.replace(/^__/, "").replace(/[^a-z0-9]/gi, "").toLowerCase();
-  if (normalized === "recent") return definition.defaultList;
+  if (normalized === "recent") {
+    return [definition.defaultList, ...definition.listViews].find((view) => view.includes("Recently Viewed")) ?? definition.defaultList;
+  }
   return [definition.defaultList, ...definition.listViews].find((view) => view.replace(/[^a-z0-9]/gi, "").toLowerCase() === normalized) ?? "";
 }
 

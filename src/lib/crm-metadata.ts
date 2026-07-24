@@ -420,7 +420,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     plural: "Contacts",
     icon: "user",
     dataKey: "contacts",
-    defaultList: "Recently Viewed",
+    defaultList: "All Contacts",
     listViews: ["All Contacts", "Birthdays This Month", "My Contacts", "New This Week", "Recently Viewed (Pinned list)", "Recently Viewed Contacts"],
     actions: ["Import", "Add to Campaign", "Send Email", "New", "Assign Label"],
     columns: [
@@ -439,7 +439,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     plural: "Accounts",
     icon: "building",
     dataKey: "accounts",
-    defaultList: "Recently Viewed",
+    defaultList: "All Accounts",
     listViews: ["All Accounts", "My Accounts", "New This Week", "Recently Viewed (Pinned list)", "Recently Viewed Accounts"],
     actions: ["New", "Import", "Assign Label"],
     columns: [
@@ -481,7 +481,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     plural: "Opportunities",
     icon: "badge-dollar-sign",
     dataKey: "opportunities",
-    defaultList: "Recently Viewed",
+    defaultList: "All Opportunities",
     listViews: ["All Opportunities", "Closing Next Month", "My Opportunities", "Recently Viewed (Pinned list)"],
     actions: ["New", "Import", "Assign Label"],
     columns: [
@@ -501,7 +501,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     plural: "Products",
     icon: "box",
     dataKey: "products",
-    defaultList: "Recently Viewed",
+    defaultList: "All Products",
     listViews: ["All Products", "Active Products", "Recently Viewed (Pinned list)"],
     actions: ["New", "Add to Category"],
     columns: [
@@ -523,7 +523,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     plural: "Price Books",
     icon: "book-open",
     dataKey: "priceBooks",
-    defaultList: "Recently Viewed",
+    defaultList: "All Price Books",
     listViews: ["All Price Books", "Active Price Books", "Recently Viewed (Pinned list)"],
     actions: ["New"],
     columns: [
@@ -596,7 +596,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     plural: "Messaging Sessions",
     icon: "messages-square",
     dataKey: "messagingSessions",
-    defaultList: "Recently Viewed",
+    defaultList: "All Messaging Sessions",
     listViews: ["All Messaging Sessions", "Open", "Waiting", "Closed", "Recently Viewed (Pinned list)"],
     actions: ["New"],
     columns: [
@@ -618,7 +618,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     plural: "Knowledge",
     icon: "library",
     dataKey: "knowledgeArticles",
-    defaultList: "Recently Viewed",
+    defaultList: "All Articles",
     listViews: ["All Articles", "Archived Articles", "Draft Articles", "Published Articles", "Recently Viewed (Pinned list)"],
     actions: ["New", "Publish", "Assign", "Archive", "Delete Article", "Show more actions"],
     columns: [
@@ -640,7 +640,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     plural: "List Emails",
     icon: "mail",
     dataKey: "listEmails",
-    defaultList: "Recently Viewed",
+    defaultList: "All List Emails",
     listViews: ["All List Emails", "My List Emails", "Recently Viewed (Pinned list)"],
     actions: ["Send Email"],
     columns: [
@@ -709,7 +709,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     plural: "Video Calls",
     icon: "video",
     dataKey: "videoCalls",
-    defaultList: "Recently Viewed",
+    defaultList: "All Video Calls",
     listViews: ["All Video Calls", "Upcoming", "In Progress", "Completed", "Cancelled", "Recently Viewed (Pinned list)"],
     actions: ["New"],
     columns: [
