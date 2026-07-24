@@ -202,7 +202,7 @@ async function main() {
 
   await check("server is reachable", async () => {
     const html = await request("/lightning/page/home");
-    assert(html.includes("Salesforce"), "home page did not render the Salesforce shell");
+    assert(html.includes("Reloriq"), "home page did not render the Reloriq shell");
   });
 
   await check("all documented routes render", async () => {
@@ -247,9 +247,9 @@ async function main() {
     const home = await request("/lightning/page/home");
     for (const fragment of [
       "Search...",
-      "Agentforce",
+      "Reloriq AI",
       "Guidance Center",
-      "Salesforce Help",
+      "Reloriq Help",
       "Quick Settings",
       "Notifications",
       "View profile"
@@ -300,10 +300,13 @@ async function main() {
     const commerce = await request("/lightning/app/commerce");
     assert(commerce.includes("New Store"), "Commerce page missing New Store");
     const yourAccount = await request("/lightning/app/your-account");
-    assert(yourAccount.includes("Buy Now"), "Your Account page missing Buy Now");
+    for (const fragment of ["Profile", "Workspace", "Personal Preferences", "Security and Access", "Manage Sessions"]) {
+      assert(yourAccount.includes(fragment), `Your Account page missing ${fragment}`);
+    }
+    assert(!yourAccount.includes("Buy Now") && !yourAccount.toLowerCase().includes("subscription") && !yourAccount.toLowerCase().includes("trial workspace"), "Your Account page still renders purchase content");
   });
 
-  await check("required create validation and scoped checkout errors", async () => {
+  await check("required create validation and unsupported workflow errors", async () => {
     const requiredCases = [
       ["Account", {}, ["name"]],
       ["Contact", { lastName: `${tag} Invalid Contact` }, ["accountId"]],
@@ -322,12 +325,6 @@ async function main() {
       for (const field of fields) assert(result.fields?.includes(field), `${object} required validation missing ${field}`);
     }
 
-    const checkout = await request("/api/workflows", {
-      method: "POST",
-      body: { action: "Buy Now", object: "Subscription", selectedIds: [], values: {} },
-      expected: [400]
-    });
-    assert(checkout.error?.includes("out of scope"), "Buy Now workflow did not return scoped out-of-scope error");
     const unsupportedWorkflow = await request("/api/workflows", {
       method: "POST",
       body: { action: "Pretend Success", object: "Lead", selectedIds: [], values: {} },
@@ -1492,6 +1489,14 @@ async function main() {
     assert(updatedDashboard.dashboard?.name === `${tag} Dashboard Updated`, "saved dashboard update did not persist");
     const analyticsHtml = await request(`/lightning/page/analytics?report=${encodeURIComponent(`${tag} Report Updated`)}`);
     for (const fragment of [`${tag} Report Updated`, `${tag} Dashboard Updated`, "Edit", "Export", "Saved Dashboards"]) assert(analyticsHtml.includes(fragment), `Analytics workspace missing ${fragment}`);
+    const reportExportForm = new FormData();
+    reportExportForm.set("filename", `${tag} Forecast.csv`);
+    reportExportForm.set("csv", '"Rating","Records"\n"Hot","1"');
+    const reportExportResponse = await fetch(`${baseUrl}/api/analytics/export`, { method: "POST", headers: { Cookie: authCookie }, body: reportExportForm });
+    assert(reportExportResponse.status === 200, `report export returned ${reportExportResponse.status}`);
+    assert(reportExportResponse.headers.get("content-type")?.includes("text/csv"), "report export did not return text/csv");
+    assert(reportExportResponse.headers.get("content-disposition") === `attachment; filename="${tag}-forecast.csv"`, "report export filename was not constrained");
+    assert((await reportExportResponse.text()).includes('"Hot","1"'), "report export did not preserve the CSV rows");
     await utility("deleteCustomDashboard", {}, dashboardResult.dashboard.id);
     await utility("deleteCustomReport", {}, reportResult.report.id);
     assert(!(await prisma.customDashboard.findUnique({ where: { id: dashboardResult.dashboard.id } })), "saved dashboard delete did not persist");

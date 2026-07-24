@@ -78,7 +78,6 @@ export type BootstrapData = {
   recordLabels: RecordData[];
   marketingActivations: RecordData[];
   marketingLandingPages: RecordData[];
-  subscriptionCheckouts: RecordData[];
   customReports: RecordData[];
   customDashboards: RecordData[];
   notifications: RecordData[];

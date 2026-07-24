@@ -8,7 +8,7 @@
   --foreground: #181818;
   --control-border: #c9c9c9;
   --control-border-hover: #a0a0a0;
-  --control-border-focus: #0176d3;
+  --control-border-focus: #4f46e5;
   --control-border-error: #ba0517;
   --control-bg: #ffffff;
   --control-bg-muted: #f3f3f3;
@@ -43,7 +43,7 @@ textarea {
 }
 
 ::selection {
-  background: rgba(1, 118, 211, 0.18);
+  background: rgba(79, 70, 229, 0.18);
 }
 
 /* Smooth hover/press feedback on every interactive element. */
@@ -68,7 +68,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 [role="button"]:focus-visible {
-  outline: 2px solid #0176d3;
+  outline: 2px solid #4f46e5;
   outline-offset: 2px;
   border-radius: 4px;
 }

@@ -11,9 +11,9 @@ import {
 } from "@/app/super-admin/actions";
 import { prisma } from "@/lib/prisma";
 
-const inputClass = "h-9 rounded border border-[#c9c9c9] bg-white px-3 text-sm outline-none focus:border-[#0176d3]";
-const buttonClass = "inline-flex h-9 items-center justify-center rounded border border-[#0176d3] bg-white px-3 text-sm font-semibold text-[#0176d3] hover:bg-[#eef4ff]";
-const primaryClass = "inline-flex h-9 items-center justify-center rounded bg-[#0176d3] px-4 text-sm font-semibold text-white hover:bg-[#0b5cab]";
+const inputClass = "h-9 rounded border border-[#c9c9c9] bg-white px-3 text-sm outline-none focus:border-brand-500";
+const buttonClass = "inline-flex h-9 items-center justify-center rounded border border-brand-600 bg-white px-3 text-sm font-semibold text-brand-700 hover:bg-brand-50";
+const primaryClass = "inline-flex h-9 items-center justify-center rounded bg-brand-600 px-4 text-sm font-semibold text-white hover:bg-brand-700";
 
 export const dynamic = "force-dynamic";
 

@@ -260,6 +260,14 @@ async function reserveInventory(tx: Transaction, organizationId: string, order: 
   }
 }
 
+function inventoryForStore(tx: Transaction, organizationId: string, storeId: string) {
+  return tx.inventoryItem.findMany({
+    where: { organizationId, storeId },
+    include: { product: true, store: true },
+    orderBy: { updatedAt: "desc" }
+  });
+}
+
 export async function transitionCommerceOrder(organizationId: string, userId: string, id: string, action: string, payload: RecordData = {}) {
   return prisma.$transaction(async (tx) => {
     const existing = await requireOrderFrom(tx, organizationId, id);
@@ -269,10 +277,12 @@ export async function transitionCommerceOrder(organizationId: string, userId: st
       if (!existing.lines.length) throw new CommerceDomainError("Add at least one line item before confirming the order.", 400);
       if (existing.store.status !== "Active") throw new CommerceDomainError("The Store must be Active before confirming an order.", 409);
       await reserveInventory(tx, organizationId, existing);
-      if (existing.promotions[0]) await tx.commercePromotion.update({ where: { id: existing.promotions[0].promotionId }, data: { redemptionCount: { increment: 1 } } });
+      const promotion = existing.promotions[0]
+        ? await tx.commercePromotion.update({ where: { id: existing.promotions[0].promotionId }, data: { redemptionCount: { increment: 1 } }, include: { store: true } })
+        : undefined;
       const order = await tx.commerceOrder.update({ where: { id }, data: { status: "Confirmed", confirmedAt: new Date() }, include: commerceOrderInclude });
       const notification = await createCommerceNotification(tx, { organizationId, userId, title: "Order confirmed", body: `${order.orderNumber} was confirmed. No payment was processed by the CRM.` });
-      return { order, notifications: [notification] };
+      return { order, promotion, inventoryItems: await inventoryForStore(tx, organizationId, existing.storeId), notifications: [notification] };
     }
     if (normalized === "cancel") {
       if (!(["Draft", "Confirmed"] as string[]).includes(existing.status)) throw new CommerceDomainError(`Cannot cancel an order while it is ${existing.status}.`, 409);
@@ -280,7 +290,7 @@ export async function transitionCommerceOrder(organizationId: string, userId: st
       if (existing.status === "Confirmed") await reserveInventory(tx, organizationId, existing, true);
       const order = await tx.commerceOrder.update({ where: { id }, data: { status: "Cancelled", cancelledAt: new Date(), fulfillmentStatus: "Cancelled" }, include: commerceOrderInclude });
       const notification = await createCommerceNotification(tx, { organizationId, userId, title: "Order cancelled", body: `${order.orderNumber} was cancelled.` });
-      return { order, notifications: [notification] };
+      return { order, inventoryItems: await inventoryForStore(tx, organizationId, existing.storeId), notifications: [notification] };
     }
     if (normalized === "fulfill") return fulfillCommerceOrder(tx, organizationId, userId, existing, payload);
     if (normalized === "deliver") {
@@ -321,7 +331,7 @@ async function fulfillCommerceOrder(tx: Transaction, organizationId: string, use
   const complete = refreshedLines.every((line) => line.fulfilledQuantity.gte(line.quantity));
   const updated = await tx.commerceOrder.update({ where: { id: order.id }, data: { status: complete ? "Fulfilled" : "Confirmed", fulfillmentStatus: complete ? "Fulfilled" : "Partially Fulfilled", fulfilledAt: complete ? new Date() : null }, include: commerceOrderInclude });
   const notification = await createCommerceNotification(tx, { organizationId, userId, title: complete ? "Order fulfilled" : "Order partially fulfilled", body: `${updated.orderNumber} fulfillment ${fulfillment.fulfillmentNumber} was recorded.` });
-  return { order: updated, fulfillment, notifications: [notification] };
+  return { order: updated, fulfillment, inventoryItems: await inventoryForStore(tx, organizationId, order.storeId), notifications: [notification] };
 }
 
 export async function deleteCommerceOrder(organizationId: string, id: string) {

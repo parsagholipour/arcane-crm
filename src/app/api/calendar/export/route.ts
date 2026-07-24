@@ -23,7 +23,7 @@ export async function GET() {
       where: { organizationId: context.organizationId, OR: [{ private: false }, { assignedToId: context.userId }] },
       orderBy: { startAt: "asc" }
     });
-    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//CRM Workspace//Calendar//EN", "CALSCALE:GREGORIAN", `X-WR-CALNAME:${escapeIcs(context.organization.name)} CRM`];
+    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Reloriq//Calendar//EN", "CALSCALE:GREGORIAN", `X-WR-CALNAME:${escapeIcs(context.organization.name)} · Reloriq`];
     for (const event of events) {
       lines.push("BEGIN:VEVENT", `UID:${escapeIcs(`${event.id}@${context.organization.slug}`)}`, `DTSTAMP:${utcStamp(event.updatedAt)}`);
       if (event.allDay) {

@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { runAgentforce } from "@/lib/ai/agent";
+import { BRAND } from "@/lib/brand";
 import { DEEPSEEK_MODEL, DeepSeekError } from "@/lib/ai/deepseek";
 import { aiChatAttemptLimiter } from "@/lib/ai/rate-limit";
 import { authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
       }
     });
     if (!aiChatAttemptLimiter.reserve(`${context.organizationId}:${context.userId}`, recentRequestCount)) {
-      return NextResponse.json({ error: "Agentforce allows 10 requests per minute. Please wait a moment.", code: "rate_limit", retryable: true }, { status: 429 });
+      return NextResponse.json({ error: `${BRAND.assistant} allows 10 requests per minute. Please wait a moment.`, code: "rate_limit", retryable: true }, { status: 429 });
     }
 
     const history = (await prisma.agentforceMessage.findMany({
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message, code: error.code, retryable: error.retryable }, { status: error.status });
     }
     console.error("Agentforce request failed", error instanceof Error ? error.message : "Unknown error");
-    return NextResponse.json({ error: "Agentforce couldn't answer that request.", code: "internal_error", retryable: true }, { status: 500 });
+    return NextResponse.json({ error: `${BRAND.assistant} couldn't answer that request.`, code: "internal_error", retryable: true }, { status: 500 });
   }
 }
 
@@ -97,7 +98,7 @@ export async function DELETE() {
     const authResponse = authorizationErrorResponse(error);
     if (authResponse) return authResponse;
     console.error("Unable to clear Agentforce conversation", error instanceof Error ? error.message : "Unknown error");
-    return NextResponse.json({ error: "Unable to clear the Agentforce conversation." }, { status: 500 });
+    return NextResponse.json({ error: `Unable to clear the ${BRAND.assistant} conversation.` }, { status: 500 });
   }
 }
 

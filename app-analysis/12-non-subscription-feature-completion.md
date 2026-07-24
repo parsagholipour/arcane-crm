@@ -1,8 +1,8 @@
-# Non-Subscription Feature Completion Note
+# CRM Feature Completion Note
 
 Implemented July 22, 2026.
 
-This note records the deliberate implementation beyond the original read-only Salesforce trial observations. Historical observation documents remain intact. Application subscription checkout, plan management, and the Your Account billing placeholder remain outside this work; Sales invoices and commerce orders are not connected to them.
+This note records the deliberate implementation beyond the original read-only Salesforce observations. Historical observation documents remain intact. The obsolete application checkout model and purchase placeholder have been removed; Your Account is now a working identity, workspace, preferences, and security hub.
 
 ## Completed CRM Surfaces
 
@@ -21,6 +21,7 @@ This note records the deliberate implementation beyond the original read-only Sa
 - Standard CRM lifecycle integrity: concurrency-safe Case numbers, durable Lead conversion destination links and converted-record immutability, transactional Case merge/re-parenting, field-level server validation, and persisted standard list-view selection/filter behavior.
 - Knowledge identity: organization-unique public URL slugs and concurrency-safe article numbers such as `KA-000001`, while preserving existing articles through migration.
 - Marketing landing pages: Draft/edit/publish/archive/restore lifecycle, branded public organization/slug forms, configurable fields, tenant-scoped owner and Campaign validation, anonymous validation and duplicate-submit throttling, Web Lead creation, Campaign response attribution, submission history, and notifications.
+- Account management: editable alias/avatar, read-only identity-provider fields, active organization and role details, workspace switching, personal preferences, session management, role-aware administration links, and sign-out access.
 
 All dedicated reads and mutations use the active organization context. Aggregate workflows validate related records inside the same organization and use transactions for multi-record financial, inventory, lifecycle, and cleanup operations.
 
@@ -28,7 +29,7 @@ All dedicated reads and mutations use the active organization context. Aggregate
 
 - Email is sent only when `SENDGRID_API_KEY` and a verified `SENDGRID_EMAIL` are configured. No provider configuration means the UI records external communication or disables delivery; it never reports a fake send.
 - SendGrid event ingestion rejects unsigned requests and is unavailable until `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` is configured. Provider acceptance is not presented as final delivery.
-- Recorded invoice payments are externally received money. The CRM does not charge cards, initiate bank transfers, or connect Sales invoices to application subscriptions.
+- Recorded invoice payments are externally received money. The CRM does not charge cards or initiate bank transfers.
 - Commerce orders track externally collected payment state and fulfillment records. The CRM does not process payment or create carrier shipments.
 - Video calls store validated provider/external links; the CRM does not provision Zoom, Google Meet, or Microsoft Teams rooms without those provider APIs.
 - Calendar sources are local CRM calendars. Google, Microsoft, and CalDAV OAuth synchronization are not simulated; `.ics` export is implemented for interoperability.
@@ -49,11 +50,12 @@ All dedicated reads and mutations use the active organization context. Aggregate
 - `20260722900000_complete_case_numbering`
 - `20260722910000_complete_knowledge_numbering`
 - `20260722920000_complete_marketing_forms`
+- `20260722930000_remove_subscription_checkout`
 
-These migrations expand existing rows and preserve data. They are applied with Prisma migrations; no database reset or `db push` shortcut is required.
+These migrations are applied forward with Prisma; no database reset or `db push` shortcut is required. The final migration intentionally drops the obsolete checkout table and any rows it contained.
 
 ## Verification
 
-The authenticated `npm run test:usecases` flow covers route rendering, tenant isolation, CRUD, invoice totals/lifecycle/PDF, durable files, communications, campaigns, commerce, Knowledge numbering/public feedback, Lead conversion, Case numbering/merge, marketing landing pages and anonymous lead capture, email delivery history, Analytics lifecycle, calendar source assignment, and valid `.ics` output. Focused invoice, email, file, and AI unit tests supplement it.
+The authenticated `npm run test:usecases` flow covers route rendering, the account hub, tenant isolation, CRUD, invoice totals/lifecycle/PDF, durable files, communications, campaigns, commerce, Knowledge numbering/public feedback, Lead conversion, Case numbering/merge, marketing landing pages and anonymous lead capture, email delivery history, Analytics lifecycle, calendar source assignment, and valid `.ics` output. Focused invoice, email, file, and AI unit tests supplement it.
 
 The in-app browser reaches the real Keycloak Distributor Login screen. Authenticated UI automation therefore requires credentials; authenticated server-rendered page and API coverage is performed by the local signed-session use-case harness.

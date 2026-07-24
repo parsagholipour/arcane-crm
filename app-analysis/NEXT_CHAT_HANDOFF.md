@@ -65,7 +65,7 @@ The app is substantially implemented. `CrmApp.tsx` includes:
 - Global search, help/settings/profile/notifications utilities.
 - List views with search, sorting, filters, charts, display modes, row actions, selection, import/list actions, list view preferences, and Kanban.
 - Record pages for Account and Contact with related lists, details, duplicate handling, hierarchy, file upload, and activity.
-- Home, marketing, commerce, subscription, analytics, calendar, quick text, knowledge, product wizard, list email, Sales invoice, report builder, and modal workflows.
+- Home, marketing, commerce, account management, analytics, calendar, quick text, knowledge, product wizard, list email, Sales invoice, report builder, and modal workflows.
 - Toasts, guidance cards, calendar sources, notification preferences, custom reports/dashboards, app nav preferences, list view preferences, and Agentforce-like utility responses.
 
 Prisma/API coverage includes core objects and workflows:
@@ -73,7 +73,7 @@ Prisma/API coverage includes core objects and workflows:
 - Products, Price Books, Price Book Entries.
 - Events, Tasks, Email/Call activities.
 - Files, attachments, quick text, knowledge, list emails, messaging sessions, video calls, and full Sales invoices with line items and payment history.
-- Preferences, notifications, guidance, search recents, custom reports/dashboards, marketing/subscription actions.
+- Preferences, notifications, guidance, search recents, custom reports/dashboards, and marketing actions.
 
 ## Completed Since The Old Handoff
 
@@ -84,7 +84,7 @@ The old handoff's known blocker is resolved:
 - `npm run build` now passes.
 
 Additional app-analysis progress:
-- Sales Invoices are a functioning Sales feature with tenant-scoped CRUD, lifecycle validation, Decimal calculations, concurrency-safe numbering, Product/Price Book defaults, external-payment recording, notifications, detail pages, and valid PDF downloads. They are deliberately unrelated to `SubscriptionCheckout` and Your Account subscription billing.
+- Sales Invoices are a functioning Sales feature with tenant-scoped CRUD, lifecycle validation, Decimal calculations, concurrency-safe numbering, Product/Price Book defaults, external-payment recording, notifications, detail pages, and valid PDF downloads.
 - Record page owner edit actions now route into the `Change Owner` list-action modal for the current record.
 - `Change Owner` has a fixture-mode/local fallback so ownership changes still update visible records when no DB workflow rows return.
 - Lead `Convert Lead` is implemented in UI and `/api/workflows`, creating/reusing Account, Contact, and optional Opportunity records while updating Lead status.
@@ -103,7 +103,7 @@ Additional app-analysis progress:
 - Lead conversion destinations and timestamps persist, converted Leads are immutable, Case numbers use a tenant sequence, and Case merge transactionally re-parents related activity/files before closing the secondary Case.
 - Knowledge URL names are tenant-unique and article numbers are allocated concurrency-safely.
 - Marketing includes real landing-page CRUD/lifecycle, public branded lead forms, Campaign attribution, submission history, and notifications. Public forms are deliberately separate from marketing sender activation.
-- Subscription checkout and Your Account app billing remain intentionally out of scope and are separate from Sales invoices and commerce orders.
+- The obsolete checkout model and purchase placeholder have been removed. Your Account now provides profile editing, organization context and switching, personal preferences, session access, role-aware administration links, and sign out.
 
 ## Git And Verification Status
 
@@ -179,7 +179,7 @@ Notes:
 ## Recommended Next Steps
 
 1. Run `git status --short --branch` and inspect relevant staged plus unstaged diffs before editing.
-2. Keep changes scoped to CRM app logic. Do not connect Sales invoices or commerce to application subscription billing.
+2. Keep changes scoped to CRM app logic. Sales invoices and commerce continue to model customer-facing CRM transactions only.
 3. Provider expansions should use real APIs and explicit configuration. Do not simulate email delivery, payment processing, carrier fulfillment, video-room provisioning, or external calendar sync.
 4. Run the Prisma, TypeScript, focused unit, authenticated use-case, diff, and production-build gates after meaningful changes.
 5. Restart the development server after Prisma generation or a production build before trusting route checks.

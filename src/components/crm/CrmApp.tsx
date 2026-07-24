@@ -69,6 +69,7 @@ import {
   useRef,
   useState,
   type ElementType,
+  type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
@@ -102,6 +103,9 @@ import { CommerceWorkspace } from "@/components/crm/CommerceWorkspace";
 import { MarketingLandingPagesPanel } from "@/components/crm/MarketingLandingPagesPanel";
 import { PriceBookDetailPage, ProductDetailPage } from "@/components/crm/CatalogWorkspace";
 import { KnowledgeDetailPage, ListEmailDetailPage, SalesRecordDetailPage } from "@/components/crm/RecordDetailWorkspace";
+import { AsyncButton } from "@/components/crm/AsyncButton";
+import { ReloriqLogo, ReloriqMark } from "@/components/brand/ReloriqLogo";
+import { BRAND } from "@/lib/brand";
 
 type ModalState =
   | { type: "record"; mode: "new" | "edit"; object: CrmObject; record?: RecordData }
@@ -120,7 +124,7 @@ type ModalState =
   | { type: "marketingActivation"; record?: RecordData }
   | { type: "reportBuilder"; reportType?: string; record?: RecordData }
   | { type: "navEdit"; app: AppKey }
-  | { type: "confirm"; title: string; body: string; onConfirm: () => void };
+  | { type: "confirm"; title: string; body: string; onConfirm: () => void | Promise<unknown> };
 
 type ToastState = {
   tone: "success" | "error" | "warning";
@@ -301,16 +305,19 @@ const appRail: Array<{ key: AppKey; label: string; href: string; icon: ElementTy
   { key: "service", label: "Service", href: "/lightning/app/service", icon: CircleHelp },
   { key: "marketing", label: "Marketing", href: "/lightning/app/marketing", icon: Megaphone },
   { key: "commerce", label: "Commerce", href: "/lightning/app/commerce", icon: ShoppingBag },
-  { key: "your-account", label: "Your Account", href: "/lightning/app/your-account", icon: Receipt }
+  { key: "your-account", label: "Your Account", href: "/lightning/app/your-account", icon: User }
 ];
 
 const notificationCategories = ["Records", "Workflow", "Marketing", "Activity", "Files", "Email"] as const;
+const displayDensityOptions = ["Comfy", "Compact"];
+const timezoneOptions = ["Asia/Dubai", "UTC", "America/New_York", "America/Los_Angeles", "Europe/London"];
+const localeOptions = ["en-US", "en-GB", "ar-AE", "fr-FR", "de-DE"];
 
 const helpArticleCatalog: HelpArticle[] = [
   {
     id: "help-create-records",
     title: "Create records and list views",
-    summary: "Create, edit, import, pin, and personalize Salesforce-style object lists.",
+    summary: "Create, edit, import, pin, and personalize customer record lists.",
     category: "Records",
     href: "/lightning/o/Lead/list?filterName=AllOpenLeads",
     tags: ["records", "leads", "list views", "import"]
@@ -594,9 +601,14 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
         : [invoice, ...previous.invoices];
       const incomingNotifications = Array.isArray(result.notifications) ? result.notifications : [];
       const incomingIds = new Set(incomingNotifications.map((item) => item.id));
+      const incomingDelivery = result.delivery;
+      const emailDeliveries = incomingDelivery?.id
+        ? [incomingDelivery, ...previous.emailDeliveries.filter((item) => item.id !== incomingDelivery.id)]
+        : previous.emailDeliveries;
       return decorateBootstrap({
         ...previous,
         invoices,
+        emailDeliveries,
         notifications: [...incomingNotifications, ...previous.notifications.filter((item) => !incomingIds.has(item.id))]
       });
     });
@@ -871,7 +883,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
                   body: "This action can't be undone.",
                   onConfirm: () => {
                     setModal(null);
-                    void deleteRecord(object, requiredId(record));
+                    return deleteRecord(object, requiredId(record));
                   }
                 })
               }
@@ -934,9 +946,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
           setModal(null);
           if (result.campaign?.id) router.push(`/lightning/r/Campaign/${String(result.campaign.id)}/view`);
         }}
-        onApplyListAction={(action, object, selectedIds, payload) => {
-          applyListAction(action, object, selectedIds, payload);
-        }}
+        onApplyListAction={(action, object, selectedIds, payload) => applyListAction(action, object, selectedIds, payload)}
       />
       <ToastHost toast={toast} />
     </div>
@@ -1315,7 +1325,7 @@ function ScreenRenderer({
   if (screen.kind === "home") return <HomePage data={data} onReportBuilder={onReportBuilder} onDataChange={onDataChange} onToast={onToast} onRefreshData={onRefreshData} />;
   if (screen.kind === "marketing") return <MarketingPage data={data} onCreate={onCreate} onActivate={onMarketingActivation} onDataChange={onDataChange} onToast={onToast} />;
   if (screen.kind === "commerce") return <CommerceWorkspace data={data} onDataChange={onDataChange} onToast={onToast} />;
-  if (screen.kind === "account") return <YourAccountPage user={data.user} onBuyNow={() => onToast({ tone: "warning", message: "Purchase checkout is a placeholder in this CRM clone." })} />;
+  if (screen.kind === "account") return <YourAccountPage data={data} onDataChange={onDataChange} onToast={onToast} />;
   if (screen.kind === "analytics") return <AnalyticsPage data={data} reportName={analyticsReportName} onReportBuilder={onReportBuilder} onDataChange={onDataChange} onToast={onToast} onRefreshData={onRefreshData} />;
   if (screen.kind === "calendar") return <CalendarPage data={data} events={data.events} onCreate={(startDate, startTime, endTime) => onOpenEvent("Event", "", startDate, startTime, endTime)} onDataChange={onDataChange} onToast={onToast} onRefreshData={onRefreshData} />;
   if (screen.kind === "quickText") return <QuickTextPage data={data} onCreate={() => onCreate("QuickText")} onCreateFolder={onQuickTextFolder} onEdit={(record) => onEdit("QuickText", record)} onDelete={(record) => onDelete("QuickText", record)} onDataChange={onDataChange} onToast={onToast} />;
@@ -1379,8 +1389,8 @@ function ScreenRenderer({
 function LeftAppRail({ activeApp }: { activeApp: AppKey }) {
   return (
     <aside className="flex w-[80px] shrink-0 flex-col items-center bg-shell py-3 text-white">
-      <div className="mb-3 flex h-9 w-9 items-center justify-center rounded bg-white text-brand-600 shadow-sm">
-        <Cloud size={24} fill="currentColor" />
+      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]">
+        <ReloriqMark className="h-9 w-9" title={BRAND.name} />
       </div>
       <nav className="flex w-full flex-1 flex-col items-stretch gap-0.5 px-1.5" aria-label="App launcher">
         {appRail.map((item) => {
@@ -1393,10 +1403,10 @@ function LeftAppRail({ activeApp }: { activeApp: AppKey }) {
               aria-current={active ? "page" : undefined}
               className={cn(
                 "group relative flex min-h-[3.75rem] flex-col items-center justify-center gap-1 rounded-md px-0.5 py-1.5 text-[12.5px] leading-tight text-[#c9e0f5] outline-none transition-[background-color,color,box-shadow] duration-150",
-                "hover:bg-[#1b4f81] hover:text-white hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]",
-                "focus-visible:bg-[#1b4f81] focus-visible:text-white focus-visible:shadow-[inset_0_0_0_2px_#ffffff]",
-                "active:bg-[#163a5f]",
-                active && "bg-[#1b4f81] font-semibold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.28)]"
+                "hover:bg-[#29276b] hover:text-white hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]",
+                "focus-visible:bg-[#29276b] focus-visible:text-white focus-visible:shadow-[inset_0_0_0_2px_#ffffff]",
+                "active:bg-[#312e81]",
+                active && "bg-[#29276b] font-semibold text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.28)]"
               )}
             >
               {active && <span className="absolute left-0.5 top-2 bottom-2 w-0.5 rounded-full bg-white" aria-hidden="true" />}
@@ -1413,15 +1423,12 @@ function LeftAppRail({ activeApp }: { activeApp: AppKey }) {
 function GlobalHeader({ data, pathname, onNavigate, onOpenDraft, onDataChange, onToast }: { data: BootstrapData; pathname: string; onNavigate: (href: string) => void; onOpenDraft: (draft: AiEmailDraft) => void; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void }) {
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[#d8dde6] bg-white px-3">
-      <div className="flex items-center gap-2 font-semibold text-shell">
-        <Cloud size={25} fill="#0176d3" className="text-brand-500" />
-        <span>Salesforce</span>
-      </div>
+      <ReloriqLogo className="min-w-[112px] text-shell" wordmarkClassName="text-[17px] font-bold" />
       <SearchOverlay data={data} onNavigate={onNavigate} onDataChange={onDataChange} onToast={onToast} />
       <div className="ml-auto flex items-center gap-1">
-        <HeaderUtility icon={Sparkles} label="Agentforce" kind="agentforce" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
+        <HeaderUtility icon={Sparkles} label={BRAND.assistant} kind="agentforce" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
         <HeaderUtility icon={Activity} label="Guidance Center" kind="guidance" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
-        <HeaderUtility icon={HelpCircle} label="Salesforce Help" kind="help" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
+        <HeaderUtility icon={HelpCircle} label={`${BRAND.name} Help`} kind="help" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
         <HeaderUtility icon={Settings} label="Quick Settings" kind="settings" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
         <HeaderUtility icon={Bell} label="Notifications" kind="notifications" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
         <HeaderUtility icon={User} label="View profile" kind="profile" data={data} pathname={pathname} onNavigate={onNavigate} onOpenDraft={onOpenDraft} onDataChange={onDataChange} onToast={onToast} />
@@ -1485,14 +1492,14 @@ function SearchOverlay({
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
-        <button className="mx-auto flex h-8 w-full max-w-xl items-center gap-2 rounded-full border border-[#cfd4dc] bg-[#f2f4f7] px-3.5 text-left text-sm text-[#514f4d] hover:border-[#b5bcc7] hover:bg-white hover:shadow-[0_1px_3px_rgba(16,24,40,0.08)] data-[state=open]:border-brand-500 data-[state=open]:bg-white data-[state=open]:shadow-[0_0_0_3px_rgba(1,118,211,0.14)]" aria-label="Search...">
+        <button className="mx-auto flex h-8 w-full max-w-xl items-center gap-2 rounded-full border border-[#cfd4dc] bg-[#f2f4f7] px-3.5 text-left text-sm text-[#514f4d] hover:border-[#b5bcc7] hover:bg-white hover:shadow-[0_1px_3px_rgba(16,24,40,0.08)] data-[state=open]:border-brand-500 data-[state=open]:bg-white data-[state=open]:shadow-[0_0_0_3px_rgba(79,70,229,0.14)]" aria-label="Search...">
           <Search size={16} className="text-[#706e6b]" />
           <span>Search...</span>
         </button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content align="center" className="z-50 w-[680px] rounded border border-[#c9c9c9] bg-white p-3 shadow-popover">
-          <div className="flex items-center gap-2 rounded-md border border-brand-500 px-2 shadow-[0_0_0_3px_rgba(1,118,211,0.12)]">
+          <div className="flex items-center gap-2 rounded-md border border-brand-500 px-2 shadow-[0_0_0_3px_rgba(79,70,229,0.12)]">
             <Search size={16} className="text-brand-600" />
             <input
               autoFocus
@@ -2372,14 +2379,14 @@ function HeaderUtility({
         body: JSON.stringify({ message: text, pathname })
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !Array.isArray(payload.messages)) throw new Error(String(payload.error ?? "Agentforce couldn't answer that request."));
+      if (!response.ok || !Array.isArray(payload.messages)) throw new Error(String(payload.error ?? `${BRAND.assistant} couldn't answer that request.`));
       const nextMessages = payload.messages as RecordData[];
       setAssistantMessages((messages) => [...messages.filter((message) => message.id !== optimisticUser.id), ...nextMessages]);
       onDataChange((previous) => ({ ...previous, agentforceMessages: [...previous.agentforceMessages, ...nextMessages] }));
     } catch (error) {
       setAssistantMessages((messages) => messages.filter((message) => message.id !== optimisticUser.id));
       setAssistantInput(text);
-      setAssistantError(error instanceof Error ? error.message : "Agentforce couldn't answer that request.");
+      setAssistantError(error instanceof Error ? error.message : `${BRAND.assistant} couldn't answer that request.`);
     } finally {
       setAssistantLoading(false);
     }
@@ -2395,7 +2402,7 @@ function HeaderUtility({
       const messages = payload.messages as RecordData[];
       setAssistantMessages(messages);
       onDataChange((previous) => ({ ...previous, agentforceMessages: messages }));
-      onToast({ tone: "success", message: "Agentforce conversation cleared." });
+      onToast({ tone: "success", message: `${BRAND.assistant} conversation cleared.` });
     } catch (error) {
       setAssistantError(error instanceof Error ? error.message : "The conversation couldn't be cleared.");
     }
@@ -2656,7 +2663,7 @@ function HeaderUtility({
                   const metadata = agentforceMetadata(message);
                   return (
                     <div key={String(message.id ?? index)} className={cn("rounded px-2 py-1 text-sm", message.role === "assistant" ? "bg-white" : "ml-8 bg-brand-50 text-brand-900")}>
-                      <div className="text-[11px] font-semibold uppercase text-[#706e6b]">{message.role === "assistant" ? "Agentforce" : "You"}</div>
+                      <div className="text-[11px] font-semibold uppercase text-[#706e6b]">{message.role === "assistant" ? BRAND.assistant : "You"}</div>
                       <div className="whitespace-pre-wrap">{String(message.text ?? "")}</div>
                       {message.role === "assistant" && metadata.facts && metadata.facts.length > 0 && (
                         <div className="mt-2 grid grid-cols-2 gap-1">
@@ -2708,7 +2715,7 @@ function HeaderUtility({
                 })}
                 {assistantLoading && (
                   <div className="flex items-center gap-2 rounded bg-white px-2 py-2 text-sm text-[#706e6b]">
-                    <RefreshCw size={14} className="animate-spin" /> Agentforce is analyzing the CRM…
+                    <RefreshCw size={14} className="animate-spin" /> {BRAND.assistant} is analyzing your workspace…
                   </div>
                 )}
               </div>
@@ -2783,7 +2790,7 @@ function HeaderUtility({
               <div className="mb-3 flex items-center gap-2 rounded border border-[#d8dde6] bg-[#f8f8f8] p-2">
                 <BookOpen size={16} className="text-brand-600" />
                 <div>
-                  <div className="text-sm font-semibold">Salesforce Help</div>
+                  <div className="text-sm font-semibold">{BRAND.name} Help</div>
                   <div className="text-xs text-[#706e6b]">Saved articles and viewed history are persisted for this user.</div>
                 </div>
               </div>
@@ -3010,13 +3017,13 @@ function HeaderUtility({
                     <div className="mb-2 text-xs font-semibold uppercase text-[#706e6b]">Personal Settings</div>
                     <div className="grid gap-2">
                       <FieldShell label="Display Density">
-                        <NativeSelect options={["Comfy", "Compact"]} value={density} onChange={(value) => { setDensity(value); void savePreferences({ displayDensity: value }); }} />
+                        <NativeSelect options={displayDensityOptions} value={density} onChange={(value) => { setDensity(value); void savePreferences({ displayDensity: value }); }} />
                       </FieldShell>
                       <FieldShell label="Timezone">
-                        <NativeSelect options={["Asia/Dubai", "UTC", "America/New_York", "America/Los_Angeles", "Europe/London"]} value={timezone} onChange={(value) => { setTimezone(value); void savePreferences({ timezone: value }); }} />
+                        <NativeSelect options={timezoneOptions} value={timezone} onChange={(value) => { setTimezone(value); void savePreferences({ timezone: value }); }} />
                       </FieldShell>
                       <FieldShell label="Locale">
-                        <NativeSelect options={["en-US", "en-GB", "ar-AE", "fr-FR", "de-DE"]} value={locale} onChange={(value) => { setLocale(value); void savePreferences({ locale: value }); }} />
+                        <NativeSelect options={localeOptions} value={locale} onChange={(value) => { setLocale(value); void savePreferences({ locale: value }); }} />
                       </FieldShell>
                       <label className="flex items-center justify-between rounded border border-[#d8dde6] p-2 text-sm">
                         Guidance cards
@@ -3666,7 +3673,7 @@ function ListViewPreferenceModal({
 
   if (action === "Delete") {
     return (
-      <BaseDialog open title={`Delete ${listView}?`} onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="destructive" onClick={() => void onDelete()}>Delete</Button></>}>
+      <BaseDialog open title={`Delete ${listView}?`} onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="destructive" onClick={() => onDelete()}>Delete</Button></>}>
         <p className="text-sm text-[#444]">This removes the custom list view for you. Records in the list are not deleted.</p>
       </BaseDialog>
     );
@@ -3674,7 +3681,7 @@ function ListViewPreferenceModal({
 
   if (action === "Sharing Settings") {
     return (
-      <BaseDialog open title="Sharing Settings" onClose={onClose} footer={<><Button onClick={onClose}>Close</Button><Button variant="primary" onClick={() => void onSave({ viewName: listView, columns, columnWidths, filters: activeFilters, chartType, chartField, isCustom, sharing })}>Done</Button></>}>
+      <BaseDialog open title="Sharing Settings" onClose={onClose} footer={<><Button onClick={onClose}>Close</Button><Button variant="primary" onClick={() => onSave({ viewName: listView, columns, columnWidths, filters: activeFilters, chartType, chartField, isCustom, sharing })}>Done</Button></>}>
         <div className="space-y-3 text-sm">
           <p className="text-[#706e6b]">Choose who can see this list view.</p>
           {listViewSharingOptions.map((option) => (
@@ -3720,7 +3727,7 @@ function ListViewPreferenceModal({
 
   if (action === "Filters") {
     return (
-      <BaseDialog open title="Filters" onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button onClick={() => setFilters([{ field: definition.columns[0]?.key ?? "name", operator: "contains", value: "" }])}>Reset</Button><Button variant="primary" onClick={() => void saveFilters()}>Save Filters</Button></>}>
+      <BaseDialog open title="Filters" onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button onClick={() => setFilters([{ field: definition.columns[0]?.key ?? "name", operator: "contains", value: "" }])}>Reset</Button><Button variant="primary" onClick={() => saveFilters()}>Save Filters</Button></>}>
         <div className="space-y-3">
           {filters.map((filter, index) => (
             <div key={index} className="grid gap-2 rounded border border-[#d8dde6] p-3 md:grid-cols-[1fr_160px_1fr_auto]">
@@ -3755,7 +3762,7 @@ function ListViewPreferenceModal({
   if (action === "Charts") {
     const maxCount = Math.max(1, ...chartRows.map((row) => row.count));
     return (
-      <BaseDialog open title="Charts" onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void saveChart()}>Save Chart</Button></>}>
+      <BaseDialog open title="Charts" onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => saveChart()}>Save Chart</Button></>}>
         <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
           <div className="grid gap-3 self-start rounded border border-[#d8dde6] p-3">
             <FieldShell label="Chart Type">
@@ -3799,7 +3806,7 @@ function ListViewPreferenceModal({
       title={action === "Select Fields to Display" ? "Select Fields to Display" : `${action} List View`}
       onClose={onClose}
       wide
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void submit()}>Save</Button></>}
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => submit()}>Save</Button></>}
     >
       <div className="grid gap-4">
         {(action === "New" || action === "Clone" || action === "Rename") && (
@@ -4683,7 +4690,7 @@ function PartnerModal({ account, onClose, onSave }: { account?: RecordData; onCl
   }
 
   return (
-    <BaseDialog open title="New Partner" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void submit()}>{saving ? "Saving..." : "Save"}</Button></>}>
+    <BaseDialog open title="New Partner" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => submit()}>{saving ? "Saving..." : "Save"}</Button></>}>
       <div className="space-y-3">
         <FieldShell label="Account"><input className={inputClass} value={String(account?.name ?? "No account selected")} readOnly /></FieldShell>
         <FieldShell label="Partner Name" required error={error}><input className={inputClass} value={String(values.name ?? "")} onChange={(event) => { setError(""); setValues({ ...values, name: event.target.value }); }} /></FieldShell>
@@ -4815,7 +4822,7 @@ function FileDropzone({
           open
           title={`Delete ${String(pendingDeletion.name ?? (attachment ? "attachment" : "file"))}?`}
           onClose={() => !deleting && setPendingDeletion(null)}
-          footer={<><Button onClick={() => setPendingDeletion(null)} disabled={deleting}>Cancel</Button><Button variant="destructive" onClick={() => void confirmDelete()} disabled={deleting}>{deleting ? "Deleting…" : "Delete"}</Button></>}
+          footer={<><Button onClick={() => setPendingDeletion(null)} disabled={deleting}>Cancel</Button><Button variant="destructive" onClick={() => confirmDelete()} disabled={deleting}>{deleting ? "Deleting…" : "Delete"}</Button></>}
         >
           <p className="text-sm text-[#706e6b]">This permanently removes the stored content and its CRM file record.</p>
         </BaseDialog>
@@ -5375,7 +5382,7 @@ function HomePage({ data, onReportBuilder, onDataChange, onToast, onRefreshData 
           <Button onClick={() => void switchHomeMode("Onboarding")}>Show Onboarding Home</Button>
         </DashboardPanel>
         {goalDialogOpen && (
-          <BaseDialog open title="Edit Quarterly Goal" onClose={() => setGoalDialogOpen(false)} footer={<><Button onClick={() => setGoalDialogOpen(false)}>Cancel</Button><Button variant="primary" onClick={() => void saveGoal()}>Save Goal</Button></>}>
+          <BaseDialog open title="Edit Quarterly Goal" onClose={() => setGoalDialogOpen(false)} footer={<><Button onClick={() => setGoalDialogOpen(false)}>Cancel</Button><Button variant="primary" onClick={() => saveGoal()}>Save Goal</Button></>}>
             <FieldShell label="Quarterly Goal">
               <input className={inputClass} type="number" min={0} value={goalInput} onChange={(event) => setGoalInput(event.target.value)} />
             </FieldShell>
@@ -5574,27 +5581,261 @@ function MarketingPage({ data, onCreate, onActivate, onDataChange, onToast }: { 
   );
 }
 
-function YourAccountPage({ user, onBuyNow }: { user: BootstrapData["user"]; onBuyNow: () => void }) {
+function YourAccountPage({ data, onDataChange, onToast }: { data: BootstrapData; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void }) {
+  const savedPreferences = data.userPreferences[0];
+  const [profileEditing, setProfileEditing] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileAlias, setProfileAlias] = useState(data.user.alias);
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState(String(data.user.avatarUrl ?? ""));
+  const [preferencesSaving, setPreferencesSaving] = useState(false);
+  const [preferencesError, setPreferencesError] = useState("");
+  const [density, setDensity] = useState(String(savedPreferences?.displayDensity ?? "Comfy"));
+  const [timezone, setTimezone] = useState(String(savedPreferences?.timezone ?? "Asia/Dubai"));
+  const [locale, setLocale] = useState(String(savedPreferences?.locale ?? "en-US"));
+  const [guidanceEnabled, setGuidanceEnabled] = useState(Boolean(savedPreferences?.guidanceEnabled ?? true));
+  const [consoleTabsEnabled, setConsoleTabsEnabled] = useState(Boolean(savedPreferences?.consoleTabsEnabled ?? true));
+  const [switchingOrganization, setSwitchingOrganization] = useState(false);
+
+  useEffect(() => {
+    setProfileAlias(data.user.alias);
+    setProfileAvatarUrl(String(data.user.avatarUrl ?? ""));
+  }, [data.user]);
+
+  useEffect(() => {
+    setDensity(String(savedPreferences?.displayDensity ?? "Comfy"));
+    setTimezone(String(savedPreferences?.timezone ?? "Asia/Dubai"));
+    setLocale(String(savedPreferences?.locale ?? "en-US"));
+    setGuidanceEnabled(Boolean(savedPreferences?.guidanceEnabled ?? true));
+    setConsoleTabsEnabled(Boolean(savedPreferences?.consoleTabsEnabled ?? true));
+  }, [savedPreferences]);
+
+  async function accountUtility(action: string, values: RecordData) {
+    const response = await fetch("/api/utilities", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, values })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(String(payload.error ?? "Your account changes could not be saved."));
+    return payload as RecordData;
+  }
+
+  function cancelProfileEdit() {
+    setProfileAlias(data.user.alias);
+    setProfileAvatarUrl(String(data.user.avatarUrl ?? ""));
+    setProfileError("");
+    setProfileEditing(false);
+  }
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const alias = profileAlias.trim();
+    const avatarUrl = profileAvatarUrl.trim();
+    if (!alias || alias.length > 8) {
+      setProfileError("Alias is required and cannot exceed 8 characters.");
+      return;
+    }
+    if (avatarUrl) {
+      try {
+        const parsed = new URL(avatarUrl);
+        if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("unsupported protocol");
+      } catch {
+        setProfileError("Avatar URL must be a valid HTTP or HTTPS URL.");
+        return;
+      }
+    }
+    setProfileSaving(true);
+    setProfileError("");
+    try {
+      const response = await accountUtility("updateProfile", { alias, avatarUrl: avatarUrl || null });
+      const user = response.user as BootstrapData["user"] | undefined;
+      if (!user?.id) throw new Error("The updated profile was not returned.");
+      onDataChange((previous) => ({
+        ...previous,
+        user,
+        users: previous.users.map((item) => item.id === user.id ? user : item)
+      }));
+      setProfileEditing(false);
+      onToast({ tone: "success", message: "Profile updated." });
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : "Your profile could not be saved.");
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  function resetPreferences() {
+    setDensity(String(savedPreferences?.displayDensity ?? "Comfy"));
+    setTimezone(String(savedPreferences?.timezone ?? "Asia/Dubai"));
+    setLocale(String(savedPreferences?.locale ?? "en-US"));
+    setGuidanceEnabled(Boolean(savedPreferences?.guidanceEnabled ?? true));
+    setConsoleTabsEnabled(Boolean(savedPreferences?.consoleTabsEnabled ?? true));
+    setPreferencesError("");
+  }
+
+  async function savePreferences(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPreferencesSaving(true);
+    setPreferencesError("");
+    try {
+      const response = await accountUtility("updatePreferences", {
+        displayDensity: density,
+        timezone,
+        locale,
+        guidanceEnabled,
+        consoleTabsEnabled
+      });
+      const preferences = response.preferences as RecordData | undefined;
+      if (!preferences?.id) throw new Error("The updated preferences were not returned.");
+      onDataChange((previous) => ({
+        ...previous,
+        userPreferences: [preferences, ...previous.userPreferences.filter((item) => item.id !== preferences.id && item.userId !== preferences.userId)]
+      }));
+      onToast({ tone: "success", message: "Personal preferences updated." });
+    } catch (error) {
+      setPreferencesError(error instanceof Error ? error.message : "Your preferences could not be saved.");
+    } finally {
+      setPreferencesSaving(false);
+    }
+  }
+
+  async function switchOrganization(organizationId: string) {
+    if (!organizationId || organizationId === data.organization.id || switchingOrganization) return;
+    setSwitchingOrganization(true);
+    try {
+      const response = await fetch("/api/organizations/active", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(payload.error ?? "Unable to switch organization."));
+      window.location.assign("/lightning/app/your-account");
+    } catch (error) {
+      setSwitchingOrganization(false);
+      onToast({ tone: "error", message: error instanceof Error ? error.message : "Unable to switch organization." });
+    }
+  }
+
+  const cardClass = "rounded-lg border border-[#e4e7ec] bg-white p-5 shadow-card";
+  const actionLinkClass = "inline-flex min-h-9 items-center justify-center rounded border border-[#cfd4dc] bg-white px-3.5 py-2 text-sm font-semibold text-brand-700 shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-[#b5bcc7] hover:bg-[#f8f9fb]";
+  const formButtonClass = "inline-flex min-h-9 items-center justify-center rounded border px-3.5 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50";
+  const avatarUrl = profileEditing ? profileAvatarUrl.trim() : String(data.user.avatarUrl ?? "");
+
   return (
     <section className="space-y-3">
-      <div className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+      <div className="rounded-lg border border-[#e4e7ec] bg-white p-6 shadow-card">
+        <div className="flex flex-wrap items-center gap-4">
+          {avatarUrl ? (
+            <AvatarImage src={avatarUrl} className="h-16 w-16 rounded-full ring-2 ring-brand-100" />
+          ) : (
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-600 text-xl font-semibold text-white">{data.user.alias.slice(0, 2).toUpperCase()}</div>
+          )}
+          <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-semibold">Your Account</h1>
-            <p className="mt-1 text-sm text-[#706e6b]">Subscription, billing, and workspace account details.</p>
+            <p className="mt-1 text-sm text-[#706e6b]">Manage your identity, workspace, preferences, and access.</p>
           </div>
-          <Button variant="primary" onClick={onBuyNow}>Buy Now</Button>
-        </div>
-        <div className="mt-5 rounded-lg border border-dashed border-[#c9c9c9] bg-[#f8f9fb] p-5 text-center">
-          <Receipt className="mx-auto mb-2 text-brand-600" size={28} />
-          <h2 className="text-lg font-semibold">You haven&apos;t subscribed yet</h2>
-          <p className="mx-auto mt-1 max-w-xl text-sm text-[#706e6b]">Your trial workspace is active. Start a subscription when you&apos;re ready to keep CRM records, automation, and team access after the trial.</p>
-          <div className="mt-4"><Button variant="primary" onClick={onBuyNow}>Buy Now</Button></div>
+          <div className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-800">{data.organization.name} · {data.organizationRole}</div>
         </div>
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-lg border border-[#e4e7ec] bg-white p-3 shadow-card"><div className="text-xs text-[#706e6b]">Name</div><div className="font-semibold">{user.name}</div></div>
-        <div className="rounded-lg border border-[#e4e7ec] bg-white p-3 shadow-card"><div className="text-xs text-[#706e6b]">Alias</div><div className="font-semibold">{user.alias}</div></div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <section className={cardClass} aria-labelledby="account-profile-heading">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 id="account-profile-heading" className="text-lg font-semibold">Profile</h2>
+              <p className="mt-1 text-sm text-[#706e6b]">Identity details and your CRM display information.</p>
+            </div>
+            {!profileEditing && <Button onClick={() => { setProfileError(""); setProfileEditing(true); }}>Edit Profile</Button>}
+          </div>
+          {profileEditing ? (
+            <form className="mt-4 grid gap-3" onSubmit={(event) => void saveProfile(event)}>
+              <FieldShell label="Full Name">
+                <input className={inputClass} value={data.user.name} readOnly />
+              </FieldShell>
+              <FieldShell label="Email">
+                <input className={inputClass} value={data.user.email ?? "Not available"} readOnly />
+              </FieldShell>
+              <p className="text-xs text-[#706e6b]">Full name and email are managed by your identity administrator.</p>
+              <FieldShell label="Alias" required error={profileError && (!profileAlias.trim() || profileAlias.trim().length > 8) ? profileError : undefined}>
+                <input aria-label="Alias" className={inputClass} value={profileAlias} maxLength={8} onChange={(event) => setProfileAlias(event.target.value)} />
+              </FieldShell>
+              <FieldShell label="Avatar URL" error={profileError.startsWith("Avatar URL") ? profileError : undefined}>
+                <input aria-label="Avatar URL" className={inputClass} value={profileAvatarUrl} onChange={(event) => setProfileAvatarUrl(event.target.value)} placeholder="https://example.com/avatar.png" />
+              </FieldShell>
+              {profileError && !profileError.startsWith("Avatar URL") && profileAlias.trim() && profileAlias.trim().length <= 8 && <div role="alert" className="rounded border border-[#ea001e] bg-[#fff1f1] p-2 text-sm text-[#8e030f]">{profileError}</div>}
+              <div className="flex justify-end gap-2 pt-1">
+                <button type="button" className={`${formButtonClass} border-[#cfd4dc] bg-white text-brand-700`} disabled={profileSaving} onClick={cancelProfileEdit}>Cancel</button>
+                <button type="submit" className={`${formButtonClass} border-brand-700 bg-brand-600 text-white`} disabled={profileSaving}>{profileSaving ? "Saving..." : "Save Profile"}</button>
+              </div>
+            </form>
+          ) : (
+            <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div><dt className="text-xs text-[#706e6b]">Full Name</dt><dd className="mt-1 font-semibold">{data.user.name}</dd></div>
+              <div><dt className="text-xs text-[#706e6b]">Alias</dt><dd className="mt-1 font-semibold">{data.user.alias}</dd></div>
+              <div className="sm:col-span-2"><dt className="text-xs text-[#706e6b]">Email</dt><dd className="mt-1 break-all font-semibold">{data.user.email ?? "Not available"}</dd></div>
+            </dl>
+          )}
+        </section>
+
+        <section className={cardClass} aria-labelledby="account-workspace-heading">
+          <h2 id="account-workspace-heading" className="text-lg font-semibold">Workspace</h2>
+          <p className="mt-1 text-sm text-[#706e6b]">Your active organization and access level.</p>
+          <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div><dt className="text-xs text-[#706e6b]">Organization</dt><dd className="mt-1 font-semibold">{data.organization.name}</dd></div>
+            <div><dt className="text-xs text-[#706e6b]">Role</dt><dd className="mt-1 font-semibold">{data.organizationRole === "ADMIN" ? "Administrator" : "Member"}</dd></div>
+            <div><dt className="text-xs text-[#706e6b]">Active Members</dt><dd className="mt-1 font-semibold">{data.users.length}</dd></div>
+            <div><dt className="text-xs text-[#706e6b]">Available Workspaces</dt><dd className="mt-1 font-semibold">{data.organizations.length}</dd></div>
+          </dl>
+          {data.organizations.length > 1 && (
+            <div className="mt-4 border-t border-[#eef1f6] pt-4">
+              <FieldShell label="Switch Workspace">
+                <select aria-label="Switch Workspace" className={inputClass} value={data.organization.id} disabled={switchingOrganization} onChange={(event) => void switchOrganization(event.target.value)}>
+                  {data.organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name} ({organization.role === "ADMIN" ? "Administrator" : "Member"})</option>)}
+                </select>
+              </FieldShell>
+              {switchingOrganization && <p className="mt-2 text-xs text-[#706e6b]">Switching workspace...</p>}
+            </div>
+          )}
+        </section>
+
+        <section className={cardClass} aria-labelledby="account-preferences-heading">
+          <h2 id="account-preferences-heading" className="text-lg font-semibold">Personal Preferences</h2>
+          <p className="mt-1 text-sm text-[#706e6b]">Control regional settings and how the CRM workspace behaves.</p>
+          <form className="mt-4 grid gap-3" onSubmit={(event) => void savePreferences(event)}>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <FieldShell label="Display Density"><select aria-label="Display Density" className={inputClass} value={density} onChange={(event) => setDensity(event.target.value)}>{displayDensityOptions.map((option) => <option key={option}>{option}</option>)}</select></FieldShell>
+              <FieldShell label="Timezone"><select aria-label="Timezone" className={inputClass} value={timezone} onChange={(event) => setTimezone(event.target.value)}>{timezoneOptions.map((option) => <option key={option}>{option}</option>)}</select></FieldShell>
+              <FieldShell label="Locale"><select aria-label="Locale" className={inputClass} value={locale} onChange={(event) => setLocale(event.target.value)}>{localeOptions.map((option) => <option key={option}>{option}</option>)}</select></FieldShell>
+            </div>
+            <label className="flex items-center justify-between gap-3 rounded border border-[#d8dde6] p-3 text-sm">
+              <span><span className="block font-semibold">Guidance cards</span><span className="text-xs text-[#706e6b]">Show contextual help and onboarding guidance.</span></span>
+              <input aria-label="Guidance cards" type="checkbox" checked={guidanceEnabled} onChange={(event) => setGuidanceEnabled(event.target.checked)} className={checkboxClass} />
+            </label>
+            <label className="flex items-center justify-between gap-3 rounded border border-[#d8dde6] p-3 text-sm">
+              <span><span className="block font-semibold">Console tabs</span><span className="text-xs text-[#706e6b]">Keep recently opened records available above the workspace.</span></span>
+              <input aria-label="Console tabs" type="checkbox" checked={consoleTabsEnabled} onChange={(event) => setConsoleTabsEnabled(event.target.checked)} className={checkboxClass} />
+            </label>
+            {preferencesError && <div role="alert" className="rounded border border-[#ea001e] bg-[#fff1f1] p-2 text-sm text-[#8e030f]">{preferencesError}</div>}
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" className={`${formButtonClass} border-[#cfd4dc] bg-white text-brand-700`} disabled={preferencesSaving} onClick={resetPreferences}>Cancel</button>
+              <button type="submit" className={`${formButtonClass} border-brand-700 bg-brand-600 text-white`} disabled={preferencesSaving}>{preferencesSaving ? "Saving..." : "Save Preferences"}</button>
+            </div>
+          </form>
+        </section>
+
+        <section className={cardClass} aria-labelledby="account-security-heading">
+          <h2 id="account-security-heading" className="text-lg font-semibold">Security and Access</h2>
+          <p className="mt-1 text-sm text-[#706e6b]">Review sessions and open the tools available for your role.</p>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <Link className={actionLinkClass} href="/account/sessions">Manage Sessions</Link>
+            {data.organizationRole === "ADMIN" && <Link className={actionLinkClass} href="/lightning/setup/users">Manage Users</Link>}
+            {data.isSuperAdmin && <Link className={actionLinkClass} href="/super-admin">Super Admin</Link>}
+            <Link className={`${actionLinkClass} border-[#ea001e] text-[#ba0517] hover:bg-[#fff1f1]`} href="/auth/signout">Sign Out</Link>
+          </div>
+          <p className="mt-4 border-t border-[#eef1f6] pt-4 text-xs text-[#706e6b]">Use Manage Sessions to review browsers and revoke access without signing out of this session.</p>
+        </section>
       </div>
     </section>
   );
@@ -5616,15 +5857,24 @@ function AnalyticsPage({ data, reportName, onReportBuilder, onDataChange, onToas
   }
 
   function exportReport() {
-    const blob = new Blob([analyticsReportCsv(selectedReport)], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${fileSafeName(selectedReport.title)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "/api/analytics/export";
+    form.hidden = true;
+    const values = {
+      filename: `${fileSafeName(selectedReport.title)}.csv`,
+      csv: analyticsReportCsv(selectedReport)
+    };
+    for (const [name, value] of Object.entries(values)) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = value;
+      form.appendChild(input);
+    }
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
     onToast({ tone: "success", message: `${selectedReport.title} exported.` });
   }
 
@@ -5852,7 +6102,7 @@ function ReportBarChart({ report }: { report: AnalyticsReportDefinition }) {
 }
 
 const CALENDAR_SOURCE_COLORS = [
-  { label: "Blue", value: "#0176d3" },
+  { label: "Indigo", value: "#4f46e5" },
   { label: "Green", value: "#2e844a" },
   { label: "Red", value: "#ba0517" },
   { label: "Gold", value: "#f3b451" },
@@ -5882,11 +6132,12 @@ function CalendarPage({
   const [miniMonth, setMiniMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1, 12));
   const [calendarDialog, setCalendarDialog] = useState<CalendarSourceDialogState>(null);
   const [refreshedAt, setRefreshedAt] = useState(() => new Date());
+  const calendarTimeZone = String(data.userPreferences[0]?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
   const hours = Array.from({ length: 24 }, (_, hour) => hour.toString().padStart(2, "0") + ":00");
   const yearOptions = useMemo(() => Array.from({ length: 9 }, (_, index) => String(2022 + index)), []);
   const defaultCalendarSources = useMemo<RecordData[]>(
     () => [
-      { id: "calendar-default-my", name: data.user.name, type: "My", color: "#0176d3", visible: true },
+      { id: "calendar-default-my", name: data.user.name, type: "My", color: "#4f46e5", visible: true },
       { id: "calendar-default-company", name: "Company Events", type: "Other", color: "#2e844a", visible: true }
     ],
     [data.user.name]
@@ -5901,7 +6152,7 @@ function CalendarPage({
   const visibleEvents: RecordData[] = events.filter((event) => {
     const source = calendarSourceById.get(String(event.calendarSourceId ?? ""));
     return source ? source.visible !== false : myCalendarVisible;
-  }).map((event) => ({ ...event, calendarColor: String(calendarSourceById.get(String(event.calendarSourceId ?? ""))?.color ?? "#0176d3") } as RecordData));
+  }).map((event) => ({ ...event, calendarColor: String(calendarSourceById.get(String(event.calendarSourceId ?? ""))?.color ?? "#4f46e5") } as RecordData));
   const myCalendarSources = calendarSources.filter((source) => calendarSourceType(source) === "My");
   const otherCalendarSources = calendarSources.filter((source) => calendarSourceType(source) === "Other");
   const weekStart = startOfSaturdayWeek(anchorDate);
@@ -5948,7 +6199,7 @@ function CalendarPage({
       id: source && !isFallbackCalendarSource(source) ? requiredId(source) : `calendar-local-${Date.now()}`,
       name,
       type: calendarSourceType(values),
-      color: String(values.color ?? "#0176d3"),
+      color: String(values.color ?? "#4f46e5"),
       visible: values.visible !== false,
       createdAt: source?.createdAt ?? now,
       updatedAt: now
@@ -6002,7 +6253,7 @@ function CalendarPage({
       <div key={sourceId} className="flex items-center justify-between gap-2 rounded px-1 py-1 text-sm hover:bg-brand-50">
         <label className="flex min-w-0 flex-1 items-center gap-2">
           <input type="checkbox" checked={visible} onChange={(event) => void setCalendarSourceVisibility(source, event.target.checked)}  className={checkboxClass} />
-          <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: String(source.color ?? "#0176d3") }} />
+          <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: String(source.color ?? "#4f46e5") }} />
           <span className={cn("truncate", !visible && "text-[#706e6b] line-through")}>{String(source.name ?? "Calendar")}</span>
         </label>
         <DropdownMenu.Root>
@@ -6080,7 +6331,7 @@ function CalendarPage({
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#d8dde6] p-3">
             <div>
               <h1 className="text-xl font-semibold">Calendar</h1>
-              <div className="text-xs text-[#706e6b]">{rangeLabel} | {String(data.userPreferences[0]?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)} | Updated {formatDateTime(refreshedAt.toISOString())}</div>
+              <div className="text-xs text-[#706e6b]">{rangeLabel} | {calendarTimeZone} | Updated {formatDateTime(refreshedAt.toISOString())}</div>
             </div>
             <div className="flex flex-wrap gap-1">
               <Button onClick={movePrevious}>{viewMode === "Day" ? "Previous Day" : viewMode === "Month" ? "Previous Month" : "Previous Week"}</Button>
@@ -6097,12 +6348,12 @@ function CalendarPage({
             <div className="grid grid-cols-7 border-b border-[#d8dde6] text-xs">
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div key={day} className="border-b border-l border-[#d8dde6] bg-[#f3f3f3] p-2 text-center font-semibold">{day}</div>)}
               {monthDays.map((day) => {
-                const dayEvents = visibleEvents.filter((event) => sameDate(new Date(String(event.startAt)), day));
+                const dayEvents = visibleEvents.filter((event) => sameDateInTimeZone(event.startAt, day, calendarTimeZone));
                 return (
                   <button key={toDateInputValue(day)} onClick={() => { setAnchorDate(day); setViewMode("Day"); }} className={cn("min-h-28 border-l border-t border-[#d8dde6] p-2 text-left align-top hover:bg-brand-50", !sameMonth(day, anchorDate) && "bg-[#fafafa] text-[#a8a8a8]")}>
                     <div className="mb-1 font-semibold">{day.getDate()}</div>
                     <div className="space-y-1">
-                      {dayEvents.slice(0, 3).map((event) => <CalendarEventChip key={requiredId(event)} event={event} />)}
+                      {dayEvents.slice(0, 3).map((event) => <CalendarEventChip key={requiredId(event)} event={event} timeZone={calendarTimeZone} />)}
                       {dayEvents.length > 3 && <div className="text-[11px] text-brand-700">+{dayEvents.length - 3} more</div>}
                     </div>
                   </button>
@@ -6117,18 +6368,25 @@ function CalendarPage({
                 <div className="border-t border-[#d8dde6] p-2 text-[#706e6b]">All-Day Events</div>
                 {visibleDays.map((day) => (
                   <div key={`${toDateInputValue(day)}-all`} className="min-h-10 border-l border-t border-[#d8dde6] p-1 text-xs">
-                    {visibleEvents.filter((event) => event.allDay && sameDate(new Date(String(event.startAt)), day)).map((event) => <CalendarEventChip key={requiredId(event)} event={event} />)}
+                    {visibleEvents.filter((event) => event.allDay && sameDateInTimeZone(event.startAt, day, calendarTimeZone)).map((event) => <CalendarEventChip key={requiredId(event)} event={event} timeZone={calendarTimeZone} />)}
                   </div>
                 ))}
                 {hours.map((hour) => (
                   <div key={hour} className="contents">
                     <button className="border-t border-[#d8dde6] p-2 text-right text-[#706e6b] hover:bg-brand-50" onClick={() => createAt(anchorDate, hour)}>{hour}</button>
                     {visibleDays.map((day) => {
-                      const cellEvents = visibleEvents.filter((event) => !event.allDay && sameDate(new Date(String(event.startAt)), day) && hourFromDate(event.startAt) === hour.slice(0, 2));
+                      const cellEvents = visibleEvents.filter((event) => !event.allDay && sameDateInTimeZone(event.startAt, day, calendarTimeZone) && hourFromDate(event.startAt, calendarTimeZone) === hour.slice(0, 2));
                       return (
-                        <button key={`${toDateInputValue(day)}-${hour}`} onClick={() => createAt(day, hour)} className="min-h-12 border-l border-t border-[#d8dde6] p-1 text-left hover:bg-brand-50">
+                        <button
+                          key={`${toDateInputValue(day)}-${hour}`}
+                          onClick={(event) => {
+                            if ((event.target as HTMLElement).closest("[data-calendar-event]")) return;
+                            createAt(day, hour);
+                          }}
+                          className="min-h-12 border-l border-t border-[#d8dde6] p-1 text-left hover:bg-brand-50"
+                        >
                           <div className="space-y-1">
-                            {cellEvents.map((event) => <CalendarEventChip key={requiredId(event)} event={event} />)}
+                            {cellEvents.map((event) => <CalendarEventChip key={requiredId(event)} event={event} timeZone={calendarTimeZone} />)}
                           </div>
                         </button>
                       );
@@ -6150,18 +6408,18 @@ function CalendarSourceModal({ state, onClose, onSave }: { state: Exclude<Calend
   const [values, setValues] = useState<RecordData>(() => ({
     name: String(source?.name ?? ""),
     type: calendarSourceType(source ?? { type: "My" }),
-    color: String(source?.color ?? "#0176d3"),
+    color: String(source?.color ?? "#4f46e5"),
     visible: source?.visible !== false
   }));
   const [error, setError] = useState("");
 
-  function submit() {
+  async function submit() {
     if (!String(values.name ?? "").trim()) {
       setError("Complete this field.");
       return;
     }
     setError("");
-    void onSave(values, source);
+    await onSave(values, source);
   }
 
   return (
@@ -6177,7 +6435,7 @@ function CalendarSourceModal({ state, onClose, onSave }: { state: Exclude<Calend
         <FieldShell label="Color">
           <div className="flex flex-wrap gap-2">
             {CALENDAR_SOURCE_COLORS.map((option) => {
-              const selected = String(values.color ?? "#0176d3") === option.value;
+              const selected = String(values.color ?? "#4f46e5") === option.value;
               return (
                 <button
                   key={option.value}
@@ -6437,7 +6695,7 @@ function ModalHost({
   onInvoiceSaved: (result: InvoiceMutationResult, mode: "new" | "edit" | "payment") => void;
   onCommunicationsSaved: (result: CommunicationsMutationResult) => void;
   onCampaignSaved: (result: CampaignMutationResult) => void;
-  onApplyListAction: (action: string, object: CrmObject, selectedIds: string[], payload: RecordData) => void;
+  onApplyListAction: (action: string, object: CrmObject, selectedIds: string[], payload: RecordData) => Promise<void>;
 }) {
   if (!modal) return null;
   if (modal.type === "confirm") {
@@ -6480,7 +6738,7 @@ function ListActionModal({
   campaignMembers: Record<string, string[]>;
   onClose: () => void;
   onSaveRecord: (object: CrmObject, values: RecordData, options?: { id?: string; stayOpen?: boolean }) => Promise<boolean>;
-  onApply: (action: string, object: CrmObject, selectedIds: string[], payload: RecordData) => void;
+  onApply: (action: string, object: CrmObject, selectedIds: string[], payload: RecordData) => Promise<void>;
 }) {
   const [values, setValues] = useState<RecordData>({
     campaign: "Starter Outreach",
@@ -6560,10 +6818,10 @@ function ListActionModal({
         title={title}
         onClose={onClose}
         wide
-        footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void runImport()}>{importing ? "Importing..." : "Import"}</Button></>}
+        footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => runImport()}>{importing ? "Importing..." : "Import"}</Button></>}
       >
         <div className="space-y-3">
-          <p className="text-sm text-[#706e6b]">Paste one record per line. This importer maps common Salesforce Starter fields for {OBJECT_DEFINITIONS[modal.object].plural}.</p>
+          <p className="text-sm text-[#706e6b]">Paste one record per line. This importer maps common CRM fields for {OBJECT_DEFINITIONS[modal.object].plural}.</p>
           <div className="rounded border border-[#d8dde6] bg-[#f8f8f8] p-2 text-xs text-[#706e6b]">Example: {sample}</div>
           <textarea className={cn(inputClass, "h-36")} value={importText} onChange={(event) => setImportText(event.target.value)} placeholder={sample} />
           <div className="rounded border border-[#d8dde6] p-3">
@@ -6608,7 +6866,7 @@ function ListActionModal({
     );
   }
 
-  if (modal.object === "Lead" && modal.action === "Show more actions") {
+  if (modal.object === "Lead" && ["Show more actions", "Convert Lead"].includes(modal.action)) {
     const firstLead = selectedRecords[0] ?? {};
     const defaultAccountName = String(firstLead.company ?? "").trim() || "Converted Lead Account";
     const defaultOpportunityName = `${String(firstLead.company ?? contactName(firstLead) ?? "Converted Lead").trim() || "Converted Lead"} Opportunity`;
@@ -6641,7 +6899,7 @@ function ListActionModal({
       </>
     );
     return (
-      <BaseDialog open title="Show More Actions: Leads" onClose={onClose} wide footer={footer}>
+      <BaseDialog open title={modal.action === "Convert Lead" ? "Convert Lead" : "Show More Actions: Leads"} onClose={onClose} wide footer={footer}>
         <div className="grid gap-4">
           <div className="rounded border border-[#d8dde6] bg-[#f8f8f8] p-3 text-sm">
             <div className="font-semibold">Convert Lead</div>
@@ -6787,7 +7045,7 @@ function ListActionModal({
   );
 }
 
-function QuickTextFolderModal({ onClose, onSave }: { onClose: () => void; onSave: (values: RecordData) => void }) {
+function QuickTextFolderModal({ onClose, onSave }: { onClose: () => void; onSave: (values: RecordData) => void | Promise<void> }) {
   const [values, setValues] = useState<RecordData>({ name: "Personal Quick Text", sharing: "Private" });
   return (
     <BaseDialog open title="New Folder" onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onSave(values)}>Save</Button></>}>
@@ -6799,7 +7057,7 @@ function QuickTextFolderModal({ onClose, onSave }: { onClose: () => void; onSave
   );
 }
 
-function MarketingActivationModal({ user, initial, onClose, onSave }: { user: BootstrapData["user"]; initial?: RecordData; onClose: () => void; onSave: (values: RecordData) => void }) {
+function MarketingActivationModal({ user, initial, onClose, onSave }: { user: BootstrapData["user"]; initial?: RecordData; onClose: () => void; onSave: (values: RecordData) => void | Promise<void> }) {
   const [values, setValues] = useState<RecordData>({ id: initial?.id, senderName: initial?.senderName ?? user.name, senderEmail: initial?.senderEmail ?? user.email ?? "", tracking: initial?.tracking !== false });
   return (
     <BaseDialog open title={initial ? "Edit Marketing Activation" : "Activate Marketing"} onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => onSave(values)}>{initial ? "Save" : "Activate"}</Button></>}>
@@ -6902,7 +7160,7 @@ function ReportBuilderModal({ reportType, initial, data, onClose, onDataChange, 
 
   if (dashboardMode) {
     return (
-      <BaseDialog open title={initial ? "Edit Dashboard" : "New Dashboard"} onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void saveDashboard()}>{saving ? "Saving..." : initial ? "Update Dashboard" : "Save Dashboard"}</Button></>}>
+      <BaseDialog open title={initial ? "Edit Dashboard" : "New Dashboard"} onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => saveDashboard()}>{saving ? "Saving..." : initial ? "Update Dashboard" : "Save Dashboard"}</Button></>}>
         <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
           <aside className="rounded border border-[#d8dde6] p-3">
             <FieldShell label="Dashboard Name" error={error && !dashboardName.trim() ? error : ""}>
@@ -6967,7 +7225,7 @@ function ReportBuilderModal({ reportType, initial, data, onClose, onDataChange, 
   }
 
   return (
-    <BaseDialog open title={initial ? "Edit Report" : "Report Builder"} onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => void saveReport()}>{saving ? "Saving..." : initial ? "Update Report" : "Save Report"}</Button></>}>
+    <BaseDialog open title={initial ? "Edit Report" : "Report Builder"} onClose={onClose} wide footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={() => saveReport()}>{saving ? "Saving..." : initial ? "Update Report" : "Save Report"}</Button></>}>
       <div className="grid gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="rounded border border-[#d8dde6] p-3">
           <div className="mb-2 font-semibold">Report Types</div>
@@ -7127,7 +7385,7 @@ function GenericRecordModal({ mode, object, data, record, onClose, onSave }: { m
       title={title}
       onClose={requestClose}
       wide
-      footer={<><Button onClick={requestClose}>Cancel</Button>{mode === "new" && <Button onClick={() => void submit(true)}>Save & New</Button>}<Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}
+      footer={<><Button onClick={requestClose}>Cancel</Button>{mode === "new" && <Button onClick={() => submit(true)}>Save & New</Button>}<Button variant="primary" onClick={() => submit(false)}>Save</Button></>}
     >
       <div className="mb-4 text-xs text-[#706e6b]"><span className="text-[#ba0517]">*</span> = Required Information</div>
       <FormFields
@@ -7155,7 +7413,7 @@ function GenericRecordModal({ mode, object, data, record, onClose, onSave }: { m
 
 function ProductWizardModal({ data, onClose, onSave }: { data: BootstrapData; onClose: () => void; onSave: (values: RecordData) => Promise<boolean> }) {
   const [step, setStep] = useState(1);
-  const [initialValues] = useState<RecordData>(() => ({ active: false, family: "--None--", currency: "USD", createPriceBookEntry: true, priceBookId: data.priceBooks[0]?.id ?? "standard-price-book", priceBookName: data.priceBooks[0]?.name ?? "Standard Price Book", entryActive: true }));
+  const [initialValues] = useState<RecordData>(() => ({ active: false, family: "--None--", currency: "USD", createPriceBookEntry: true, priceBookId: data.priceBooks[0]?.id ?? "", priceBookName: data.priceBooks[0]?.name ?? "Standard Price Book", entryActive: true }));
   const [values, setValues] = useState<RecordData>(() => initialValues);
   const [error, setError] = useState("");
   const [entryError, setEntryError] = useState("");
@@ -7172,7 +7430,7 @@ function ProductWizardModal({ data, onClose, onSave }: { data: BootstrapData; on
   }
   if (discardDialog) return discardDialog;
   return (
-    <BaseDialog open title="New Product" onClose={requestClose} wide footer={step === 1 ? <><Button onClick={requestClose}>Cancel</Button><Button variant="primary" onClick={() => { if (!values.name) setError("Complete this field."); else { setError(""); setStep(2); } }}>Next</Button></> : <><Button onClick={() => setStep(1)}>Back</Button><Button variant="primary" onClick={() => void finish()}>Finish</Button></>}>
+    <BaseDialog open title="New Product" onClose={requestClose} wide footer={step === 1 ? <><Button onClick={requestClose}>Cancel</Button><Button variant="primary" onClick={() => { if (!values.name) setError("Complete this field."); else { setError(""); setStep(2); } }}>Next</Button></> : <><Button onClick={() => setStep(1)}>Back</Button><Button variant="primary" onClick={() => finish()}>Finish</Button></>}>
       <div className="mb-4 grid grid-cols-2 gap-2 text-sm">
         <div className={cn("rounded border p-2", step === 1 ? "border-brand-500 bg-brand-50" : "border-[#d8dde6]")}>New Product - {step === 1 ? "Current Stage" : "Complete"}</div>
         <div className={cn("rounded border p-2", step === 2 ? "border-brand-500 bg-brand-50" : "border-[#d8dde6]")}>New Price Book Entry - {step === 2 ? "Current Stage" : "Stage Not Started"}</div>
@@ -7333,7 +7591,7 @@ function EventModal({
   }
   if (discardDialog) return discardDialog;
   return (
-    <BaseDialog open title="New Event" onClose={requestClose} wide footer={<><Button onClick={requestClose}>Cancel</Button><Button onClick={() => void submit(true)}>Save & New</Button><Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}>
+    <BaseDialog open title="New Event" onClose={requestClose} wide footer={<><Button onClick={requestClose}>Cancel</Button><Button onClick={() => submit(true)}>Save & New</Button><Button variant="primary" onClick={() => submit(false)}>Save</Button></>}>
       <div className="mb-4 text-xs text-[#706e6b]"><span className="text-[#ba0517]">*</span>= Required Information</div>
       <div className="grid gap-4 md:grid-cols-2">
         <FieldShell label="Subject" required error={errors.subject}><NativeSelect options={["--None--", ...EVENT_SUBJECTS]} value={String(values.subject ?? "--None--")} onChange={(value) => setValues({ ...values, subject: value })} /></FieldShell>
@@ -7401,7 +7659,7 @@ function EventModal({
         <FieldShell label="Location"><input className={inputClass} value={String(values.location ?? "")} onChange={(event) => setValues({ ...values, location: event.target.value })} /></FieldShell>
         <FieldShell label="Show Time As"><NativeSelect options={SHOW_TIME_AS} value={String(values.showTimeAs)} onChange={(value) => setValues({ ...values, showTimeAs: value })} /></FieldShell>
         <FieldShell label="All-Day Event"><RadixCheckbox checked={Boolean(values.allDay)} onCheckedChange={(value) => setValues({ ...values, allDay: Boolean(value) })} /></FieldShell>
-        <FieldShell label="Private"><RadixCheckbox checked={Boolean(values.private)} onCheckedChange={(value) => setValues({ ...values, private: Boolean(value) })} /><p className="mt-1 text-xs text-[#706e6b]">Private details remain visible to the Salesforce admin and users with View All Data.</p></FieldShell>
+        <FieldShell label="Private"><RadixCheckbox checked={Boolean(values.private)} onCheckedChange={(value) => setValues({ ...values, private: Boolean(value) })} /><p className="mt-1 text-xs text-[#706e6b]">Private details remain visible to organization admins and users with View All Data.</p></FieldShell>
       </div>
     </BaseDialog>
   );
@@ -7464,7 +7722,7 @@ function QuickTextModal({ data, initial, onClose, onSave }: { data: BootstrapDat
   }
   if (discardDialog) return discardDialog;
   return (
-    <BaseDialog open title={initial ? `Edit ${String(initial.name ?? "Quick Text")}` : "New Quick Text"} onClose={requestClose} wide footer={<><Button onClick={() => setPreviewOpen((open) => !open)}>Preview</Button><Button onClick={requestClose}>Cancel</Button>{!initial && <Button onClick={() => void submit(true)}>Save & New</Button>}<Button variant="primary" onClick={() => void submit(false)}>{initial ? "Update" : "Save"}</Button></>}>
+    <BaseDialog open title={initial ? `Edit ${String(initial.name ?? "Quick Text")}` : "New Quick Text"} onClose={requestClose} wide footer={<><Button onClick={() => setPreviewOpen((open) => !open)}>Preview</Button><Button onClick={requestClose}>Cancel</Button>{!initial && <Button onClick={() => submit(true)}>Save & New</Button>}<Button variant="primary" onClick={() => submit(false)}>{initial ? "Update" : "Save"}</Button></>}>
       <div className="mb-4 text-xs text-[#706e6b]"><span className="text-[#ba0517]">*</span>= Required Information</div>
       <div className="grid gap-4 md:grid-cols-2">
         <FieldShell label="Quick Text Name" required error={errors.name}><input className={inputClass} value={String(values.name ?? "")} onChange={(event) => setValues({ ...values, name: event.target.value })} /></FieldShell>
@@ -7706,7 +7964,7 @@ function KnowledgeModal({ initial, onClose, onSave }: { initial?: RecordData; on
   if (discardDialog) return discardDialog;
 
   return (
-    <BaseDialog open title={initial ? `Edit ${String(initial.title ?? "Knowledge")}` : "New Knowledge"} onClose={requestClose} wide footer={<><Button onClick={requestClose}>Cancel</Button>{!initial && <Button onClick={() => void submit(true)}>Save & New</Button>}<Button variant="primary" onClick={() => void submit(false)}>Save</Button></>}>
+    <BaseDialog open title={initial ? `Edit ${String(initial.title ?? "Knowledge")}` : "New Knowledge"} onClose={requestClose} wide footer={<><Button onClick={requestClose}>Cancel</Button>{!initial && <Button onClick={() => submit(true)}>Save & New</Button>}<Button variant="primary" onClick={() => submit(false)}>Save</Button></>}>
       <div className="grid gap-4">
         <div className="grid gap-3 md:grid-cols-2">
           <FieldShell label="Title" required error={errors.title}><input className={inputClass} value={String(values.title ?? "")} onChange={(event) => setValues({ ...values, title: event.target.value, urlName: slugify(event.target.value) })} /></FieldShell>
@@ -7929,9 +8187,9 @@ function ListEmailWizard({ data, initialValues: providedInitialValues, startingS
           <>
             <Button onClick={() => setStep(1)}>Back</Button>
             <Button onClick={() => setPreviewOpen((open) => !open)}>Preview</Button>
-            <Button onClick={() => void submit("Draft")}>Save Draft</Button>
-            <Button onClick={() => void submit("Scheduled")}>Schedule</Button>
-            <Button variant="primary" onClick={() => void submit("Sent")}>Send</Button>
+            <Button onClick={() => submit("Draft")}>Save Draft</Button>
+            <Button onClick={() => submit("Scheduled")}>Schedule</Button>
+            <Button variant="primary" onClick={() => submit("Sent")}>Send</Button>
             <Button onClick={requestClose}>Cancel</Button>
           </>
         )
@@ -8117,9 +8375,9 @@ function NavEditModal({
       footer={
         <>
           <Button onClick={() => available[0] && addItem(available[0])}>Add More Items</Button>
-          <Button onClick={() => void onReset(app)}>Reset Defaults</Button>
+          <Button onClick={() => onReset(app)}>Reset Defaults</Button>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => void onSave(app, items)}>Save</Button>
+          <Button variant="primary" onClick={() => onSave(app, items)}>Save</Button>
         </>
       }
     >
@@ -8311,6 +8569,7 @@ function LookupField({
               aria-label={field.label}
               value={query}
               onFocus={() => setOpen(true)}
+              onClick={() => setOpen(true)}
               onChange={(event) => {
                 setQuery(event.target.value);
                 setOpen(true);
@@ -8326,11 +8585,9 @@ function LookupField({
                   setHighlightedIndex((current) => Math.max(0, current - 1));
                 }
                 if (event.key === "Enter") {
+                  event.preventDefault();
                   const option = filteredOptions[highlightedIndex] ?? filteredOptions[0];
-                  if (option) {
-                    event.preventDefault();
-                    choose(option.id);
-                  }
+                  if (option) choose(option.id);
                 }
                 if (event.key === "Escape") {
                   event.preventDefault();
@@ -8350,6 +8607,7 @@ function LookupField({
             className="z-[70] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded border border-[#d8dde6] bg-white shadow-popover"
             onOpenAutoFocus={(event) => event.preventDefault()}
             onCloseAutoFocus={(event) => event.preventDefault()}
+            onFocusOutside={(event) => event.preventDefault()}
           >
             <div id={listId} role="listbox" aria-label={`${field.label} lookup results`} className="slds-scrollbar max-h-60 overflow-auto p-1">
               {filteredOptions.length === 0 ? (
@@ -8449,6 +8707,7 @@ function AttendeePicker({ field, value, data, onChange }: { field: FieldDefiniti
               aria-label="Search People"
               value={query}
               onFocus={() => setOpen(true)}
+              onClick={() => setOpen(true)}
               onChange={(event) => {
                 setQuery(event.target.value);
                 setOpen(true);
@@ -8464,11 +8723,9 @@ function AttendeePicker({ field, value, data, onChange }: { field: FieldDefiniti
                   setHighlightedIndex((current) => Math.max(0, current - 1));
                 }
                 if (event.key === "Enter") {
+                  event.preventDefault();
                   const option = filteredOptions[highlightedIndex] ?? filteredOptions[0];
-                  if (option) {
-                    event.preventDefault();
-                    addAttendee(option.id);
-                  }
+                  if (option) addAttendee(option.id);
                 }
                 if (event.key === "Escape") {
                   event.preventDefault();
@@ -8481,7 +8738,7 @@ function AttendeePicker({ field, value, data, onChange }: { field: FieldDefiniti
           </div>
         </Popover.Anchor>
         <Popover.Portal>
-          <Popover.Content align="start" sideOffset={4} className="z-[70] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded border border-[#d8dde6] bg-white shadow-popover" onOpenAutoFocus={(event) => event.preventDefault()} onCloseAutoFocus={(event) => event.preventDefault()}>
+          <Popover.Content align="start" sideOffset={4} className="z-[70] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded border border-[#d8dde6] bg-white shadow-popover" onOpenAutoFocus={(event) => event.preventDefault()} onCloseAutoFocus={(event) => event.preventDefault()} onFocusOutside={(event) => event.preventDefault()}>
             <div id={listId} role="listbox" aria-label="People lookup results" className="slds-scrollbar max-h-60 overflow-auto p-1">
               {filteredOptions.length === 0 ? (
                 <div className="px-3 py-2 text-sm text-[#706e6b]">{availableOptions.length ? "No matches" : "All available people are already selected"}</div>
@@ -8558,9 +8815,9 @@ function BaseDialog({ open, title, children, footer, onClose, wide = false }: { 
   );
 }
 
-function Button({ children, onClick, variant = "secondary", className, disabled = false }: { children: ReactNode; onClick?: () => void; variant?: "primary" | "secondary" | "destructive"; className?: string; disabled?: boolean }) {
+function Button({ children, onClick, variant = "secondary", className, disabled = false }: { children: ReactNode; onClick?: () => void | Promise<unknown>; variant?: "primary" | "secondary" | "destructive"; className?: string; disabled?: boolean }) {
   return (
-    <button
+    <AsyncButton
       onClick={onClick}
       disabled={disabled}
       className={cn(
@@ -8575,7 +8832,7 @@ function Button({ children, onClick, variant = "secondary", className, disabled 
       )}
     >
       {children}
-    </button>
+    </AsyncButton>
   );
 }
 
@@ -8818,11 +9075,10 @@ function NativeSelect({
       setHighlightedIndex((current) => Math.max(0, current - 1));
     }
     if (event.key === "Enter") {
+      // Always preventDefault so an empty result set cannot submit a parent <form>.
+      event.preventDefault();
       const option = filteredOptions[highlightedIndex] ?? filteredOptions[0];
-      if (option) {
-        event.preventDefault();
-        choose(option.value);
-      }
+      if (option) choose(option.value);
     }
     if (event.key === "Escape") {
       event.preventDefault();
@@ -8858,9 +9114,10 @@ function NativeSelect({
           className="z-[70] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded border border-[#d8dde6] bg-white shadow-popover"
           onOpenAutoFocus={(event) => {
             event.preventDefault();
-            searchRef.current?.focus();
+            requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true }));
           }}
           onCloseAutoFocus={(event) => event.preventDefault()}
+          onFocusOutside={(event) => event.preventDefault()}
           onWheel={(event) => event.stopPropagation()}
         >
           <div ref={panelRef}>
@@ -8870,7 +9127,6 @@ function NativeSelect({
                 <input
                   id={searchId}
                   ref={searchRef}
-                  autoFocus
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   className={cn(inputBareClass, "h-8 w-full pl-8 pr-2 text-sm")}
@@ -8888,7 +9144,7 @@ function NativeSelect({
               role="listbox"
               aria-label="Options"
               tabIndex={-1}
-              className="slds-scrollbar max-h-60 overflow-y-auto overscroll-contain p-1"
+              className="slds-scrollbar max-h-60 min-h-10 overflow-y-auto overscroll-contain p-1"
               style={{ WebkitOverflowScrolling: "touch" }}
             >
               {filteredOptions.length === 0 ? (
@@ -8933,7 +9189,7 @@ function RadixCheckbox({ checked, onCheckedChange }: { checked: boolean; onCheck
     <Checkbox.Root
       checked={checked}
       onCheckedChange={onCheckedChange}
-      className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[#c9c9c9] bg-white outline-none transition-all hover:border-[#a0a0a0] focus-visible:border-brand-500 focus-visible:shadow-[0_0_0_3px_rgba(1,118,211,0.16)] active:scale-90 data-[state=checked]:border-brand-600 data-[state=checked]:bg-brand-600 data-[state=checked]:hover:border-brand-600"
+      className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[#c9c9c9] bg-white outline-none transition-all hover:border-[#a0a0a0] focus-visible:border-brand-500 focus-visible:shadow-[0_0_0_3px_rgba(79,70,229,0.16)] active:scale-90 data-[state=checked]:border-brand-600 data-[state=checked]:bg-brand-600 data-[state=checked]:hover:border-brand-600"
     >
       <Checkbox.Indicator><Check size={12} className="text-white" strokeWidth={3} /></Checkbox.Indicator>
     </Checkbox.Root>
@@ -9019,12 +9275,12 @@ function EmptyPanel({ title, body, action, onAction }: { title: string; body: st
   );
 }
 
-function CalendarEventChip({ event }: { event: RecordData }) {
-  const color = String(event.calendarColor ?? "#0176d3");
+function CalendarEventChip({ event, timeZone }: { event: RecordData; timeZone: string }) {
+  const color = String(event.calendarColor ?? "#4f46e5");
   return (
-    <div className="rounded border bg-white px-1.5 py-1 text-[11px] leading-tight text-[#181818]" style={{ borderColor: color, boxShadow: `inset 3px 0 0 ${color}` }}>
+    <div data-calendar-event className="rounded border bg-white px-1.5 py-1 text-[11px] leading-tight text-[#181818]" style={{ borderColor: color, boxShadow: `inset 3px 0 0 ${color}` }}>
       <div className="truncate font-semibold">{String(event.subject ?? "Event")}</div>
-      <div className="truncate text-[#514f4d]">{calendarTimeRange(event)}</div>
+      <div className="truncate text-[#514f4d]">{calendarTimeRange(event, timeZone)}</div>
     </div>
   );
 }
@@ -9145,7 +9401,7 @@ function NotFoundPanel({ title, body }: { title: string; body: string }) {
 }
 
 const inputClass =
-  "min-h-8 w-full rounded border border-[var(--control-border,#c9c9c9)] bg-[var(--control-bg,#fff)] px-2.5 py-1.5 text-sm text-[#181818] shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-[var(--control-placeholder,#706e6b)] hover:border-[var(--control-border-hover,#a0a0a0)] focus:border-[var(--control-border-focus,#0176d3)] focus:shadow-[0_0_0_3px_rgba(1,118,211,0.16)] disabled:cursor-not-allowed disabled:border-[#c9c9c9] disabled:bg-[var(--control-bg-muted,#f3f3f3)] disabled:text-[#706e6b] disabled:hover:border-[#c9c9c9] disabled:focus:shadow-none read-only:border-[#c9c9c9] read-only:bg-[var(--control-bg-muted,#f3f3f3)] read-only:text-[#444] read-only:hover:border-[#c9c9c9] read-only:focus:border-[#c9c9c9] read-only:focus:shadow-none";
+  "min-h-8 w-full rounded border border-[var(--control-border,#c9c9c9)] bg-[var(--control-bg,#fff)] px-2.5 py-1.5 text-sm text-[#181818] shadow-[0_1px_2px_rgba(16,24,40,0.04)] outline-none transition-[border-color,box-shadow,background-color] duration-150 placeholder:text-[var(--control-placeholder,#706e6b)] hover:border-[var(--control-border-hover,#a0a0a0)] focus:border-[var(--control-border-focus,#4f46e5)] focus:shadow-[0_0_0_3px_rgba(79,70,229,0.16)] disabled:cursor-not-allowed disabled:border-[#c9c9c9] disabled:bg-[var(--control-bg-muted,#f3f3f3)] disabled:text-[#706e6b] disabled:hover:border-[#c9c9c9] disabled:focus:shadow-none read-only:border-[#c9c9c9] read-only:bg-[var(--control-bg-muted,#f3f3f3)] read-only:text-[#444] read-only:hover:border-[#c9c9c9] read-only:focus:border-[#c9c9c9] read-only:focus:shadow-none";
 
 const inputErrorClass =
   "border-[var(--control-border-error,#ba0517)] hover:border-[var(--control-border-error,#ba0517)] focus:border-[var(--control-border-error,#ba0517)] focus:shadow-[0_0_0_3px_rgba(186,5,23,0.14)]";
@@ -10116,9 +10372,26 @@ function shortDayLabel(date: Date) {
   return `${new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(date).toUpperCase()} ${date.getDate()}`;
 }
 
-function hourFromDate(value: unknown) {
+function datePartsInTimeZone(value: unknown, timeZone: string) {
   const date = new Date(String(value));
-  return String(date.getUTCHours()).padStart(2, "0");
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+}
+
+function sameDateInTimeZone(value: unknown, day: Date, timeZone: string) {
+  const parts = datePartsInTimeZone(value, timeZone);
+  return Number(parts.year) === day.getFullYear() && Number(parts.month) === day.getMonth() + 1 && Number(parts.day) === day.getDate();
+}
+
+function hourFromDate(value: unknown, timeZone: string) {
+  return datePartsInTimeZone(value, timeZone).hour;
 }
 
 function nextTimeSlot(time: string) {
@@ -10128,11 +10401,11 @@ function nextTimeSlot(time: string) {
   return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
 }
 
-function calendarTimeRange(event: RecordData) {
+function calendarTimeRange(event: RecordData, timeZone: string) {
   if (event.allDay) return "All day";
   const start = new Date(String(event.startAt));
   const end = new Date(String(event.endAt));
-  const fmt = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "UTC" });
+  const fmt = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
   return `${fmt.format(start)}-${fmt.format(end)}`;
 }
 

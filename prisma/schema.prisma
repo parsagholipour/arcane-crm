@@ -1104,18 +1104,6 @@ model MarketingFormSubmission {
   @@index([organizationId, leadId])
 }
 
-model SubscriptionCheckout {
-  id             String   @id @default(cuid())
-  organizationId String
-  plan           String
-  seats          Int
-  code           String?
-  status         String   @default("Prepared")
-  userId         String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-}
-
 model Notification {
   id             String   @id @default(cuid())
   organizationId String

@@ -61,7 +61,7 @@ export async function generateInvoicePdf(invoice: InvoiceDocument, organizationN
   document.setTitle(invoice.invoiceNumber);
   document.setSubject("Sales invoice");
   document.setAuthor(safeText(organizationName));
-  document.setCreator("CRM Sales Invoicing");
+  document.setCreator("Reloriq Sales Invoicing");
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
 

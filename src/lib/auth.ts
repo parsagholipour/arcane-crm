@@ -48,7 +48,7 @@ function profileEmail(profile: unknown) {
 }
 
 function profileName(profile: unknown, email: string) {
-  return stringClaim(profile, ["name", "preferred_username"]) ?? email.split("@")[0] ?? "CRM User";
+  return stringClaim(profile, ["name", "preferred_username"]) ?? email.split("@")[0] ?? "Reloriq User";
 }
 
 function aliasFrom(name: string, email: string) {

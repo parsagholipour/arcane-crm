@@ -25,7 +25,6 @@ export async function POST(request: NextRequest) {
     const payload = (await request.json()) as WorkflowPayload;
     const values = payload.values ?? {};
     const selectedIds = payload.selectedIds ?? [];
-    if (payload.action === "Buy Now") return NextResponse.json({ error: "Purchase, plan, and checkout workflows are out of scope for this CRM clone." }, { status: 400 });
     const result = await runWorkflow(payload.action, payload.object, selectedIds, values, context.organizationId, context.userId);
     return NextResponse.json({ ok: true, ...JSON.parse(JSON.stringify(result)) });
   } catch (error) {

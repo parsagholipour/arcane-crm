@@ -1,6 +1,7 @@
 import "@/app/globals.css";
 import type { Metadata } from "next";
 import { Source_Sans_3 } from "next/font/google";
+import { BRAND } from "@/lib/brand";
 
 const sourceSans = Source_Sans_3({
   subsets: ["latin"],
@@ -9,8 +10,17 @@ const sourceSans = Source_Sans_3({
 });
 
 export const metadata: Metadata = {
-  title: "Salesforce Lightning CRM Clone",
-  description: "A Salesforce Lightning Starter-style CRM rebuilt with Next.js, Radix UI, Tailwind, Prisma, and PostgreSQL."
+  title: {
+    default: `${BRAND.product} — ${BRAND.tagline}`,
+    template: `%s | ${BRAND.name}`
+  },
+  description: BRAND.description,
+  applicationName: BRAND.name,
+  icons: {
+    icon: "/reloriq-mark.svg",
+    shortcut: "/reloriq-mark.svg",
+    apple: "/reloriq-mark.svg"
+  }
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

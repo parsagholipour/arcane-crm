@@ -31,7 +31,7 @@ export function AccountSessionsClient() {
   return (
     <div className="space-y-5">
       {message && <div className="rounded border border-[#9ac3e8] bg-[#eef4ff] p-3 text-sm">{message}</div>}
-      <button className="rounded bg-[#0176d3] px-4 py-2 text-sm font-semibold text-white" onClick={() => void action({ action: "logout-others" })}>Log out other sessions</button>
+      <button className="rounded bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" onClick={() => void action({ action: "logout-others" })}>Log out other sessions</button>
       <SessionTable title="Application sessions" rows={appSessions.map((row) => ({ id: row.id, current: row.current, primary: row.userAgent || "Unknown browser", secondary: `${row.ipAddress || "Unknown IP"} · Last seen ${new Date(row.lastSeenAt).toLocaleString()}`, source: "app" }))} onRevoke={action} />
       <SessionTable title="Keycloak sessions" rows={keycloakSessions.map((row) => ({ id: row.id, current: row.current, primary: Object.values(row.clients ?? {}).join(", ") || "Keycloak session", secondary: `${row.ipAddress || "Unknown IP"}${row.lastAccess ? ` · Last seen ${new Date(row.lastAccess).toLocaleString()}` : ""}`, source: "keycloak" }))} onRevoke={action} />
     </div>
