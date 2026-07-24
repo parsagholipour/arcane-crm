@@ -234,11 +234,18 @@ async function convertLeads(ids: string[], values: Record<string, unknown>, orga
     const stage = String(values.stage ?? "Qualify");
     const forecastCategory = String(values.forecastCategory ?? "Pipeline");
     const createOpportunity = values.createOpportunity !== false;
-    const singleAccountName = leads.length === 1 ? String(values.accountName ?? "").trim() : "";
+    const singleLead = leads.length === 1;
+    const singleAccountName = singleLead ? String(values.accountName ?? "").trim() : "";
+    const existingAccountId = singleLead ? String(values.existingAccountId ?? "").trim() : "";
+    const existingContactId = singleLead ? String(values.existingContactId ?? "").trim() : "";
+    const existingOpportunityId = singleLead && createOpportunity ? String(values.existingOpportunityId ?? "").trim() : "";
 
     for (const lead of leads) {
       const accountName = singleAccountName || lead.company || [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "Converted Lead Account";
-      let account = await tx.account.findFirst({ where: { organizationId, name: accountName } });
+      let account = existingAccountId
+        ? await tx.account.findFirst({ where: { organizationId, id: existingAccountId } })
+        : await tx.account.findFirst({ where: { organizationId, name: accountName } });
+      if (existingAccountId && !account) throw new WorkflowValidationError("The selected Account was not found.", 409);
       if (!account) {
         account = await tx.account.create({
           data: {
@@ -259,33 +266,63 @@ async function convertLeads(ids: string[], values: Record<string, unknown>, orga
         });
       }
 
-      const contact = await tx.contact.create({
-        data: {
-          organizationId,
-          salutation: lead.salutation,
-          firstName: lead.firstName,
-          lastName: lead.lastName,
-          accountId: account.id,
-          title: lead.title,
-          description: lead.description,
-          ownerId: lead.ownerId,
-          phone: lead.phone,
-          email: lead.email,
-          mailingCountry: lead.country,
-          mailingStreet: lead.street,
-          mailingPostalCode: lead.postalCode,
-          mailingCity: lead.city,
-          mailingState: lead.state,
-          createdById: userId,
-          updatedById: userId
-        }
-      });
+      let contact = existingContactId
+        ? await tx.contact.findFirst({ where: { organizationId, id: existingContactId } })
+        : null;
+      if (existingContactId && !contact) throw new WorkflowValidationError("The selected Contact was not found.", 409);
+      if (contact) {
+        contact = await tx.contact.update({
+          where: { id: contact.id },
+          data: {
+            accountId: account.id,
+            title: contact.title ?? lead.title,
+            phone: contact.phone ?? lead.phone,
+            email: contact.email ?? lead.email,
+            updatedById: userId
+          }
+        });
+      } else {
+        contact = await tx.contact.create({
+          data: {
+            organizationId,
+            salutation: lead.salutation,
+            firstName: lead.firstName,
+            lastName: lead.lastName,
+            accountId: account.id,
+            title: lead.title,
+            description: lead.description,
+            ownerId: lead.ownerId,
+            phone: lead.phone,
+            email: lead.email,
+            mailingCountry: lead.country,
+            mailingStreet: lead.street,
+            mailingPostalCode: lead.postalCode,
+            mailingCity: lead.city,
+            mailingState: lead.state,
+            createdById: userId,
+            updatedById: userId
+          }
+        });
+      }
 
-      const opportunity = createOpportunity
-        ? await tx.opportunity.create({
+      let opportunity = null;
+      if (createOpportunity) {
+        if (existingOpportunityId) {
+          opportunity = await tx.opportunity.findFirst({ where: { organizationId, id: existingOpportunityId } });
+          if (!opportunity) throw new WorkflowValidationError("The selected Opportunity was not found.", 409);
+          opportunity = await tx.opportunity.update({
+            where: { id: opportunity.id },
+            data: {
+              accountId: account.id,
+              contactId: contact.id,
+              updatedById: userId
+            }
+          });
+        } else {
+          opportunity = await tx.opportunity.create({
             data: {
               organizationId,
-              name: leads.length === 1 ? String(values.opportunityName ?? `${accountName} Opportunity`) : `${accountName} Opportunity`,
+              name: singleLead ? String(values.opportunityName ?? `${accountName} Opportunity`) : `${accountName} Opportunity`,
               accountId: account.id,
               contactId: contact.id,
               closeDate,
@@ -299,8 +336,9 @@ async function convertLeads(ids: string[], values: Record<string, unknown>, orga
               createdById: userId,
               updatedById: userId
             }
-          })
-        : null;
+          });
+        }
+      }
 
       const convertedLead = await tx.lead.update({
         where: { id: lead.id },

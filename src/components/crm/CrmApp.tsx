@@ -39,6 +39,7 @@ import {
   Megaphone,
   MessageSquareText,
   MessagesSquare,
+  Minus,
   MoreHorizontal,
   PanelLeft,
   Pin,
@@ -122,6 +123,7 @@ type ModalState =
   | { type: "knowledge"; record?: RecordData }
   | { type: "listEmail"; record?: RecordData; initialValues?: RecordData; startingStep?: 1 | 2; layout?: string }
   | { type: "listAction"; action: string; object: CrmObject; records: RecordData[]; selectedIds: string[] }
+  | { type: "leadConversionSuccess"; accounts: RecordData[]; contacts: RecordData[]; opportunities: RecordData[]; leads: RecordData[] }
   | { type: "quickTextFolder" }
   | { type: "marketingActivation"; record?: RecordData }
   | { type: "reportBuilder"; reportType?: string; record?: RecordData }
@@ -1060,14 +1062,21 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
           leads: upsertRecordsById(previous.leads, conversion.leads)
         })
       );
+      const primaryAccount = conversion.accounts[0];
       void createAppNotification({
         title: "Lead converted",
         body: `${selectedLeads.length} lead${selectedLeads.length === 1 ? "" : "s"} converted to account and contact records.`,
-        href: defaultRouteForObject("Lead"),
+        href: primaryAccount ? `/lightning/r/Account/${requiredId(primaryAccount)}/view` : defaultRouteForObject("Lead"),
         category: "Workflow"
       });
       showToast({ tone: "success", message: `${selectedLeads.length} lead${selectedLeads.length === 1 ? "" : "s"} converted.` });
-      closeModal();
+      setModal({
+        type: "leadConversionSuccess",
+        accounts: conversion.accounts,
+        contacts: conversion.contacts,
+        opportunities: conversion.opportunities,
+        leads: conversion.leads
+      });
       return;
     }
 
@@ -2681,11 +2690,20 @@ function HeaderUtility({
         <Popover.Content align="end" className={cn("z-50 rounded border border-[#d8dde6] bg-white shadow-popover", kind === "help" || kind === "settings" ? "w-[460px]" : kind === "agentforce" ? "w-[420px]" : "w-[360px]")}>
           <div className="flex items-center justify-between border-b border-[#d8dde6] px-3 py-2">
             <div className="font-semibold">{label}</div>
-            <Popover.Close asChild>
-              <button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label={`Close ${label}`}>
-                <X size={14} />
-              </button>
-            </Popover.Close>
+            <div className="flex items-center gap-1">
+              {kind === "help" && (
+                <Popover.Close asChild>
+                  <button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label={`Minimize ${label}`} title="Minimize">
+                    <Minus size={14} />
+                  </button>
+                </Popover.Close>
+              )}
+              <Popover.Close asChild>
+                <button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label={`Close ${label}`}>
+                  <X size={14} />
+                </button>
+              </Popover.Close>
+            </div>
           </div>
           {kind === "agentforce" && (
             <div className="p-3">
@@ -6758,6 +6776,7 @@ function ModalHost({
   if (modal.type === "knowledge") return <KnowledgeModal initial={modal.record} onClose={onClose} onSave={(values) => onSaveRecord("Knowledge__kav", values, { id: modal.record?.id })} />;
   if (modal.type === "listEmail") return <ListEmailWizard data={data} initialValues={modal.initialValues} startingStep={modal.startingStep} initialLayout={modal.layout} onClose={onClose} onSave={(values) => onSaveRecord("ListEmail", values, { id: modal.record?.id })} />;
   if (modal.type === "listAction") return <ListActionModal modal={modal} data={data} recordLabels={recordLabels} campaignMembers={campaignMembers} onClose={onClose} onSaveRecord={onSaveRecord} onApply={onApplyListAction} />;
+  if (modal.type === "leadConversionSuccess") return <LeadConversionSuccessModal modal={modal} onClose={onClose} />;
   if (modal.type === "quickTextFolder") return <QuickTextFolderModal onClose={onClose} onSave={(values) => onApplyListAction("New Folder", "QuickText", [], values)} />;
   if (modal.type === "marketingActivation") return <MarketingActivationModal user={data.user} initial={modal.record} onClose={onClose} onSave={(values) => onApplyListAction("Activate Marketing", "ListEmail", [], values)} />;
   if (modal.type === "reportBuilder") return <ReportBuilderModal reportType={modal.reportType} initial={modal.record} data={data} onClose={onClose} onDataChange={onDataChange} onToast={onToast} />;
@@ -6910,95 +6929,202 @@ function ListActionModal({
   if (modal.object === "Lead" && ["Show more actions", "Convert Lead"].includes(modal.action)) {
     const firstLead = selectedRecords[0] ?? {};
     const defaultAccountName = String(firstLead.company ?? "").trim() || "Converted Lead Account";
+    const defaultContactName = contactName(firstLead) || "Converted Contact";
     const defaultOpportunityName = `${String(firstLead.company ?? contactName(firstLead) ?? "Converted Lead").trim() || "Converted Lead"} Opportunity`;
     const accountName = String(values.accountName ?? defaultAccountName);
+    const accountMode = String(values.accountMode ?? "new") === "existing" ? "existing" : "new";
+    const contactMode = String(values.contactMode ?? "new") === "existing" ? "existing" : "new";
+    const opportunityMode = String(values.opportunityMode ?? "new") === "existing" ? "existing" : "new";
+    const existingAccountId = String(values.existingAccountId ?? "");
+    const existingContactId = String(values.existingContactId ?? "");
+    const existingOpportunityId = String(values.existingOpportunityId ?? "");
     const createOpportunity = values.createOpportunity !== false;
     const closeDate = String(values.closeDate ?? defaultLeadConversionCloseDate());
-    const stage = String(values.stage ?? "Qualify");
-    const forecastCategory = String(values.forecastCategory ?? "Pipeline");
     const convertedStatus = String(values.convertedStatus ?? "Qualified");
+    const matchedAccounts = targetCount === 1 ? matchingAccountsForLead(data.accounts, firstLead) : [];
+    const matchedContacts = targetCount === 1 ? matchingContactsForLead(data.contacts, firstLead) : [];
+    const opportunityOptions = data.opportunities.filter((opportunity) => {
+      if (!existingAccountId) return true;
+      return String(opportunity.accountId ?? "") === existingAccountId;
+    });
+    const canConvert =
+      targetCount > 0 &&
+      (targetCount > 1 ||
+        ((accountMode === "new" ? Boolean(accountName.trim()) : Boolean(existingAccountId)) &&
+          (contactMode === "new" || Boolean(existingContactId)) &&
+          (!createOpportunity || opportunityMode === "new" || Boolean(existingOpportunityId))));
+    const accountLookupField: FieldDefinition = { name: "existingAccountId", label: "Account", section: "Account", type: "lookup", lookupObject: "Account" };
+    const contactLookupField: FieldDefinition = { name: "existingContactId", label: "Contact", section: "Contact", type: "lookup", lookupObject: "Contact" };
+    const opportunityLookupField: FieldDefinition = { name: "existingOpportunityId", label: "Opportunity", section: "Opportunity", type: "lookup", lookupObject: "Opportunity" };
     const footer = (
       <>
         <Button onClick={onClose}>Cancel</Button>
         <Button
           variant="primary"
-          disabled={targetCount === 0}
+          disabled={!canConvert}
           onClick={() =>
             onApply("Convert Lead", "Lead", effectiveSelectedIds, {
               accountName,
+              accountMode,
+              existingAccountId: accountMode === "existing" ? existingAccountId : "",
+              contactMode,
+              existingContactId: contactMode === "existing" ? existingContactId : "",
               createOpportunity,
+              opportunityMode: createOpportunity ? opportunityMode : "new",
+              existingOpportunityId: createOpportunity && opportunityMode === "existing" ? existingOpportunityId : "",
               opportunityName: String(values.opportunityName ?? defaultOpportunityName),
               closeDate,
-              stage,
-              forecastCategory,
+              stage: "Qualify",
+              forecastCategory: "Pipeline",
               convertedStatus
             })
           }
         >
-          Convert Lead
+          Convert
         </Button>
       </>
     );
     return (
       <BaseDialog open title={modal.action === "Convert Lead" ? "Convert Lead" : "Show More Actions: Leads"} onClose={onClose} wide footer={footer}>
         <div className="grid gap-4">
-          <div className="rounded border border-[#d8dde6] bg-[#f8f8f8] p-3 text-sm">
-            <div className="font-semibold">Convert Lead</div>
-            <div className="mt-1 text-xs text-[#706e6b]">
-              {targetCount > 0 ? `${targetCount} lead${targetCount === 1 ? "" : "s"} will be converted.` : "Select a lead before converting."}
-            </div>
+          <div className="rounded border border-[#d8dde6] bg-[#f3f9ff] px-3 py-2 text-sm text-[#16325c]">
+            {targetCount === 0
+              ? "Select a lead before converting."
+              : targetCount === 1
+                ? `Convert ${defaultContactName} into an account, contact, and optional opportunity.`
+                : `${targetCount} leads will each convert into an account, contact, and optional opportunity.`}
           </div>
-          {targetCount > 0 && (
-            <div className="grid gap-3 md:grid-cols-2">
-              <FieldShell label="Account Name">
-                <input
-                  className={inputClass}
-                  value={accountName}
-                  disabled={targetCount > 1}
-                  onChange={(event) => setValues({ ...values, accountName: event.target.value })}
-                />
-                {targetCount > 1 && <p className="mt-1 text-xs text-[#706e6b]">Each selected lead uses its Company value for the converted account.</p>}
+          {targetCount === 1 ? (
+            <div className="grid gap-3">
+              <ConversionSection
+                icon={Building2}
+                title="Account"
+                subtitle="Company the contact belongs to"
+                mode={accountMode}
+                onModeChange={(mode) => setValues({ ...values, accountMode: mode, existingAccountId: mode === "existing" ? existingAccountId || requiredId(matchedAccounts[0] ?? {}) : "" })}
+              >
+                {accountMode === "new" ? (
+                  <FieldShell label="Account Name">
+                    <input className={inputClass} value={accountName} onChange={(event) => setValues({ ...values, accountName: event.target.value })} />
+                  </FieldShell>
+                ) : (
+                  <div className="space-y-2">
+                    {matchedAccounts.length > 0 && !existingAccountId && (
+                      <button
+                        type="button"
+                        className="w-full rounded border border-[#94d0ff] bg-[#f3f9ff] px-3 py-2 text-left text-sm hover:bg-[#e8f4ff]"
+                        onClick={() => setValues({ ...values, accountMode: "existing", existingAccountId: requiredId(matchedAccounts[0]) })}
+                      >
+                        Suggested match: <span className="font-semibold">{String(matchedAccounts[0].name)}</span>
+                      </button>
+                    )}
+                    <LookupField field={accountLookupField} value={existingAccountId} data={data} onChange={(next) => setValues({ ...values, existingAccountId: next })} />
+                  </div>
+                )}
+              </ConversionSection>
+
+              <ConversionSection
+                icon={User}
+                title="Contact"
+                subtitle={defaultContactName}
+                mode={contactMode}
+                onModeChange={(mode) => setValues({ ...values, contactMode: mode, existingContactId: mode === "existing" ? existingContactId || requiredId(matchedContacts[0] ?? {}) : "" })}
+              >
+                {contactMode === "new" ? (
+                  <div className="rounded border border-dashed border-[#d8dde6] bg-[#fafaf9] px-3 py-2 text-sm text-[#706e6b]">
+                    A new contact will be created as <span className="font-medium text-[#080707]">{defaultContactName}</span>
+                    {firstLead.email ? <> · {String(firstLead.email)}</> : null}
+                    {firstLead.phone ? <> · {String(firstLead.phone)}</> : null}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {matchedContacts.length > 0 && !existingContactId && (
+                      <button
+                        type="button"
+                        className="w-full rounded border border-[#94d0ff] bg-[#f3f9ff] px-3 py-2 text-left text-sm hover:bg-[#e8f4ff]"
+                        onClick={() => setValues({ ...values, contactMode: "existing", existingContactId: requiredId(matchedContacts[0]) })}
+                      >
+                        Suggested match: <span className="font-semibold">{contactName(matchedContacts[0])}</span>
+                        {matchedContacts[0].email ? <span className="text-[#706e6b]"> · {String(matchedContacts[0].email)}</span> : null}
+                      </button>
+                    )}
+                    <LookupField field={contactLookupField} value={existingContactId} data={data} onChange={(next) => setValues({ ...values, existingContactId: next })} />
+                  </div>
+                )}
+              </ConversionSection>
+
+              <ConversionSection
+                icon={Target}
+                title="Opportunity"
+                subtitle="Optional deal for this conversion"
+                mode={createOpportunity ? opportunityMode : "new"}
+                onModeChange={(mode) => setValues({ ...values, createOpportunity: true, opportunityMode: mode })}
+                disabled={!createOpportunity}
+                extraHeader={
+                  <label className="flex items-center gap-2 text-sm text-[#444]">
+                    <RadixCheckbox
+                      checked={!createOpportunity}
+                      onCheckedChange={(checked) => setValues({ ...values, createOpportunity: !checked, opportunityMode: "new", existingOpportunityId: "" })}
+                    />
+                    Don&apos;t create an opportunity
+                  </label>
+                }
+              >
+                {createOpportunity ? (
+                  opportunityMode === "new" ? (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <FieldShell label="Opportunity Name">
+                        <input className={inputClass} value={String(values.opportunityName ?? defaultOpportunityName)} onChange={(event) => setValues({ ...values, opportunityName: event.target.value })} />
+                      </FieldShell>
+                      <FieldShell label="Close Date">
+                        <input className={inputClass} type="date" value={closeDate} onChange={(event) => setValues({ ...values, closeDate: event.target.value })} />
+                      </FieldShell>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {opportunityOptions.length === 0 && existingAccountId ? (
+                        <p className="text-xs text-[#706e6b]">No open opportunities on the selected account. Search all opportunities below, or create a new one.</p>
+                      ) : null}
+                      <LookupField
+                        field={opportunityLookupField}
+                        value={existingOpportunityId}
+                        data={{ ...data, opportunities: opportunityOptions.length ? opportunityOptions : data.opportunities }}
+                        onChange={(next) => setValues({ ...values, existingOpportunityId: next })}
+                      />
+                    </div>
+                  )
+                ) : (
+                  <p className="text-sm text-[#706e6b]">This lead will convert to an account and contact only.</p>
+                )}
+              </ConversionSection>
+
+              <FieldShell label="Converted Status">
+                <NativeSelect options={LEAD_STATUS.filter((status) => status !== "--None--")} value={convertedStatus} onChange={(value) => setValues({ ...values, convertedStatus: value })} />
+              </FieldShell>
+            </div>
+          ) : targetCount > 1 ? (
+            <div className="grid gap-3">
+              <p className="text-sm text-[#706e6b]">Each selected lead uses its Company value for the converted account and creates a matching contact.</p>
+              <FieldShell label="Create Opportunity">
+                <RadixCheckbox checked={createOpportunity} onCheckedChange={(value) => setValues({ ...values, createOpportunity: Boolean(value) })} />
               </FieldShell>
               <FieldShell label="Converted Status">
                 <NativeSelect options={LEAD_STATUS.filter((status) => status !== "--None--")} value={convertedStatus} onChange={(value) => setValues({ ...values, convertedStatus: value })} />
               </FieldShell>
-              <FieldShell label="Create Opportunity">
-                <RadixCheckbox checked={createOpportunity} onCheckedChange={(value) => setValues({ ...values, createOpportunity: Boolean(value) })} />
-              </FieldShell>
-              {createOpportunity && (
-                <>
-                  <FieldShell label="Opportunity Name">
-                    <input className={inputClass} value={String(values.opportunityName ?? defaultOpportunityName)} onChange={(event) => setValues({ ...values, opportunityName: event.target.value })} />
-                  </FieldShell>
-                  <FieldShell label="Close Date">
-                    <input className={inputClass} type="date" value={closeDate} onChange={(event) => setValues({ ...values, closeDate: event.target.value })} />
-                  </FieldShell>
-                  <FieldShell label="Stage">
-                    <NativeSelect options={OPPORTUNITY_STAGE.filter((item) => item !== "--None--")} value={stage} onChange={(value) => setValues({ ...values, stage: value })} />
-                  </FieldShell>
-                  <FieldShell label="Forecast Category">
-                    <NativeSelect options={FORECAST_CATEGORY.filter((item) => item !== "--None--")} value={forecastCategory} onChange={(value) => setValues({ ...values, forecastCategory: value })} />
-                  </FieldShell>
-                </>
-              )}
+              <div className="rounded border border-[#d8dde6]">
+                <div className="border-b border-[#d8dde6] bg-[#f8f8f8] px-3 py-2 text-xs font-semibold uppercase text-[#706e6b]">Selected Leads</div>
+                <div className="max-h-48 overflow-auto p-2">
+                  {selectedRecords.map((lead) => (
+                    <div key={requiredId(lead)} className="grid gap-1 border-b border-[#f3f3f3] px-2 py-2 text-sm last:border-b-0 md:grid-cols-[1fr_1fr_120px]">
+                      <span className="font-medium">{contactName(lead) || "Unnamed Lead"}</span>
+                      <span className="text-[#706e6b]">{String(lead.company ?? "No company")}</span>
+                      <span className="text-[#706e6b]">{String(lead.status ?? "New")}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          )}
-          <div className="rounded border border-[#d8dde6]">
-            <div className="border-b border-[#d8dde6] bg-[#f8f8f8] px-3 py-2 text-xs font-semibold uppercase text-[#706e6b]">Selected Leads</div>
-            <div className="max-h-48 overflow-auto p-2">
-              {selectedRecords.length === 0 ? (
-                <div className="p-3 text-sm text-[#706e6b]">No leads selected.</div>
-              ) : (
-                selectedRecords.map((lead) => (
-                  <div key={requiredId(lead)} className="grid gap-1 border-b border-[#f3f3f3] px-2 py-2 text-sm last:border-b-0 md:grid-cols-[1fr_1fr_120px]">
-                    <span className="font-medium">{contactName(lead) || "Unnamed Lead"}</span>
-                    <span className="text-[#706e6b]">{String(lead.company ?? "No company")}</span>
-                    <span className="text-[#706e6b]">{String(lead.status ?? "New")}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+          ) : null}
         </div>
       </BaseDialog>
     );
@@ -8840,6 +8966,151 @@ function lookupPlaceholder(field: FieldDefinition) {
   return `Search ${OBJECT_DEFINITIONS[field.lookupObject as CrmObject]?.plural ?? "Records"}...`;
 }
 
+function matchingAccountsForLead(accounts: RecordData[], lead: RecordData) {
+  const company = normalizedText(lead.company);
+  if (!company) return [];
+  return accounts.filter((account) => {
+    const name = normalizedText(account.name);
+    return name === company || name.includes(company) || company.includes(name);
+  }).slice(0, 3);
+}
+
+function matchingContactsForLead(contacts: RecordData[], lead: RecordData) {
+  const email = String(lead.email ?? "").trim().toLowerCase();
+  const fullName = normalizedText(contactName(lead));
+  return contacts.filter((contact) => {
+    if (email && String(contact.email ?? "").trim().toLowerCase() === email) return true;
+    return Boolean(fullName) && normalizedText(contactName(contact)) === fullName;
+  }).slice(0, 3);
+}
+
+function ConversionSection({
+  icon: Icon,
+  title,
+  subtitle,
+  mode,
+  onModeChange,
+  disabled,
+  extraHeader,
+  children
+}: {
+  icon: ElementType;
+  title: string;
+  subtitle: string;
+  mode: "new" | "existing";
+  onModeChange: (mode: "new" | "existing") => void;
+  disabled?: boolean;
+  extraHeader?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className={cn("rounded-lg border border-[#d8dde6] bg-white", disabled && "opacity-60")}>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#ecebea] px-3 py-2.5">
+        <div className="flex min-w-0 items-start gap-2">
+          <Icon size={18} className="mt-0.5 shrink-0 text-brand-600" />
+          <div className="min-w-0">
+            <div className="font-semibold text-[#080707]">{title}</div>
+            <div className="truncate text-xs text-[#706e6b]">{subtitle}</div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {extraHeader}
+          {!disabled && (
+            <div className="inline-flex overflow-hidden rounded border border-[#c9c9c9] text-xs">
+              <button
+                type="button"
+                className={cn("px-2.5 py-1.5", mode === "new" ? "bg-brand-600 text-white" : "bg-white text-[#444] hover:bg-[#f3f3f3]")}
+                onClick={() => onModeChange("new")}
+              >
+                Create New
+              </button>
+              <button
+                type="button"
+                className={cn("px-2.5 py-1.5", mode === "existing" ? "bg-brand-600 text-white" : "bg-white text-[#444] hover:bg-[#f3f3f3]")}
+                onClick={() => onModeChange("existing")}
+              >
+                Choose Existing
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="p-3">{children}</div>
+    </div>
+  );
+}
+
+function LeadConversionSuccessModal({
+  modal,
+  onClose
+}: {
+  modal: Extract<ModalState, { type: "leadConversionSuccess" }>;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const account = modal.accounts[0];
+  const contact = modal.contacts[0];
+  const opportunity = modal.opportunities[0];
+  const rows = [
+    account ? { label: "Account", name: String(account.name ?? "Account"), href: `/lightning/r/Account/${requiredId(account)}/view`, icon: Building2 } : null,
+    contact ? { label: "Contact", name: contactName(contact) || "Contact", href: `/lightning/r/Contact/${requiredId(contact)}/view`, icon: User } : null,
+    opportunity ? { label: "Opportunity", name: String(opportunity.name ?? "Opportunity"), href: `/lightning/r/Opportunity/${requiredId(opportunity)}/view`, icon: Target } : null
+  ].filter(Boolean) as Array<{ label: string; name: string; href: string; icon: ElementType }>;
+
+  function go(href: string) {
+    onClose();
+    router.push(href);
+  }
+
+  return (
+    <BaseDialog
+      open
+      title="Your lead has been converted"
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Close</Button>
+          {account && (
+            <Button variant="primary" onClick={() => go(`/lightning/r/Account/${requiredId(account)}/view`)}>
+              Go to Account
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div className="flex items-start gap-2 rounded border border-[#abe2b4] bg-[#eef8f0] px-3 py-2 text-sm text-[#2e844a]">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+          <span>
+            {modal.leads.length} lead{modal.leads.length === 1 ? "" : "s"} converted successfully.
+            {opportunity ? "" : " No opportunity was created."}
+          </span>
+        </div>
+        <div className="space-y-2">
+          {rows.map((row) => {
+            const Icon = row.icon;
+            return (
+              <button
+                key={row.href}
+                type="button"
+                className="flex w-full items-center gap-3 rounded border border-[#d8dde6] bg-white px-3 py-2.5 text-left hover:border-brand-300 hover:bg-[#f8fbff]"
+                onClick={() => go(row.href)}
+              >
+                <Icon size={16} className="text-brand-600" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs uppercase tracking-wide text-[#706e6b]">{row.label}</div>
+                  <div className="truncate font-medium text-brand-700">{row.name}</div>
+                </div>
+                <ChevronRight size={16} className="text-[#706e6b]" />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </BaseDialog>
+  );
+}
+
 function BaseDialog({ open, title, children, footer, onClose, wide = false }: { open: boolean; title: string; children: ReactNode; footer?: ReactNode; onClose: () => void; wide?: boolean }) {
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
@@ -10104,7 +10375,11 @@ function fallbackLeadConversionRecords(leads: RecordData[], data: BootstrapData,
   const stage = String(payload.stage ?? "Qualify");
   const forecastCategory = String(payload.forecastCategory ?? "Pipeline");
   const createOpportunity = payload.createOpportunity !== false;
-  const singleAccountName = leads.length === 1 ? String(payload.accountName ?? "").trim() : "";
+  const singleLead = leads.length === 1;
+  const singleAccountName = singleLead ? String(payload.accountName ?? "").trim() : "";
+  const existingAccountId = singleLead ? String(payload.existingAccountId ?? "").trim() : "";
+  const existingContactId = singleLead ? String(payload.existingContactId ?? "").trim() : "";
+  const existingOpportunityId = singleLead && createOpportunity ? String(payload.existingOpportunityId ?? "").trim() : "";
   const accounts: RecordData[] = [];
   const contacts: RecordData[] = [];
   const opportunities: RecordData[] = [];
@@ -10113,7 +10388,9 @@ function fallbackLeadConversionRecords(leads: RecordData[], data: BootstrapData,
   leads.forEach((lead, index) => {
     const leadId = requiredId(lead) || `lead-${Date.now()}-${index}`;
     const accountName = singleAccountName || String(lead.company ?? contactName(lead) ?? "Converted Lead Account").trim() || "Converted Lead Account";
-    const existingAccount = data.accounts.find((account) => normalizedText(account.name) === normalizedText(accountName));
+    const existingAccount =
+      (existingAccountId ? data.accounts.find((account) => requiredId(account) === existingAccountId) : undefined) ??
+      data.accounts.find((account) => normalizedText(account.name) === normalizedText(accountName));
     const account =
       existingAccount ??
       ({
@@ -10134,48 +10411,54 @@ function fallbackLeadConversionRecords(leads: RecordData[], data: BootstrapData,
         updatedAt: now
       } satisfies RecordData);
 
-    const contact = {
-      id: `converted-contact-${leadId}`,
-      salutation: lead.salutation ?? null,
-      firstName: lead.firstName ?? null,
-      lastName: String(lead.lastName ?? "Converted"),
-      accountId: requiredId(account),
-      title: lead.title ?? null,
-      description: lead.description ?? null,
-      ownerId: lead.ownerId ?? data.user.id,
-      phone: lead.phone ?? null,
-      email: lead.email ?? null,
-      mailingCountry: lead.country ?? null,
-      mailingStreet: lead.street ?? null,
-      mailingPostalCode: lead.postalCode ?? null,
-      mailingCity: lead.city ?? null,
-      mailingState: lead.state ?? null,
-      createdById: data.user.id,
-      updatedById: data.user.id,
-      createdAt: now,
-      updatedAt: now
-    } satisfies RecordData;
-
-    const opportunity = createOpportunity
-      ? ({
-          id: `converted-opportunity-${leadId}`,
-          name: leads.length === 1 ? String(payload.opportunityName ?? `${accountName} Opportunity`) : `${accountName} Opportunity`,
+    const existingContact = existingContactId ? data.contacts.find((contact) => requiredId(contact) === existingContactId) : undefined;
+    const contact = existingContact
+      ? ({ ...existingContact, accountId: requiredId(account), updatedById: data.user.id, updatedAt: now } satisfies RecordData)
+      : ({
+          id: `converted-contact-${leadId}`,
+          salutation: lead.salutation ?? null,
+          firstName: lead.firstName ?? null,
+          lastName: String(lead.lastName ?? "Converted"),
           accountId: requiredId(account),
-          contactId: requiredId(contact),
-          closeDate,
-          amount: null,
+          title: lead.title ?? null,
           description: lead.description ?? null,
           ownerId: lead.ownerId ?? data.user.id,
-          stage,
-          probability: stage === "Qualify" ? 10 : null,
-          forecastCategory,
-          nextStep: "Follow up after lead conversion",
+          phone: lead.phone ?? null,
+          email: lead.email ?? null,
+          mailingCountry: lead.country ?? null,
+          mailingStreet: lead.street ?? null,
+          mailingPostalCode: lead.postalCode ?? null,
+          mailingCity: lead.city ?? null,
+          mailingState: lead.state ?? null,
           createdById: data.user.id,
           updatedById: data.user.id,
           createdAt: now,
           updatedAt: now
-        } satisfies RecordData)
-      : null;
+        } satisfies RecordData);
+
+    const existingOpportunity = existingOpportunityId ? data.opportunities.find((opportunity) => requiredId(opportunity) === existingOpportunityId) : undefined;
+    const opportunity = !createOpportunity
+      ? null
+      : existingOpportunity
+        ? ({ ...existingOpportunity, accountId: requiredId(account), contactId: requiredId(contact), updatedById: data.user.id, updatedAt: now } satisfies RecordData)
+        : ({
+            id: `converted-opportunity-${leadId}`,
+            name: singleLead ? String(payload.opportunityName ?? `${accountName} Opportunity`) : `${accountName} Opportunity`,
+            accountId: requiredId(account),
+            contactId: requiredId(contact),
+            closeDate,
+            amount: null,
+            description: lead.description ?? null,
+            ownerId: lead.ownerId ?? data.user.id,
+            stage,
+            probability: stage === "Qualify" ? 10 : null,
+            forecastCategory,
+            nextStep: "Follow up after lead conversion",
+            createdById: data.user.id,
+            updatedById: data.user.id,
+            createdAt: now,
+            updatedAt: now
+          } satisfies RecordData);
 
     accounts.push(account);
     contacts.push(contact);
@@ -10183,6 +10466,7 @@ function fallbackLeadConversionRecords(leads: RecordData[], data: BootstrapData,
     convertedLeads.push({
       ...lead,
       status,
+      convertedAt: now,
       convertedAccountId: requiredId(account),
       convertedContactId: requiredId(contact),
       convertedOpportunityId: opportunity ? requiredId(opportunity) : null,
