@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { AppSession } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 const APP_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -15,6 +16,37 @@ function truncate(value: string | null | undefined, length: number) {
   return normalized ? normalized.slice(0, length) : null;
 }
 
+async function touchExistingAppSession(
+  existing: AppSession,
+  input: {
+    id: string;
+    userId: string;
+    keycloakSub: string;
+    keycloakSessionId?: string | null;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  },
+  now: Date
+): Promise<AppSessionTouchResult> {
+  if (existing.userId !== input.userId || existing.revokedAt || existing.lastSeenAt < cutoff()) {
+    if (!existing.revokedAt) {
+      await prisma.appSession.update({ where: { id: input.id }, data: { revokedAt: now } });
+    }
+    return "revoked";
+  }
+
+  await prisma.appSession.update({
+    where: { id: input.id },
+    data: {
+      keycloakSessionId: input.keycloakSessionId ?? null,
+      ipAddress: truncate(input.ipAddress, 128),
+      userAgent: truncate(input.userAgent, 512),
+      lastSeenAt: now
+    }
+  });
+  return "active";
+}
+
 export async function touchAppSession(input: {
   id: string;
   userId: string;
@@ -27,25 +59,10 @@ export async function touchAppSession(input: {
     const now = new Date();
     const existing = await prisma.appSession.findUnique({ where: { id: input.id } });
     if (existing) {
-      if (existing.userId !== input.userId || existing.revokedAt || existing.lastSeenAt < cutoff()) {
-        if (!existing.revokedAt) {
-          await prisma.appSession.update({ where: { id: input.id }, data: { revokedAt: now } });
-        }
-        return "revoked";
-      }
-      await prisma.appSession.update({
-        where: { id: input.id },
-        data: {
-          keycloakSessionId: input.keycloakSessionId ?? null,
-          ipAddress: truncate(input.ipAddress, 128),
-          userAgent: truncate(input.userAgent, 512),
-          lastSeenAt: now
-        }
-      });
-      return "active";
+      return touchExistingAppSession(existing, input, now);
     }
 
-    await prisma.appSession.create({
+    const created = await prisma.appSession.createMany({
       data: {
         id: input.id,
         userId: input.userId,
@@ -54,9 +71,18 @@ export async function touchAppSession(input: {
         ipAddress: truncate(input.ipAddress, 128),
         userAgent: truncate(input.userAgent, 512),
         lastSeenAt: now
-      }
+      },
+      skipDuplicates: true
     });
-    return "active";
+    if (created.count === 1) {
+      return "active";
+    }
+
+    // Multiple requests can materialize the same freshly issued JWT in parallel.
+    // If another request won the insert race, treat its row as the existing session.
+    const raced = await prisma.appSession.findUnique({ where: { id: input.id } });
+    if (!raced) throw new Error("App session insert was skipped without an existing row.");
+    return touchExistingAppSession(raced, input, new Date());
   } catch (error) {
     console.warn("[auth] app-session registry unavailable", error);
     return "unavailable";
