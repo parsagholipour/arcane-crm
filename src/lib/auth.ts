@@ -148,8 +148,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
         applyUser(token, user);
         const sessionState = await registerSession(token, user);
-        if (sessionState !== "active") markForceSignOut(token);
-        else clearForceSignOut(token);
+        if (sessionState === "revoked") markForceSignOut(token);
+        else if (sessionState === "active") clearForceSignOut(token);
       } catch (error) {
         console.error("[auth] application identity resolution failed", error);
         markForceSignOut(token);

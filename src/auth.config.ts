@@ -1,6 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
 import Keycloak from "next-auth/providers/keycloak";
-import { NextResponse } from "next/server";
 
 export function isPublicAuthPath(pathname: string) {
   return pathname.startsWith("/auth/") || pathname.startsWith("/knowledge/") || pathname.startsWith("/forms/") || pathname === "/no-organization";
@@ -23,13 +22,6 @@ export default {
         delete (session as { user?: unknown }).user;
       }
       return session;
-    },
-    authorized({ auth, request }) {
-      if (isPublicAuthPath(request.nextUrl.pathname)) return true;
-      if (auth?.forceSignOut) {
-        return NextResponse.redirect(new URL("/auth/signout", request.nextUrl.origin));
-      }
-      return Boolean(auth?.user);
     }
   }
 } satisfies NextAuthConfig;
