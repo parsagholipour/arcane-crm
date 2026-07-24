@@ -3,16 +3,12 @@ import "server-only";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { AppAuthorizationError } from "@/lib/authorization-errors";
 import { prisma } from "@/lib/prisma";
+export { AppAuthorizationError } from "@/lib/authorization-errors";
+export { activateOrganizationForUser } from "@/lib/organization-activation";
 
 export const ACTIVE_ORGANIZATION_COOKIE = "crm_active_organization";
-
-export class AppAuthorizationError extends Error {
-  constructor(message: string, readonly status: 401 | 403 | 404 = 403) {
-    super(message);
-    this.name = "AppAuthorizationError";
-  }
-}
 
 export async function requireAuthenticatedUser() {
   const session = await auth();
@@ -54,6 +50,17 @@ export async function requireOrganizationAdmin() {
   const context = await requireOrganizationContext();
   if (context.role !== "ADMIN") throw new AppAuthorizationError("Organization administrator access required.", 403);
   return context;
+}
+
+export function setActiveOrganizationCookie(response: NextResponse, organizationId: string) {
+  response.cookies.set(ACTIVE_ORGANIZATION_COOKIE, organizationId, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 30 * 24 * 60 * 60
+  });
+  return response;
 }
 
 export function authorizationErrorResponse(error: unknown) {

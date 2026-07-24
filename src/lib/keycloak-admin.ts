@@ -138,10 +138,14 @@ export async function setKeycloakUserEnabled(id: string, enabled: boolean) {
   });
 }
 
-export async function sendKeycloakActionsEmail(id: string, actions: Array<"VERIFY_EMAIL" | "UPDATE_PASSWORD">) {
+export async function sendKeycloakActionsEmail(
+  id: string,
+  actions: Array<"VERIFY_EMAIL" | "UPDATE_PASSWORD">,
+  callbackPath = "/lightning/page/home"
+) {
   const config = location();
   const lifespan = Number(process.env.KEYCLOAK_INVITE_LIFESPAN_SECONDS ?? 86400);
-  const returnUrl = `${(process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "")}/auth/keycloak?callbackUrl=${encodeURIComponent("/lightning/page/home")}`;
+  const returnUrl = `${(process.env.AUTH_URL ?? "http://localhost:3000").replace(/\/$/, "")}/auth/keycloak?callbackUrl=${encodeURIComponent(callbackPath)}`;
   const query = new URLSearchParams({
     client_id: process.env.AUTH_KEYCLOAK_ID ?? "",
     redirect_uri: returnUrl,

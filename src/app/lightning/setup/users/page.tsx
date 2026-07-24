@@ -4,6 +4,7 @@ import { OrganizationUsersClient } from "@/components/admin/OrganizationUsersCli
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { ReloriqLogo } from "@/components/brand/ReloriqLogo";
 import { AppAuthorizationError, requireOrganizationAdmin } from "@/lib/organization-context";
+import { ORGANIZATION_INVITATION_SOURCE } from "@/lib/organization-invitations";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail } from "@/lib/super-admin-constants";
 
@@ -17,6 +18,22 @@ export default async function OrganizationUsersPage() {
       include: { user: true },
       orderBy: [{ role: "asc" }, { createdAt: "asc" }]
     });
+    const deliveries = memberships.length ? await prisma.emailDelivery.findMany({
+      where: {
+        organizationId: context.organizationId,
+        sourceType: ORGANIZATION_INVITATION_SOURCE,
+        sourceId: { in: memberships.map((membership) => membership.id) }
+      },
+      orderBy: { acceptedAt: "desc" }
+    }) : [];
+    const latestDeliveries = new Map<string, (typeof deliveries)[number]>();
+    for (const delivery of deliveries) {
+      if (delivery.sourceId && !latestDeliveries.has(delivery.sourceId)) latestDeliveries.set(delivery.sourceId, delivery);
+    }
+    const membershipsWithDelivery = memberships.map((membership) => ({
+      ...membership,
+      invitationDelivery: latestDeliveries.get(membership.id) ?? null
+    }));
     return (
       <div className="min-h-screen bg-[#f3f3f3] text-[#181818]">
         <header className="flex min-h-14 items-center gap-4 border-b border-[#d8dde6] bg-white px-5">
@@ -27,7 +44,7 @@ export default async function OrganizationUsersPage() {
         <main className="mx-auto max-w-6xl p-5">
           <h1 className="text-2xl font-semibold">Organization users</h1>
           <p className="mt-1 mb-5 text-sm text-[#706e6b]">Manage roles and access for {context.organization.name}. Global identity and credential operations require a super admin.</p>
-          <OrganizationUsersClient initialMemberships={JSON.parse(JSON.stringify(memberships))} />
+          <OrganizationUsersClient initialMemberships={JSON.parse(JSON.stringify(membershipsWithDelivery))} />
         </main>
       </div>
     );

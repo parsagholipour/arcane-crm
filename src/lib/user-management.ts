@@ -1,7 +1,8 @@
 import "server-only";
 
-import type { MembershipStatus, OrganizationRole } from "@prisma/client";
+import type { MembershipStatus, Organization, OrganizationMembership, OrganizationRole, User } from "@prisma/client";
 import { deleteKeycloakUser, provisionKeycloakUser, sendKeycloakActionsEmail } from "@/lib/keycloak-admin";
+import { sendOrganizationInvitation } from "@/lib/organization-invitations";
 import { prisma } from "@/lib/prisma";
 import { normalizeEmail } from "@/lib/super-admin-constants";
 
@@ -24,11 +25,69 @@ function validEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+export async function deliverMembershipOnboarding(input: {
+  organization: { id: string; name: string };
+  membership: { id: string; role: OrganizationRole };
+  user: { id: string; keycloakSub: string | null; email: string | null; name: string };
+  initiatedByUserId: string;
+  newIdentity: boolean;
+}, dependencies: {
+  sendInvitation?: typeof sendOrganizationInvitation;
+  sendSetup?: typeof sendKeycloakActionsEmail;
+  markSetupSent?: (userId: string, sentAt: Date) => Promise<void>;
+  now?: () => Date;
+  warn?: (message: string, reason: unknown) => void;
+} = {}) {
+  const invitationAttempt = (dependencies.sendInvitation ?? sendOrganizationInvitation)({
+    organizationId: input.organization.id,
+    organizationName: input.organization.name,
+    membershipId: input.membership.id,
+    recipientName: input.user.name,
+    recipientEmail: input.user.email ?? "",
+    role: input.membership.role,
+    initiatedByUserId: input.initiatedByUserId,
+    newIdentity: input.newIdentity
+  });
+  const setupAttempt = input.newIdentity && input.user.keycloakSub
+    ? (dependencies.sendSetup ?? sendKeycloakActionsEmail)(
+        input.user.keycloakSub,
+        ["VERIFY_EMAIL", "UPDATE_PASSWORD"],
+        `/organizations/activate?organizationId=${encodeURIComponent(input.organization.id)}`
+      ).then(async () => {
+        const sentAt = dependencies.now?.() ?? new Date();
+        await (dependencies.markSetupSent ?? (async (userId, timestamp) => {
+          await prisma.user.update({ where: { id: userId }, data: { setupEmailSentAt: timestamp } });
+        }))(input.user.id, sentAt);
+        return sentAt;
+      })
+    : Promise.resolve(null);
+  const [invitationResult, setupResult] = await Promise.allSettled([invitationAttempt, setupAttempt]);
+  const warnings: string[] = [];
+  const warn = dependencies.warn ?? console.warn;
+
+  if (invitationResult.status === "rejected") {
+    warn("Organization access granted but invitation email failed", invitationResult.reason);
+    warnings.push("The organization invitation email could not be sent. An administrator can retry it.");
+  }
+  if (setupResult.status === "rejected") {
+    warn("Keycloak identity created but setup email failed", setupResult.reason);
+    warnings.push("The account setup email could not be sent. A super administrator can retry it.");
+  }
+
+  return {
+    invitationEmailSent: invitationResult.status === "fulfilled",
+    setupEmailSent: input.newIdentity && setupResult.status === "fulfilled",
+    invitationDelivery: invitationResult.status === "fulfilled" ? invitationResult.value.invitationDelivery : null,
+    warning: warnings.length ? warnings.join(" ") : null
+  };
+}
+
 export async function inviteOrganizationMember(input: {
   organizationId: string;
   email: string;
   name: string;
   role: OrganizationRole;
+  initiatedByUserId: string;
 }) {
   const email = normalizeEmail(input.email);
   const name = normalizeName(input.name);
@@ -40,8 +99,9 @@ export async function inviteOrganizationMember(input: {
   if (!organization || organization.status !== "ACTIVE") throw new UserManagementError("Organization is not active.", 404);
 
   const provisioned = await provisionKeycloakUser({ email, name });
+  let membership: OrganizationMembership & { user: User };
   try {
-    const membership = await prisma.$transaction(async (tx) => {
+    membership = await prisma.$transaction(async (tx) => {
       const bySub = await tx.user.findUnique({ where: { keycloakSub: provisioned.id } });
       const byEmail = bySub ? null : await tx.user.findUnique({ where: { email } });
       const existing = bySub ?? byEmail;
@@ -59,25 +119,35 @@ export async function inviteOrganizationMember(input: {
         ? tx.organizationMembership.update({ where: { id: current.id }, data: { role: input.role, status: "ACTIVE", invitedAt: new Date() }, include: { user: true } })
         : tx.organizationMembership.create({ data: { organizationId: input.organizationId, userId: user.id, role: input.role }, include: { user: true } });
     });
-
-    let warning: string | null = null;
-    if (provisioned.created) {
-      try {
-        await sendKeycloakActionsEmail(provisioned.id, ["VERIFY_EMAIL", "UPDATE_PASSWORD"]);
-        await prisma.organizationMembership.update({ where: { id: membership.id }, data: { inviteSentAt: new Date() } });
-      } catch (error) {
-        console.warn("Keycloak user created but setup email failed", error);
-        warning = "The user was created, but Keycloak could not deliver the setup email. A super admin can retry it.";
-      }
-    }
-    return { membership, keycloakUserCreated: provisioned.created, warning };
   } catch (error) {
     if (provisioned.created) await deleteKeycloakUser(provisioned.id).catch(() => undefined);
     throw error;
   }
+
+  const delivery = await deliverMembershipOnboarding({
+    organization,
+    membership,
+    user: membership.user,
+    initiatedByUserId: input.initiatedByUserId,
+    newIdentity: provisioned.created
+  });
+  return {
+    membership: {
+      ...membership,
+      inviteSentAt: delivery.invitationEmailSent ? delivery.invitationDelivery?.acceptedAt ?? membership.inviteSentAt : membership.inviteSentAt
+    },
+    keycloakUserCreated: provisioned.created,
+    ...delivery
+  };
 }
 
-export async function createOrganizationWithAdmin(input: { name: string; slug: string; adminName: string; adminEmail: string }) {
+export async function createOrganizationWithAdmin(input: {
+  name: string;
+  slug: string;
+  adminName: string;
+  adminEmail: string;
+  initiatedByUserId: string;
+}) {
   const name = normalizeName(input.name);
   const slug = (input.slug.trim() || name)
     .toLowerCase()
@@ -92,8 +162,9 @@ export async function createOrganizationWithAdmin(input: { name: string; slug: s
   if (await prisma.organization.findUnique({ where: { slug } })) throw new UserManagementError("That organization slug is already in use.", 409);
 
   const provisioned = await provisionKeycloakUser({ email, name: adminName });
+  let result: { organization: Organization; user: User; membership: OrganizationMembership };
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    result = await prisma.$transaction(async (tx) => {
       const organization = await tx.organization.create({ data: { name, slug } });
       const bySub = await tx.user.findUnique({ where: { keycloakSub: provisioned.id } });
       const byEmail = bySub ? null : await tx.user.findUnique({ where: { email } });
@@ -107,21 +178,66 @@ export async function createOrganizationWithAdmin(input: { name: string; slug: s
       });
       return { organization, user, membership };
     });
-
-    let warning: string | null = null;
-    if (provisioned.created) {
-      try {
-        await sendKeycloakActionsEmail(provisioned.id, ["VERIFY_EMAIL", "UPDATE_PASSWORD"]);
-        await prisma.organizationMembership.update({ where: { id: result.membership.id }, data: { inviteSentAt: new Date() } });
-      } catch (error) {
-        console.warn("Organization created but setup email failed", error);
-        warning = "Organization created, but Keycloak could not deliver the administrator setup email.";
-      }
-    }
-    return { ...result, warning };
   } catch (error) {
     if (provisioned.created) await deleteKeycloakUser(provisioned.id).catch(() => undefined);
     throw error;
+  }
+
+  const delivery = await deliverMembershipOnboarding({
+    organization: result.organization,
+    membership: result.membership,
+    user: result.user,
+    initiatedByUserId: input.initiatedByUserId,
+    newIdentity: provisioned.created
+  });
+  return {
+    ...result,
+    membership: {
+      ...result.membership,
+      inviteSentAt: delivery.invitationEmailSent ? delivery.invitationDelivery?.acceptedAt ?? result.membership.inviteSentAt : result.membership.inviteSentAt
+    },
+    keycloakUserCreated: provisioned.created,
+    ...delivery
+  };
+}
+
+export async function resendOrganizationInvitation(input: {
+  organizationId: string;
+  membershipId: string;
+  initiatedByUserId: string;
+}) {
+  const membership = await prisma.organizationMembership.findFirst({
+    where: {
+      id: input.membershipId,
+      organizationId: input.organizationId,
+      status: "ACTIVE",
+      organization: { status: "ACTIVE" },
+      user: { status: "ACTIVE" }
+    },
+    include: { organization: true, user: true }
+  });
+  if (!membership || !membership.user.email) throw new UserManagementError("Active organization membership not found.", 404);
+
+  try {
+    const delivery = await sendOrganizationInvitation({
+      organizationId: membership.organizationId,
+      organizationName: membership.organization.name,
+      membershipId: membership.id,
+      recipientName: membership.user.name,
+      recipientEmail: membership.user.email,
+      role: membership.role,
+      initiatedByUserId: input.initiatedByUserId,
+      newIdentity: Boolean(membership.user.setupEmailSentAt)
+    });
+    return {
+      membership: { ...membership, inviteSentAt: delivery.result.acceptedAt },
+      invitationEmailSent: true,
+      invitationDelivery: delivery.invitationDelivery,
+      warning: null
+    };
+  } catch (error) {
+    console.warn("Organization invitation resend failed", error);
+    throw new UserManagementError("The organization invitation email could not be sent. Check email configuration and try again.", 503);
   }
 }
 

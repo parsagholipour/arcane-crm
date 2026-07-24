@@ -25,7 +25,8 @@ export async function POST(request: NextRequest) {
       organizationId: context.organizationId,
       email: typeof payload.email === "string" ? payload.email : "",
       name: typeof payload.name === "string" ? payload.name : "",
-      role: payload.role === "ADMIN" ? "ADMIN" : "MEMBER"
+      role: payload.role === "ADMIN" ? "ADMIN" : "MEMBER",
+      initiatedByUserId: context.userId
     });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {

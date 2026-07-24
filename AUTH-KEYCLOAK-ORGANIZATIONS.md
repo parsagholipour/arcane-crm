@@ -8,10 +8,26 @@ Copy the authentication variables from `.env.example` and configure two Keycloak
 
 - The login client is a confidential OIDC client referenced by `AUTH_KEYCLOAK_ID` and `AUTH_KEYCLOAK_SECRET`. Allow `${AUTH_URL}/api/auth/callback/keycloak` and `${AUTH_URL}/auth/keycloak` as redirect URIs.
 - The Admin API client is a separate service-account client referenced by `AUTH_KEYCLOAK_ADMIN_CLIENT_ID` and `AUTH_KEYCLOAK_ADMIN_CLIENT_SECRET`. Grant realm permissions sufficient to view/manage users and view/manage sessions.
-- Configure realm SMTP. New identities receive a Keycloak execute-actions email for `VERIFY_EMAIL` and `UPDATE_PASSWORD`.
+- For least privilege, use a separate one-time realm configuration client in `KEYCLOAK_REALM_ADMIN_CLIENT_ID` and `KEYCLOAK_REALM_ADMIN_CLIENT_SECRET` with `realm-management/manage-realm`. If these are unset, the email configuration script uses the regular Admin API client, which must temporarily receive `manage-realm`.
+- Configure realm SMTP. New identities receive a Keycloak execute-actions email for `VERIFY_EMAIL` and `UPDATE_PASSWORD`, while every organization membership receives a separate tracked Reloriq invitation through SendGrid.
 - Set `SUPER_ADMIN_EMAILS` to a comma-separated email allowlist. These users are the only identities provisioned just in time; every other identity must first be invited.
 
 `AUTH_SECRET` must be a long random value and `AUTH_URL` must match the browser-visible origin. Because `trustHost` is enabled, production proxies must provide a trustworthy host.
+
+## Invitation email configuration
+
+Set `SENDGRID_API_KEY` and `SENDGRID_EMAIL` to a verified SendGrid sender. Configure the Keycloak realm to use the same provider as an SMTP relay:
+
+```bash
+npm run keycloak:email:configure
+npm run keycloak:email:check
+```
+
+The configure command is idempotent. It uses the Keycloak Admin API to set `smtp.sendgrid.net:587`, authenticated as `apikey`, with STARTTLS enabled. Neither command prints credentials. The check command is read-only and verifies both the realm SMTP shape and the configured SendGrid sender.
+
+After configuration succeeds, the dedicated realm configuration client can be disabled or its `manage-realm` role removed. The CRM runtime needs only its existing user and session management permissions.
+
+Membership access is committed before either email is attempted. Failed delivery therefore appears as an administrator warning and can be retried with **Resend invitation**. Credential setup remains a super-admin operation.
 
 ## Local database
 

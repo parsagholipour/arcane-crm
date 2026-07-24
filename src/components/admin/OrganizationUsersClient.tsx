@@ -6,6 +6,12 @@ type Membership = {
   id: string;
   role: "ADMIN" | "MEMBER";
   status: "ACTIVE" | "SUSPENDED";
+  inviteSentAt: string | null;
+  invitationDelivery: {
+    status: string;
+    acceptedAt: string;
+    lastReason: string | null;
+  } | null;
   user: { id: string; name: string; email: string | null; status: "ACTIVE" | "SUSPENDED"; lastLoginAt: string | null };
 };
 
@@ -39,14 +45,17 @@ export function OrganizationUsersClient({ initialMemberships }: { initialMembers
       body: JSON.stringify({ name: formData.get("name"), email: formData.get("email"), role: formData.get("role") })
     });
     if (!payload?.membership) return;
-    setMemberships((current) => [...current.filter((row) => row.id !== payload.membership.id), payload.membership]);
-    setMessage(payload.warning ?? (payload.keycloakUserCreated ? "Invitation sent." : "Existing Keycloak user added."));
+    const membership = { ...payload.membership, invitationDelivery: payload.invitationDelivery };
+    setMemberships((current) => [...current.filter((row) => row.id !== membership.id), membership]);
+    setMessage(payload.warning ?? "Organization invitation sent.");
   }
 
   async function update(membership: Membership, role: Membership["role"], status: Membership["status"]) {
     const payload = await request(`/api/organization/members/${membership.id}`, { method: "PATCH", body: JSON.stringify({ role, status }) });
     if (!payload?.membership) return;
-    setMemberships((current) => current.map((row) => (row.id === membership.id ? payload.membership : row)));
+    setMemberships((current) => current.map((row) => row.id === membership.id
+      ? { ...payload.membership, invitationDelivery: row.invitationDelivery }
+      : row));
     setMessage("Membership updated.");
   }
 
@@ -56,6 +65,14 @@ export function OrganizationUsersClient({ initialMemberships }: { initialMembers
     if (!payload?.ok) return;
     setMemberships((current) => current.filter((row) => row.id !== membership.id));
     setMessage("Membership removed.");
+  }
+
+  async function resend(membership: Membership) {
+    const payload = await request(`/api/organization/members/${membership.id}/invitation`, { method: "POST" });
+    if (!payload?.membership) return;
+    const updated = { ...payload.membership, invitationDelivery: payload.invitationDelivery };
+    setMemberships((current) => current.map((row) => row.id === membership.id ? updated : row));
+    setMessage("Organization invitation resent.");
   }
 
   return (
@@ -69,14 +86,14 @@ export function OrganizationUsersClient({ initialMemberships }: { initialMembers
           <select className={inputClass} name="role"><option value="MEMBER">Member</option><option value="ADMIN">Administrator</option></select>
           <button className={buttonClass} disabled={busy}>Invite or add</button>
         </form>
-        <p className="mt-2 text-xs text-[#706e6b]">New identities receive a Keycloak setup email. Existing Keycloak identities are granted access without a password reset.</p>
+        <p className="mt-2 text-xs text-[#706e6b]">Every membership receives an organization invitation. New identities also receive a separate Keycloak setup email.</p>
       </section>
 
       <section className="overflow-hidden rounded border border-[#d8dde6] bg-white shadow-sm">
         <table className="w-full text-left text-sm">
-          <thead className="bg-[#f3f3f3] text-xs uppercase text-[#706e6b]"><tr><th className="p-3">User</th><th className="p-3">Global status</th><th className="p-3">Organization access</th><th className="p-3">Actions</th></tr></thead>
+          <thead className="bg-[#f3f3f3] text-xs uppercase text-[#706e6b]"><tr><th className="p-3">User</th><th className="p-3">Global status</th><th className="p-3">Organization access</th><th className="p-3">Invitation</th><th className="p-3">Actions</th></tr></thead>
           <tbody>{memberships.map((membership) => (
-            <MembershipRow key={membership.id} membership={membership} busy={busy} onUpdate={update} onRemove={remove} />
+            <MembershipRow key={membership.id} membership={membership} busy={busy} onUpdate={update} onRemove={remove} onResend={resend} />
           ))}</tbody>
         </table>
         {memberships.length === 0 && <div className="p-8 text-center text-sm text-[#706e6b]">No users belong to this organization.</div>}
@@ -85,11 +102,12 @@ export function OrganizationUsersClient({ initialMemberships }: { initialMembers
   );
 }
 
-function MembershipRow({ membership, busy, onUpdate, onRemove }: {
+function MembershipRow({ membership, busy, onUpdate, onRemove, onResend }: {
   membership: Membership;
   busy: boolean;
   onUpdate: (membership: Membership, role: Membership["role"], status: Membership["status"]) => void;
   onRemove: (membership: Membership) => void;
+  onResend: (membership: Membership) => void;
 }) {
   const [role, setRole] = useState(membership.role);
   const [status, setStatus] = useState(membership.status);
@@ -98,7 +116,22 @@ function MembershipRow({ membership, busy, onUpdate, onRemove }: {
       <td className="p-3"><div className="font-semibold">{membership.user.name}</div><div className="text-xs text-[#706e6b]">{membership.user.email}</div><div className="text-xs text-[#706e6b]">Last login: {membership.user.lastLoginAt ? new Date(membership.user.lastLoginAt).toLocaleString() : "Never"}</div></td>
       <td className="p-3">{membership.user.status}</td>
       <td className="p-3"><div className="flex flex-wrap gap-2"><select className={inputClass} value={role} onChange={(event) => setRole(event.target.value as Membership["role"])}><option value="ADMIN">Admin</option><option value="MEMBER">Member</option></select><select className={inputClass} value={status} onChange={(event) => setStatus(event.target.value as Membership["status"])}><option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option></select></div></td>
-      <td className="p-3"><div className="flex gap-2"><button className={buttonClass} disabled={busy} onClick={() => onUpdate(membership, role, status)}>Save</button><button className="h-9 rounded px-3 text-sm font-semibold text-red-700 hover:bg-red-50" disabled={busy} onClick={() => onRemove(membership)}>Remove</button></div></td>
+      <td className="p-3"><InvitationStatus membership={membership} /></td>
+      <td className="p-3"><div className="flex flex-wrap gap-2"><button className={buttonClass} disabled={busy} onClick={() => onUpdate(membership, role, status)}>Save</button><button className={buttonClass} disabled={busy || membership.status !== "ACTIVE" || membership.user.status !== "ACTIVE"} onClick={() => onResend(membership)}>Resend invitation</button><button className="h-9 rounded px-3 text-sm font-semibold text-red-700 hover:bg-red-50" disabled={busy} onClick={() => onRemove(membership)}>Remove</button></div></td>
     </tr>
+  );
+}
+
+function InvitationStatus({ membership }: { membership: Membership }) {
+  const delivery = membership.invitationDelivery;
+  const status = delivery?.status ?? (membership.inviteSentAt ? "Accepted" : "Not sent");
+  const failed = ["Bounced", "Dropped", "Spam Report", "Unsubscribed"].includes(status);
+  const timestamp = delivery?.acceptedAt ?? membership.inviteSentAt;
+  return (
+    <div>
+      <div className={failed ? "font-semibold text-red-700" : "font-semibold"}>{status}</div>
+      {timestamp && <div className="text-xs text-[#706e6b]">{new Date(timestamp).toLocaleString()}</div>}
+      {delivery?.lastReason && <div className="mt-1 max-w-xs text-xs text-red-700">{delivery.lastReason}</div>}
+    </div>
   );
 }

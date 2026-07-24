@@ -4,7 +4,7 @@ import { EmailConfigurationError, EmailDeliveryError, EmailValidationError } fro
 import { resolveRecipientRecords } from "@/lib/email/recipients";
 import { sendConfiguredEmail, validateScheduledAt } from "@/lib/email/service";
 import { SendGridEmailAdapter, toSendGridMailData } from "@/lib/email/sendgrid";
-import { caseNotificationTemplate } from "@/lib/email/templates";
+import { caseNotificationTemplate, organizationInvitationTemplate } from "@/lib/email/templates";
 import { sendGridDeliveryState } from "@/lib/email/tracking";
 import type { EmailAdapter, OutboundEmail } from "@/lib/email/types";
 
@@ -112,4 +112,32 @@ test("case notifications include the case identity and customer-facing details",
   assert.equal(message.subject, "Case 00001234: Login issue");
   assert.match(message.text, /Status: New/);
   assert.match(message.text, /Cannot sign in\./);
+});
+
+test("organization invitations are branded, role-aware, and HTML escaped", () => {
+  const message = organizationInvitationTemplate({
+    recipientName: "Ava <Admin>",
+    organizationName: "Research & Development",
+    role: "ADMIN",
+    activationUrl: "https://crm.example.com/organizations/activate?organizationId=org%201",
+    newIdentity: true
+  });
+  assert.equal(message.subject, "You've been invited to Research & Development in Reloriq");
+  assert.match(message.text, /administrator access/);
+  assert.match(message.text, /separate Reloriq account setup email/);
+  assert.match(message.html, /Ava &lt;Admin&gt;/);
+  assert.match(message.html, /Research &amp; Development/);
+  assert.doesNotMatch(message.html, /Ava <Admin>/);
+});
+
+test("organization invitations tell existing identities to use current credentials", () => {
+  const message = organizationInvitationTemplate({
+    recipientName: "Existing User",
+    organizationName: "Example",
+    role: "MEMBER",
+    activationUrl: "https://crm.example.com/organizations/activate?organizationId=org-1",
+    newIdentity: false
+  });
+  assert.match(message.text, /member access/);
+  assert.match(message.text, /existing Reloriq account/);
 });

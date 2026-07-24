@@ -9,6 +9,8 @@
     "test:usecases": "node scripts/crm-usecase-check.mjs",
     "test:invoice": "tsx --test src/lib/invoice-calculations.test.ts",
     "test:email": "tsx --conditions=react-server --test src/lib/email/*.test.ts",
+    "test:user-management": "tsx --conditions=react-server --test src/lib/organization-invitations.test.ts src/lib/organization-context.test.ts",
+    "test:keycloak-email": "node --test scripts/configure-keycloak-email.test.mjs",
     "test:files": "tsx --test src/lib/files.test.ts",
     "test:ai": "tsx --conditions=react-server --test src/lib/ai/*.test.ts",
     "lint": "next lint",
@@ -17,7 +19,9 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:reset": "prisma migrate reset --force",
     "prisma:push": "prisma db push",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:seed": "tsx prisma/seed.ts",
+    "keycloak:email:configure": "node scripts/configure-keycloak-email.mjs",
+    "keycloak:email:check": "node scripts/configure-keycloak-email.mjs --check"
   },
   "dependencies": {
     "@prisma/client": "^6.11.1",

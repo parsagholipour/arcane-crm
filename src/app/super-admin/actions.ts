@@ -17,6 +17,7 @@ import {
   createOrganizationWithAdmin,
   inviteOrganizationMember,
   removeOrganizationMembership,
+  resendOrganizationInvitation,
   updateOrganizationMembership,
   UserManagementError
 } from "@/lib/user-management";
@@ -37,15 +38,16 @@ function actionError(error: unknown) {
 }
 
 export async function createOrganizationAction(formData: FormData) {
-  await assertSuperAdmin();
+  const actor = await assertSuperAdmin();
   try {
     const result = await createOrganizationWithAdmin({
       name: value(formData, "name"),
       slug: value(formData, "slug"),
       adminName: value(formData, "adminName"),
-      adminEmail: value(formData, "adminEmail")
+      adminEmail: value(formData, "adminEmail"),
+      initiatedByUserId: actor.id
     });
-    destination(result.warning ?? "Organization and initial administrator created.");
+    destination(result.warning ?? "Organization and initial administrator created. Invitation sent.");
   } catch (error) {
     destination(actionError(error), true);
   }
@@ -69,15 +71,30 @@ export async function updateOrganizationAction(organizationId: string, formData:
 }
 
 export async function addOrganizationMemberAction(formData: FormData) {
-  await assertSuperAdmin();
+  const actor = await assertSuperAdmin();
   try {
     const result = await inviteOrganizationMember({
       organizationId: value(formData, "organizationId"),
       name: value(formData, "name"),
       email: value(formData, "email"),
-      role: value(formData, "role") === "ADMIN" ? "ADMIN" : "MEMBER"
+      role: value(formData, "role") === "ADMIN" ? "ADMIN" : "MEMBER",
+      initiatedByUserId: actor.id
     });
-    destination(result.warning ?? (result.keycloakUserCreated ? "User invited." : "Existing Keycloak user added to the organization."));
+    destination(result.warning ?? "Organization invitation sent.");
+  } catch (error) {
+    destination(actionError(error), true);
+  }
+}
+
+export async function resendOrganizationInvitationAction(membershipId: string, formData: FormData) {
+  const actor = await assertSuperAdmin();
+  try {
+    await resendOrganizationInvitation({
+      organizationId: value(formData, "organizationId"),
+      membershipId,
+      initiatedByUserId: actor.id
+    });
+    destination("Organization invitation resent.");
   } catch (error) {
     destination(actionError(error), true);
   }
@@ -157,6 +174,7 @@ export async function sendUserActionsAction(userId: string, formData: FormData) 
     if (!user?.keycloakSub) throw new UserManagementError("This legacy identity is not linked to Keycloak.", 409);
     const setup = value(formData, "kind") === "setup";
     await sendKeycloakActionsEmail(user.keycloakSub, setup ? ["VERIFY_EMAIL", "UPDATE_PASSWORD"] : ["UPDATE_PASSWORD"]);
+    if (setup) await prisma.user.update({ where: { id: user.id }, data: { setupEmailSentAt: new Date() } });
     destination(setup ? "Setup email sent." : "Password reset email sent.");
   } catch (error) {
     destination(actionError(error), true);

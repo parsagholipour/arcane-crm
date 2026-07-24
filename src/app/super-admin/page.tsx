@@ -2,6 +2,7 @@ import {
   addOrganizationMemberAction,
   createOrganizationAction,
   removeMembershipAction,
+  resendOrganizationInvitationAction,
   revokeUserSessionsAction,
   sendUserActionsAction,
   setGlobalUserStatusAction,
@@ -10,6 +11,7 @@ import {
   updateOrganizationAction
 } from "@/app/super-admin/actions";
 import { NameSlugFields } from "@/components/forms/NameSlugFields";
+import { ORGANIZATION_INVITATION_SOURCE } from "@/lib/organization-invitations";
 import { prisma } from "@/lib/prisma";
 
 const inputClass = "h-9 rounded border border-[#c9c9c9] bg-white px-3 text-sm outline-none focus:border-brand-500";
@@ -21,14 +23,22 @@ export const dynamic = "force-dynamic";
 export default async function SuperAdminPage({ searchParams }: { searchParams: Promise<{ message?: string; error?: string; q?: string }> }) {
   const params = await searchParams;
   const query = params.q?.trim() ?? "";
-  const [organizations, users] = await Promise.all([
+  const [organizations, users, invitationDeliveries] = await Promise.all([
     prisma.organization.findMany({ include: { memberships: { include: { user: true }, orderBy: { createdAt: "asc" } } }, orderBy: { createdAt: "asc" } }),
     prisma.user.findMany({
       where: query ? { OR: [{ name: { contains: query, mode: "insensitive" } }, { email: { contains: query, mode: "insensitive" } }] } : undefined,
       include: { memberships: { include: { organization: true } }, appSessions: { where: { revokedAt: null } } },
       orderBy: { createdAt: "asc" }
+    }),
+    prisma.emailDelivery.findMany({
+      where: { sourceType: ORGANIZATION_INVITATION_SOURCE },
+      orderBy: { acceptedAt: "desc" }
     })
   ]);
+  const latestInvitationDeliveries = new Map<string, (typeof invitationDeliveries)[number]>();
+  for (const delivery of invitationDeliveries) {
+    if (delivery.sourceId && !latestInvitationDeliveries.has(delivery.sourceId)) latestInvitationDeliveries.set(delivery.sourceId, delivery);
+  }
 
   return (
     <main className="mx-auto max-w-[1500px] space-y-6 p-5">
@@ -88,11 +98,16 @@ export default async function SuperAdminPage({ searchParams }: { searchParams: P
               <p className="mt-2 text-xs text-[#706e6b]">{organization.memberships.length} memberships · {activeAdmins} active admins · Created {organization.createdAt.toLocaleDateString()}</p>
               <div className="mt-3 overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-[#f3f3f3] text-xs uppercase text-[#706e6b]"><tr><th className="p-2">User</th><th className="p-2">Role</th><th className="p-2">Membership</th><th className="p-2">Actions</th></tr></thead>
-                  <tbody>{organization.memberships.map((membership) => (
-                    <tr key={membership.id} className="border-t">
+                  <thead className="bg-[#f3f3f3] text-xs uppercase text-[#706e6b]"><tr><th className="p-2">User</th><th className="p-2">Access</th><th className="p-2">Invitation</th><th className="p-2">Actions</th></tr></thead>
+                  <tbody>{organization.memberships.map((membership) => {
+                    const delivery = latestInvitationDeliveries.get(membership.id);
+                    const invitationStatus = delivery?.status ?? (membership.inviteSentAt ? "Accepted" : "Not sent");
+                    const invitationFailed = ["Bounced", "Dropped", "Spam Report", "Unsubscribed"].includes(invitationStatus);
+                    const invitationAt = delivery?.acceptedAt ?? membership.inviteSentAt;
+                    return (
+                    <tr key={membership.id} className="border-t align-top">
                       <td className="p-2"><div className="font-medium">{membership.user.name}</div><div className="text-xs text-[#706e6b]">{membership.user.email ?? "Legacy identity"}</div></td>
-                      <td className="p-2" colSpan={2}>
+                      <td className="p-2">
                         <form action={updateMembershipAction.bind(null, membership.id)} className="flex flex-wrap gap-2">
                           <input type="hidden" name="organizationId" value={organization.id} />
                           <select className={inputClass} name="role" defaultValue={membership.role}><option value="ADMIN">Admin</option><option value="MEMBER">Member</option></select>
@@ -100,9 +115,22 @@ export default async function SuperAdminPage({ searchParams }: { searchParams: P
                           <button className={buttonClass}>Update</button>
                         </form>
                       </td>
-                      <td className="p-2"><form action={removeMembershipAction.bind(null, membership.id)}><input type="hidden" name="organizationId" value={organization.id} /><button className="text-sm font-semibold text-red-700 hover:underline">Remove</button></form></td>
+                      <td className="p-2">
+                        <div className={invitationFailed ? "font-semibold text-red-700" : "font-semibold"}>{invitationStatus}</div>
+                        {invitationAt && <div className="text-xs text-[#706e6b]">{invitationAt.toLocaleString()}</div>}
+                        {delivery?.lastReason && <div className="max-w-xs text-xs text-red-700">{delivery.lastReason}</div>}
+                      </td>
+                      <td className="p-2">
+                        <div className="flex flex-wrap gap-3">
+                          <form action={resendOrganizationInvitationAction.bind(null, membership.id)}>
+                            <input type="hidden" name="organizationId" value={organization.id} />
+                            <button className="text-sm font-semibold text-brand-700 hover:underline disabled:opacity-50" disabled={membership.status !== "ACTIVE" || membership.user.status !== "ACTIVE"}>Resend invitation</button>
+                          </form>
+                          <form action={removeMembershipAction.bind(null, membership.id)}><input type="hidden" name="organizationId" value={organization.id} /><button className="text-sm font-semibold text-red-700 hover:underline">Remove</button></form>
+                        </div>
+                      </td>
                     </tr>
-                  ))}</tbody>
+                  );})}</tbody>
                 </table>
               </div>
             </article>
@@ -131,7 +159,7 @@ export default async function SuperAdminPage({ searchParams }: { searchParams: P
                   <form action={revokeUserSessionsAction.bind(null, user.id)}><button className={buttonClass}>Revoke sessions</button></form>
                 </div>
               </div>
-              <div className="mt-2 text-xs text-[#706e6b]">{user.status} · {user.appSessions.length} active app sessions · Last login {user.lastLoginAt?.toLocaleString() ?? "Never"}</div>
+              <div className="mt-2 text-xs text-[#706e6b]">{user.status} · {user.appSessions.length} active app sessions · Last login {user.lastLoginAt?.toLocaleString() ?? "Never"} · Setup email {user.setupEmailSentAt?.toLocaleString() ?? "Not recorded"}</div>
               <div className="mt-2 flex flex-wrap gap-2">{user.memberships.map((membership) => <span key={membership.id} className="rounded bg-[#eef4ff] px-2 py-1 text-xs">{membership.organization.name}: {membership.role}/{membership.status}</span>)}</div>
             </article>
           ))}
