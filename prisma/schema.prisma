@@ -99,6 +99,10 @@ model Account {
   parentAccountId    String?
   ownerId            String
   phone              String?
+  rating             String?
+  numberOfEmployees  Int?
+  annualRevenue      Decimal?
+  industry           String?
   billingCountry     String?
   billingStreet      String?
   billingPostalCode  String?
@@ -139,6 +143,7 @@ model Contact {
   phone               String?
   email               String?
   birthDate           DateTime?
+  leadSource          String?
   mailingCountry      String?
   mailingStreet       String?
   mailingPostalCode   String?
@@ -212,6 +217,7 @@ model Opportunity {
   probability      Int?
   forecastCategory String
   nextStep         String?
+  leadSource       String?
   createdById      String
   updatedById      String
   createdAt        DateTime    @default(now())
@@ -310,28 +316,50 @@ model PriceBookEntry {
 }
 
 model Event {
-  id                String          @id @default(cuid())
-  organizationId    String
-  subject           String
-  description       String?
-  startAt           DateTime
-  endAt             DateTime
-  attendeeIds       String[]
-  nameObjectType    String?
-  nameRecordId      String?
-  relatedObjectType String?
-  relatedRecordId   String?
-  assignedToId      String
-  calendarSourceId  String?
-  location          String?
-  showTimeAs        String          @default("Busy")
-  allDay            Boolean         @default(false)
-  private           Boolean         @default(false)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  calendarSource    CalendarSource? @relation(fields: [calendarSourceId], references: [id], onDelete: SetNull)
+  id                       String          @id @default(cuid())
+  organizationId           String
+  subject                  String
+  description              String?
+  startAt                  DateTime
+  endAt                    DateTime
+  attendeeIds              String[]
+  nameObjectType           String?
+  nameRecordId             String?
+  relatedObjectType        String?
+  relatedRecordId          String?
+  assignedToId             String
+  calendarSourceId         String?
+  location                 String?
+  showTimeAs               String          @default("Busy")
+  allDay                   Boolean         @default(false)
+  private                  Boolean         @default(false)
+  recurrenceRule           String?
+  recurrenceEndAt          DateTime?
+  recurrenceParentId       String?
+  recurrenceOriginalStart  DateTime?
+  recurrenceExceptionDates DateTime[]
+  reminderMinutes          Int?
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+  calendarSource           CalendarSource? @relation(fields: [calendarSourceId], references: [id], onDelete: SetNull)
+  recurrenceParent         Event?          @relation("EventRecurrence", fields: [recurrenceParentId], references: [id], onDelete: Cascade)
+  recurrenceChildren       Event[]         @relation("EventRecurrence")
 
   @@index([organizationId, calendarSourceId, startAt])
+  @@index([organizationId, recurrenceParentId])
+  @@index([organizationId, startAt])
+}
+
+model EventReminderDispatch {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  eventId        String
+  occurrenceAt   DateTime
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, userId, eventId, occurrenceAt])
+  @@index([organizationId, userId])
 }
 
 model CalendarSource {
@@ -1164,6 +1192,7 @@ model UserPreference {
   quarterlyGoal      Decimal?
   timezone           String?
   locale             String?
+  weekStartsOn       Int      @default(0)
   updatedAt          DateTime @default(now()) @updatedAt
 
   @@unique([organizationId, userId])

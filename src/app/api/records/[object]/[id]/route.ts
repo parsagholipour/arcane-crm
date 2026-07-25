@@ -4,6 +4,7 @@ import { emailErrorResponse } from "@/lib/email/http";
 import { deliverCaseNotification, deliverListEmail } from "@/lib/email/workflows";
 import { prisma } from "@/lib/prisma";
 import { RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
+import { calendarErrorResponse, detachOccurrence, eventUpdateData, excludeOccurrence, parseRecurrenceScope } from "@/lib/calendar-events";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
@@ -32,6 +33,12 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
       const endAt = payload.endAt ? new Date(String(payload.endAt)) : existingEvent.endAt;
       if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime())) return NextResponse.json({ error: "Choose valid event start and end times." }, { status: 400 });
       if (endAt <= startAt) return NextResponse.json({ error: "Event end time must be after its start time." }, { status: 400 });
+
+      // "This occurrence only" carves the slot out of the series into its own row.
+      if (parseRecurrenceScope(payload.recurrenceScope) === "single") {
+        const detached = await detachOccurrence(authContext.organizationId, id, payload.occurrenceStart, eventUpdateData(payload));
+        if (detached) return NextResponse.json({ record: JSON.parse(JSON.stringify(detached)), message: "This occurrence was updated." });
+      }
     }
     let delivery = null;
     if (object === "Case" && payload.sendNotificationEmailToContact === true) {
@@ -100,17 +107,23 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     const deliveryResponse = emailErrorResponse(error);
     if (deliveryResponse) return deliveryResponse;
     if (error instanceof RecordPayloadValidationError) return NextResponse.json({ error: error.message, fields: error.fields }, { status: 400 });
+    const calendarError = calendarErrorResponse(error);
+    if (calendarError) return NextResponse.json({ error: calendarError.error, field: calendarError.field }, { status: calendarError.status });
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return NextResponse.json({ error: "A record with that unique name or identifier already exists." }, { status: 409 });
     return NextResponse.json({ error: "Unable to update record." }, { status: 500 });
   }
 }
 
-export async function DELETE(_request: NextRequest, context: { params: Params }) {
+export async function DELETE(request: NextRequest, context: { params: Params }) {
   try {
     const authContext = await requireOrganizationContext();
     const { object, id } = await context.params;
     if (!isCrmObject(object)) return NextResponse.json({ error: "Unknown object." }, { status: 404 });
     await assertScopedRecord(object, id, authContext.organizationId);
+    if (object === "Event" && parseRecurrenceScope(request.nextUrl.searchParams.get("scope")) === "single") {
+      const excluded = await excludeOccurrence(authContext.organizationId, id, request.nextUrl.searchParams.get("occurrenceStart"));
+      if (excluded) return NextResponse.json({ ok: true, message: "This occurrence was removed." });
+    }
     if (object === "ListEmail") {
       const listEmail = await prisma.listEmail.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { status: true } });
       if (listEmail?.status !== "Draft") return NextResponse.json({ error: "Sent or scheduled list emails cannot be deleted." }, { status: 409 });
@@ -137,6 +150,8 @@ export async function DELETE(_request: NextRequest, context: { params: Params })
     console.error(error);
     const response = authorizationErrorResponse(error);
     if (response) return response;
+    const calendarError = calendarErrorResponse(error);
+    if (calendarError) return NextResponse.json({ error: calendarError.error, field: calendarError.field }, { status: calendarError.status });
     if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2003", "P2014"].includes(error.code)) {
       return NextResponse.json({ error: "This record cannot be deleted because related CRM records still reference it." }, { status: 409 });
     }
@@ -200,6 +215,10 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           description: payload.description as string | null | undefined,
           parentAccountId: payload.parentAccountId as string | null | undefined,
           phone: payload.phone as string | null | undefined,
+          rating: payload.rating as string | null | undefined,
+          numberOfEmployees: payload.numberOfEmployees === undefined ? undefined : payload.numberOfEmployees === null ? null : Number(payload.numberOfEmployees),
+          annualRevenue: payload.annualRevenue === undefined ? undefined : payload.annualRevenue === null ? null : String(payload.annualRevenue),
+          industry: payload.industry as string | null | undefined,
           billingCountry: payload.billingCountry as string | null | undefined,
           billingStreet: payload.billingStreet as string | null | undefined,
           billingPostalCode: payload.billingPostalCode as string | null | undefined,
@@ -227,6 +246,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           phone: payload.phone as string | null | undefined,
           email: payload.email as string | null | undefined,
           birthDate: payload.birthDate === undefined ? undefined : payload.birthDate === null ? null : new Date(String(payload.birthDate)),
+          leadSource: payload.leadSource as string | null | undefined,
           mailingCountry: payload.mailingCountry as string | null | undefined,
           mailingStreet: payload.mailingStreet as string | null | undefined,
           mailingPostalCode: payload.mailingPostalCode as string | null | undefined,
@@ -278,6 +298,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           probability: payload.probability === undefined ? undefined : payload.probability === null ? null : Number(payload.probability),
           forecastCategory: payload.forecastCategory ? String(payload.forecastCategory) : undefined,
           nextStep: payload.nextStep as string | null | undefined,
+          leadSource: payload.leadSource as string | null | undefined,
           updatedById: userId
         }
       });
@@ -330,26 +351,7 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
         }
       });
     case "Event":
-      return prisma.event.update({
-        where: { id },
-        data: {
-          subject: payload.subject ? String(payload.subject) : undefined,
-          description: payload.description as string | null | undefined,
-          startAt: payload.startAt ? new Date(String(payload.startAt)) : undefined,
-          endAt: payload.endAt ? new Date(String(payload.endAt)) : undefined,
-          attendeeIds: Array.isArray(payload.attendeeIds) ? payload.attendeeIds.map(String) : undefined,
-          nameObjectType: payload.nameObjectType as string | null | undefined,
-          nameRecordId: payload.nameRecordId as string | null | undefined,
-          relatedObjectType: payload.relatedObjectType as string | null | undefined,
-          relatedRecordId: payload.relatedRecordId as string | null | undefined,
-          assignedToId: payload.assignedToId ? String(payload.assignedToId) : undefined,
-          calendarSourceId: payload.calendarSourceId as string | null | undefined,
-          location: payload.location as string | null | undefined,
-          showTimeAs: payload.showTimeAs ? String(payload.showTimeAs) : undefined,
-          allDay: payload.allDay === undefined ? undefined : Boolean(payload.allDay),
-          private: payload.private === undefined ? undefined : Boolean(payload.private)
-        }
-      });
+      return prisma.event.update({ where: { id }, data: eventUpdateData(payload) });
     case "QuickText":
       return prisma.quickText.update({
         where: { id },

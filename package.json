@@ -12,6 +12,7 @@
     "test:user-management": "tsx --conditions=react-server --test src/lib/organization-invitations.test.ts src/lib/organization-context.test.ts",
     "test:keycloak-email": "node --test scripts/configure-keycloak-email.test.mjs",
     "test:files": "tsx --test src/lib/files.test.ts",
+    "test:calendar": "tsx --test src/lib/calendar.test.ts src/lib/calendar-recurrence.test.ts",
     "test:ai": "tsx --conditions=react-server --test src/lib/ai/*.test.ts",
     "lint": "next lint",
     "prisma:generate": "prisma generate",
@@ -21,7 +22,8 @@
     "prisma:push": "prisma db push",
     "prisma:seed": "tsx prisma/seed.ts",
     "keycloak:email:configure": "node scripts/configure-keycloak-email.mjs",
-    "keycloak:email:check": "node scripts/configure-keycloak-email.mjs --check"
+    "keycloak:email:check": "node scripts/configure-keycloak-email.mjs --check",
+    "test:lead-conversion": "tsx --test src/lib/lead-conversion.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.11.1",

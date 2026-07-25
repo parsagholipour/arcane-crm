@@ -458,7 +458,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     dataKey: "leads",
     defaultList: "All Open Leads",
     listViews: ["All Open Leads", "My Leads", "Recently Viewed (Pinned list)", "Today's Leads"],
-    actions: ["New", "Import", "Add to Campaign", "Send Email", "Change Owner", "Show more actions"],
+    actions: ["New", "Import", "Convert Lead", "Add to Campaign", "Send Email", "Change Owner", "Show more actions"],
     columns: [
       { key: "displayName", label: "Name", link: true },
       { key: "company", label: "Company" },
@@ -755,6 +755,10 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
       { name: "parentAccountId", label: "Parent Account", section: "About", type: "lookup", lookupObject: "Account" },
       { name: "ownerId", label: "Account Owner", section: "About", type: "lookup", lookupObject: "User" },
       { name: "phone", label: "Phone", section: "Get in Touch", type: "phone" },
+      { name: "numberOfEmployees", label: "No. of Employees", section: "Segment", type: "number" },
+      { name: "annualRevenue", label: "Annual Revenue", section: "Segment", type: "currency" },
+      { name: "industry", label: "Industry", section: "Segment", type: "picklist", options: INDUSTRIES, defaultValue: "--None--" },
+      { name: "rating", label: "Rating", section: "Segment", type: "picklist", options: LEAD_RATING, defaultValue: "--None--" },
       ...addressFields("billing", "Billing Address"),
       ...addressFields("shipping", "Shipping Address")
     ]
@@ -774,6 +778,7 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
       { name: "phone", label: "Phone", section: "Get in Touch", type: "phone" },
       { name: "email", label: "Email", section: "Get in Touch", type: "email" },
       { name: "birthDate", label: "Birthdate", section: "Get in Touch", type: "date" },
+      { name: "leadSource", label: "Lead Source", section: "Get in Touch", type: "picklist", options: LEAD_SOURCE, defaultValue: "--None--" },
       ...addressFields("mailing", "Mailing Address")
     ]
   },
@@ -817,7 +822,8 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
       { name: "stage", label: "Stage", section: "Status", type: "picklist", required: true, options: OPPORTUNITY_STAGE, defaultValue: "--None--" },
       { name: "probability", label: "Probability (%)", section: "Status", type: "number" },
       { name: "forecastCategory", label: "Forecast Category", section: "Status", type: "picklist", required: true, options: FORECAST_CATEGORY, defaultValue: "--None--" },
-      { name: "nextStep", label: "Next Step", section: "Status", type: "text" }
+      { name: "nextStep", label: "Next Step", section: "Status", type: "text" },
+      { name: "leadSource", label: "Lead Source", section: "Status", type: "picklist", options: LEAD_SOURCE, defaultValue: "--None--" }
     ]
   },
   Case: {

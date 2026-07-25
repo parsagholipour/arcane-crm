@@ -171,6 +171,10 @@ async function createRecord(object: CrmObject, payload: RecordData, organization
           parentAccountId: payload.parentAccountId as string | null,
           ownerId: String(payload.ownerId ?? userId),
           phone: payload.phone as string | null,
+          rating: payload.rating as string | null,
+          numberOfEmployees: payload.numberOfEmployees ? Number(payload.numberOfEmployees) : null,
+          annualRevenue: payload.annualRevenue ? String(payload.annualRevenue) : null,
+          industry: payload.industry as string | null,
           billingCountry: payload.billingCountry as string | null,
           billingStreet: payload.billingStreet as string | null,
           billingPostalCode: payload.billingPostalCode as string | null,
@@ -200,6 +204,7 @@ async function createRecord(object: CrmObject, payload: RecordData, organization
           phone: payload.phone as string | null,
           email: payload.email as string | null,
           birthDate: payload.birthDate ? new Date(String(payload.birthDate)) : null,
+          leadSource: payload.leadSource as string | null,
           mailingCountry: payload.mailingCountry as string | null,
           mailingStreet: payload.mailingStreet as string | null,
           mailingPostalCode: payload.mailingPostalCode as string | null,
@@ -252,6 +257,7 @@ async function createRecord(object: CrmObject, payload: RecordData, organization
           probability: payload.probability ? Number(payload.probability) : null,
           forecastCategory: String(payload.forecastCategory),
           nextStep: payload.nextStep as string | null,
+          leadSource: payload.leadSource as string | null,
           createdById: userId,
           updatedById: userId
         }
@@ -364,7 +370,10 @@ async function createRecord(object: CrmObject, payload: RecordData, organization
           location: payload.location as string | null,
           showTimeAs: String(payload.showTimeAs ?? "Busy"),
           allDay: Boolean(payload.allDay),
-          private: Boolean(payload.private)
+          private: Boolean(payload.private),
+          recurrenceRule: (payload.recurrenceRule as string | null) ?? null,
+          recurrenceEndAt: payload.recurrenceEndAt ? new Date(String(payload.recurrenceEndAt)) : null,
+          reminderMinutes: payload.reminderMinutes === null || payload.reminderMinutes === undefined ? null : Number(payload.reminderMinutes)
         }
       });
     case "QuickText":

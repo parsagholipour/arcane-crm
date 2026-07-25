@@ -18,7 +18,6 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
   CircleHelp,
@@ -90,11 +89,21 @@ import {
   OPPORTUNITY_STAGE,
   PRODUCT_FAMILY,
   RELATED_OBJECT_TYPES,
+  SALUTATIONS,
   SHOW_TIME_AS,
   stateOptionsForCountry,
   TIME_SLOTS
 } from "@/lib/crm-metadata";
 import { contactName, dataKeyForObject, decorateBootstrap, recordTitle, routeForRecord } from "@/lib/crm-data";
+import {
+  accountNameForLead,
+  findExactAccountMatch,
+  matchAccountsForLead,
+  matchContactsForLead,
+  opportunityNameFor,
+  type ConvertibleLead
+} from "@/lib/lead-conversion";
+import { isValidEmail } from "@/lib/record-validation";
 import { isRecordRecentlyViewed, recentlyViewedEntryForRecord, recentSearchHistoryEntries } from "@/lib/recent-records";
 import type { AppKey, AppNavItem, BootstrapData, CrmObject, FieldDefinition, FormDefinition, ObjectDefinition, RecordData } from "@/lib/crm-types";
 import type { AiActivityInsightPayload, AiEmailDraft, AiHomeInsight, AiInsightResponse } from "@/lib/ai-types";
@@ -103,6 +112,9 @@ import { InvoiceDetailPage, InvoiceEditorModal, InvoicePaymentModal, InvoiceStat
 import { CommunicationsStatusBadge, MessagingSessionDetailPage, MessagingSessionEditorModal, VideoCallDetailPage, VideoCallEditorModal, type CommunicationsMutationResult } from "@/components/crm/CommunicationsWorkspace";
 import { CampaignDetailPage, CampaignEditorModal, CampaignStatusBadge, type CampaignMutationResult } from "@/components/crm/CampaignWorkspace";
 import { CommerceWorkspace } from "@/components/crm/CommerceWorkspace";
+import { CalendarWorkspace } from "@/components/crm/CalendarWorkspace";
+import { addCalendarDays, nextTimeSlot, sameDate, startOfDay, toDateInputValue, utcToZonedFormValues, zonedTimeToUtc } from "@/lib/calendar";
+import { RECURRENCE_DAYS, describeRecurrence, formatRecurrenceRule, parseRecurrenceRule, type RecurrenceDay, type RecurrenceFrequency } from "@/lib/calendar-recurrence";
 import { MarketingLandingPagesPanel } from "@/components/crm/MarketingLandingPagesPanel";
 import { PriceBookDetailPage, ProductDetailPage } from "@/components/crm/CatalogWorkspace";
 import { KnowledgeDetailPage, ListEmailDetailPage, SalesRecordDetailPage } from "@/components/crm/RecordDetailWorkspace";
@@ -118,7 +130,20 @@ type ModalState =
   | { type: "videoCall"; mode: "new" | "edit"; record?: RecordData }
   | { type: "campaign"; mode: "new" | "edit"; record?: RecordData }
   | { type: "product" }
-  | { type: "event"; relatedObjectType?: CrmObject; relatedRecordId?: string; startDate?: string; startTime?: string; endDate?: string; endTime?: string }
+  | {
+      type: "event";
+      mode?: "new" | "edit";
+      record?: RecordData;
+      occurrenceStart?: string | null;
+      recurring?: boolean;
+      relatedObjectType?: CrmObject;
+      relatedRecordId?: string;
+      startDate?: string;
+      startTime?: string;
+      endDate?: string;
+      endTime?: string;
+      allDay?: boolean;
+    }
   | { type: "quickText"; record?: RecordData }
   | { type: "knowledge"; record?: RecordData }
   | { type: "listEmail"; record?: RecordData; initialValues?: RecordData; startingStep?: 1 | 2; layout?: string }
@@ -605,6 +630,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
     else if (object === "MessagingSession") setModal({ type: "messaging", mode: "edit", record });
     else if (object === "VideoCall") setModal({ type: "videoCall", mode: "edit", record });
     else if (object === "Campaign") setModal({ type: "campaign", mode: "edit", record });
+    else if (object === "Event") setModal({ type: "event", mode: "edit", record });
     else if (object === "QuickText") setModal({ type: "quickText", record });
     else if (object === "Knowledge__kav") setModal({ type: "knowledge", record });
     else if (object === "ListEmail" && record.status !== "Draft") showToast({ tone: "warning", message: "Sent or scheduled list emails cannot be edited." });
@@ -707,7 +733,8 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
       const refreshed = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(refreshed.error ?? "Refresh failed."));
       setData(decorateBootstrap(refreshed as BootstrapData));
-      showToast({ tone: "success", message: successMessage });
+      // An empty message means the caller has already reported the outcome.
+      if (successMessage) showToast({ tone: "success", message: successMessage });
       return true;
     } catch (error) {
       showToast({ tone: "error", message: error instanceof Error ? error.message : "The CRM data could not be refreshed." });
@@ -799,6 +826,24 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
     });
     showToast({ tone: "success", message: `${OBJECT_DEFINITIONS[object].label} deleted.` });
     router.push(defaultRouteForObject(object));
+  }
+
+  /** Delete from the event modal, which can target one occurrence of a series instead of the whole thing. */
+  async function deleteEventOccurrence(record: RecordData, scope: "single" | "all", occurrenceStart: string | null) {
+    const id = requiredId(record);
+    if (!id) return;
+    const params = new URLSearchParams({ scope });
+    if (occurrenceStart) params.set("occurrenceStart", occurrenceStart);
+    const response = await fetch(`/api/records/Event/${id}?${params.toString()}`, { method: "DELETE" });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      showToast({ tone: "error", message: json.error ?? "The event couldn't be deleted." });
+      return;
+    }
+    closeModal();
+    if (scope === "all") setData((previous) => decorateBootstrap({ ...previous, events: previous.events.filter((item) => item.id !== id) }));
+    showToast({ tone: "success", message: String(json.message ?? "Event deleted.") });
+    await refreshBootstrapData("");
   }
 
   async function saveActivity(activity: RecordData) {
@@ -923,7 +968,9 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
               onSaveActivity={saveActivity}
               onSaveFile={saveFile}
               onDeleteFile={deleteFile}
-              onOpenEvent={(relatedObjectType, relatedRecordId, startDate, startTime, endTime) => setModal({ type: "event", relatedObjectType, relatedRecordId, startDate, startTime, endDate: startDate, endTime })}
+              onOpenEvent={(relatedObjectType, relatedRecordId, startDate, startTime, endTime) => setModal({ type: "event", mode: "new", relatedObjectType, relatedRecordId, startDate, startTime, endDate: startDate, endTime })}
+              onEditEvent={(record, occurrence) => setModal({ type: "event", mode: "edit", record, occurrenceStart: occurrence.occurrenceStart, recurring: occurrence.recurring })}
+              onNavigate={(href) => router.push(href)}
               onToast={showToast}
               recordLabels={recordLabels}
               campaignMembers={campaignMembers}
@@ -958,6 +1005,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
         campaignMembers={campaignMembers}
         onClose={closeModal}
         onSaveRecord={saveRecord}
+        onDeleteEvent={deleteEventOccurrence}
         onSaveAppNav={saveAppNavPreference}
         onResetAppNav={resetAppNavPreference}
         onDataChange={(updater) => setData((previous) => decorateBootstrap(updater(previous)))}
@@ -1052,7 +1100,7 @@ export function CrmApp({ initialData }: { initialData: BootstrapData }) {
         closeModal();
         return;
       }
-      const conversion = leadConversionResultFromWorkflow(workflowResult, selectedLeads, data, payload);
+      const conversion = leadConversionResultFromWorkflow(workflowResult);
       setData((previous) =>
         decorateBootstrap({
           ...previous,
@@ -1310,6 +1358,8 @@ function ScreenRenderer({
   onSaveFile,
   onDeleteFile,
   onOpenEvent,
+  onEditEvent,
+  onNavigate,
   onToast,
   recordLabels,
   campaignMembers,
@@ -1341,6 +1391,8 @@ function ScreenRenderer({
   onSaveFile: (file: FileUploadRequest, attachment?: boolean) => Promise<boolean>;
   onDeleteFile: (file: RecordData, attachment?: boolean) => Promise<boolean>;
   onOpenEvent: (object: CrmObject, id: string, startDate?: string, startTime?: string, endTime?: string) => void;
+  onEditEvent: (record: RecordData, occurrence: { occurrenceStart: string | null; recurring: boolean }) => void;
+  onNavigate: (href: string) => void;
   onToast: (toast: ToastState) => void;
   recordLabels: Record<string, string[]>;
   campaignMembers: Record<string, string[]>;
@@ -1367,7 +1419,20 @@ function ScreenRenderer({
   if (screen.kind === "commerce") return <CommerceWorkspace data={data} onDataChange={onDataChange} onToast={onToast} />;
   if (screen.kind === "account") return <YourAccountPage data={data} onDataChange={onDataChange} onToast={onToast} />;
   if (screen.kind === "analytics") return <AnalyticsPage data={data} reportName={analyticsReportName} onReportBuilder={onReportBuilder} onDataChange={onDataChange} onToast={onToast} onRefreshData={onRefreshData} />;
-  if (screen.kind === "calendar") return <CalendarPage data={data} events={data.events} onCreate={(startDate, startTime, endTime) => onOpenEvent("Event", "", startDate, startTime, endTime)} onDataChange={onDataChange} onToast={onToast} onRefreshData={onRefreshData} />;
+  if (screen.kind === "calendar") {
+    return (
+      <CalendarWorkspace
+        data={data}
+        onCreate={(startDate, startTime, endTime) => onOpenEvent("Event", "", startDate, startTime, endTime)}
+        onEditEvent={onEditEvent}
+        onOpenVideoCall={(record) => onEdit("VideoCall", record)}
+        onDataChange={onDataChange}
+        onToast={onToast}
+        onRefreshData={onRefreshData}
+        onNavigate={onNavigate}
+      />
+    );
+  }
   if (screen.kind === "quickText") return <QuickTextPage data={data} onCreate={() => onCreate("QuickText")} onCreateFolder={onQuickTextFolder} onEdit={(record) => onEdit("QuickText", record)} onDelete={(record) => onDelete("QuickText", record)} onDataChange={onDataChange} onToast={onToast} />;
   if (screen.kind === "record") {
     const record = getRecords(screen.object).find((item) => item.id === screen.id);
@@ -3591,6 +3656,7 @@ function ListViewPage({
             onEdit={onEdit}
             onDelete={onDelete}
             onChangeOwner={(record) => onListAction("Change Owner", object, [record], [requiredId(record)])}
+            onConvertLead={(record) => onListAction("Convert Lead", object, [record], [requiredId(record)])}
           />
         ) : display === "Kanban" ? (
           <KanbanUnavailable definition={definition} records={visibleRecords} />
@@ -3611,6 +3677,7 @@ function ListViewPage({
             onEdit={onEdit}
             onDelete={onDelete}
             onChangeOwner={(record) => onListAction("Change Owner", object, [record], [requiredId(record)])}
+            onConvertLead={(record) => onListAction("Convert Lead", object, [record], [requiredId(record)])}
           />
         )}
       </div>
@@ -3902,7 +3969,8 @@ function DataGrid({
   onInlineSave,
   onEdit,
   onDelete,
-  onChangeOwner
+  onChangeOwner,
+  onConvertLead
 }: {
   definition: ObjectDefinition;
   records: RecordData[];
@@ -3919,6 +3987,7 @@ function DataGrid({
   onEdit: (object: CrmObject, record: RecordData) => void;
   onDelete: (object: CrmObject, record: RecordData) => void;
   onChangeOwner?: (record: RecordData) => void;
+  onConvertLead?: (record: RecordData) => void;
 }) {
   const allSelected = records.length > 0 && selected.length === records.length;
   const [editingCell, setEditingCell] = useState<InlineEditingCell>(null);
@@ -4098,7 +4167,7 @@ function DataGrid({
                 );
               })}
               <td className="px-3 py-2">
-                <RowActions object={definition.object} record={record} onEdit={onEdit} onDelete={onDelete} onChangeOwner={onChangeOwner} />
+                <RowActions object={definition.object} record={record} onEdit={onEdit} onDelete={onDelete} onChangeOwner={onChangeOwner} onConvertLead={onConvertLead} />
               </td>
             </tr>
           ))}
@@ -4115,7 +4184,7 @@ function DataGrid({
   );
 }
 
-function RowActions({ object, record, onEdit, onDelete, onChangeOwner }: { object: CrmObject; record: RecordData; onEdit: (object: CrmObject, record: RecordData) => void; onDelete: (object: CrmObject, record: RecordData) => void; onChangeOwner?: (record: RecordData) => void }) {
+function RowActions({ object, record, onEdit, onDelete, onChangeOwner, onConvertLead }: { object: CrmObject; record: RecordData; onEdit: (object: CrmObject, record: RecordData) => void; onDelete: (object: CrmObject, record: RecordData) => void; onChangeOwner?: (record: RecordData) => void; onConvertLead?: (record: RecordData) => void }) {
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -4144,6 +4213,11 @@ function RowActions({ object, record, onEdit, onDelete, onChangeOwner }: { objec
           )}
           {canChangeOwnerFromRow(object) && onChangeOwner && (
             <DropdownMenu.Item onSelect={() => onChangeOwner(record)} className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-brand-50">Change Owner</DropdownMenu.Item>
+          )}
+          {object === "Lead" && onConvertLead && !record.convertedAt && (
+            <DropdownMenu.Item onSelect={() => onConvertLead(record)} className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-brand-50">
+              <Target size={14} /> Convert
+            </DropdownMenu.Item>
           )}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
@@ -4175,7 +4249,8 @@ function KanbanBoard({
   onMove,
   onEdit,
   onDelete,
-  onChangeOwner
+  onChangeOwner,
+  onConvertLead
 }: {
   definition: ObjectDefinition;
   records: RecordData[];
@@ -4184,6 +4259,7 @@ function KanbanBoard({
   onEdit: (object: CrmObject, record: RecordData) => void;
   onDelete: (object: CrmObject, record: RecordData) => void;
   onChangeOwner?: (record: RecordData) => void;
+  onConvertLead?: (record: RecordData) => void;
 }) {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
@@ -4272,7 +4348,7 @@ function KanbanBoard({
                           ))}
                         </div>
                       </div>
-                      <RowActions object={definition.object} record={record} onEdit={onEdit} onDelete={onDelete} onChangeOwner={onChangeOwner} />
+                      <RowActions object={definition.object} record={record} onEdit={onEdit} onDelete={onDelete} onChangeOwner={onChangeOwner} onConvertLead={onConvertLead} />
                     </div>
                     <label className="mt-3 block text-xs text-[#706e6b]">
                       {config.label}
@@ -6160,362 +6236,6 @@ function ReportBarChart({ report }: { report: AnalyticsReportDefinition }) {
   );
 }
 
-const CALENDAR_SOURCE_COLORS = [
-  { label: "Indigo", value: "#4f46e5" },
-  { label: "Green", value: "#2e844a" },
-  { label: "Red", value: "#ba0517" },
-  { label: "Gold", value: "#f3b451" },
-  { label: "Gray", value: "#706e6b" }
-];
-
-type CalendarSourceDialogState = { type: "new" } | { type: "edit"; source: RecordData } | null;
-
-function CalendarPage({
-  data,
-  events,
-  onCreate,
-  onDataChange,
-  onToast,
-  onRefreshData
-}: {
-  data: BootstrapData;
-  events: RecordData[];
-  onCreate: (startDate?: string, startTime?: string, endTime?: string) => void;
-  onDataChange: BootstrapDataUpdater;
-  onToast: (toast: ToastState) => void;
-  onRefreshData: (successMessage: string) => Promise<boolean>;
-}) {
-  const [anchorDate, setAnchorDate] = useState(() => new Date());
-  const [sidebarVisible, setSidebarVisible] = useState(true);
-  const [viewMode, setViewMode] = useState<"Week" | "Day" | "Month">("Week");
-  const [miniMonth, setMiniMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1, 12));
-  const [calendarDialog, setCalendarDialog] = useState<CalendarSourceDialogState>(null);
-  const [refreshedAt, setRefreshedAt] = useState(() => new Date());
-  const calendarTimeZone = String(data.userPreferences[0]?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
-  const hours = Array.from({ length: 24 }, (_, hour) => hour.toString().padStart(2, "0") + ":00");
-  const yearOptions = useMemo(() => Array.from({ length: 9 }, (_, index) => String(2022 + index)), []);
-  const defaultCalendarSources = useMemo<RecordData[]>(
-    () => [
-      { id: "calendar-default-my", name: data.user.name, type: "My", color: "#4f46e5", visible: true },
-      { id: "calendar-default-company", name: "Company Events", type: "Other", color: "#2e844a", visible: true }
-    ],
-    [data.user.name]
-  );
-  const calendarSources = useMemo(() => {
-    if (data.calendarSources.length === 0) return defaultCalendarSources;
-    const hasMyCalendar = data.calendarSources.some((source) => calendarSourceType(source) === "My");
-    return hasMyCalendar ? data.calendarSources : [defaultCalendarSources[0], ...data.calendarSources];
-  }, [data.calendarSources, defaultCalendarSources]);
-  const myCalendarVisible = calendarSources.filter((source) => calendarSourceType(source) === "My").some((source) => source.visible !== false);
-  const calendarSourceById = new Map(calendarSources.map((source) => [requiredId(source), source]));
-  const visibleEvents: RecordData[] = events.filter((event) => {
-    const source = calendarSourceById.get(String(event.calendarSourceId ?? ""));
-    return source ? source.visible !== false : myCalendarVisible;
-  }).map((event) => ({ ...event, calendarColor: String(calendarSourceById.get(String(event.calendarSourceId ?? ""))?.color ?? "#4f46e5") } as RecordData));
-  const myCalendarSources = calendarSources.filter((source) => calendarSourceType(source) === "My");
-  const otherCalendarSources = calendarSources.filter((source) => calendarSourceType(source) === "Other");
-  const weekStart = startOfSaturdayWeek(anchorDate);
-  const visibleDays = viewMode === "Day" ? [anchorDate] : Array.from({ length: 7 }, (_, index) => addCalendarDays(weekStart, index));
-  const monthDays = getMonthDays(anchorDate);
-  const rangeLabel =
-    viewMode === "Month"
-      ? monthYearLabel(anchorDate)
-      : viewMode === "Day"
-        ? fullDateLabel(anchorDate)
-        : `${monthDayYearLabel(visibleDays[0])}-${monthDayYearLabel(visibleDays[visibleDays.length - 1])}`;
-
-  function movePrevious() {
-    const delta = viewMode === "Month" ? -31 : viewMode === "Day" ? -1 : -7;
-    setAnchorDate((date) => (viewMode === "Month" ? addCalendarMonths(date, -1) : addCalendarDays(date, delta)));
-  }
-
-  function moveNext() {
-    const delta = viewMode === "Month" ? 31 : viewMode === "Day" ? 1 : 7;
-    setAnchorDate((date) => (viewMode === "Month" ? addCalendarMonths(date, 1) : addCalendarDays(date, delta)));
-  }
-
-  function createAt(day: Date, hour = "09:00") {
-    onCreate(toDateInputValue(day), hour, nextTimeSlot(hour));
-  }
-
-  function setMiniCalendarYear(year: string) {
-    setMiniMonth((date) => new Date(Number(year), date.getMonth(), 1, 12));
-  }
-
-  async function refreshCalendar() {
-    if (await onRefreshData("Calendar refreshed from the CRM.")) setRefreshedAt(new Date());
-  }
-
-  async function saveCalendarSource(values: RecordData, source?: RecordData) {
-    const name = String(values.name ?? "").trim();
-    if (!name) {
-      onToast({ tone: "error", message: "Calendar name is required." });
-      return;
-    }
-    const now = new Date().toISOString();
-    const nextSource: RecordData = {
-      ...(source ?? {}),
-      id: source && !isFallbackCalendarSource(source) ? requiredId(source) : `calendar-local-${Date.now()}`,
-      name,
-      type: calendarSourceType(values),
-      color: String(values.color ?? "#4f46e5"),
-      visible: values.visible !== false,
-      createdAt: source?.createdAt ?? now,
-      updatedAt: now
-    };
-    const action = source && !isFallbackCalendarSource(source) && !isLocalCalendarSource(source) ? "updateCalendarSource" : "createCalendarSource";
-    const response = await postUtility(action, action === "updateCalendarSource" ? requiredId(source ?? {}) : undefined, nextSource);
-    if (!response) {
-      onToast({ tone: "error", message: "Unable to save calendar." });
-      return;
-    }
-    const responseSources = calendarSourceListFromResponse(response);
-    onDataChange((previous) => ({
-      ...previous,
-      calendarSources: responseSources ?? upsertCalendarSource(previous.calendarSources, nextSource)
-    }));
-    setCalendarDialog(null);
-    onToast({ tone: "success", message: source ? "Calendar updated." : "Calendar added." });
-  }
-
-  async function setCalendarSourceVisibility(source: RecordData, visible: boolean) {
-    await saveCalendarSource({ ...source, visible }, source);
-  }
-
-  async function deleteCalendarSource(source: RecordData) {
-    if (isFallbackCalendarSource(source)) {
-      onToast({ tone: "warning", message: "Default calendars can be hidden but not deleted." });
-      return;
-    }
-    if (isLocalCalendarSource(source)) {
-      onDataChange((previous) => ({ ...previous, calendarSources: previous.calendarSources.filter((item) => requiredId(item) !== requiredId(source)) }));
-      onToast({ tone: "success", message: "Calendar deleted." });
-      return;
-    }
-    const response = await postUtility("deleteCalendarSource", requiredId(source));
-    if (!response) {
-      onToast({ tone: "error", message: "Unable to delete calendar." });
-      return;
-    }
-    const responseSources = calendarSourceListFromResponse(response);
-    onDataChange((previous) => ({
-      ...previous,
-      calendarSources: responseSources ?? previous.calendarSources.filter((item) => requiredId(item) !== requiredId(source))
-    }));
-    onToast({ tone: "success", message: "Calendar deleted." });
-  }
-
-  function renderCalendarSource(source: RecordData) {
-    const visible = source.visible !== false;
-    const sourceId = requiredId(source);
-    return (
-      <div key={sourceId} className="flex items-center justify-between gap-2 rounded px-1 py-1 text-sm hover:bg-brand-50">
-        <label className="flex min-w-0 flex-1 items-center gap-2">
-          <input type="checkbox" checked={visible} onChange={(event) => void setCalendarSourceVisibility(source, event.target.checked)}  className={checkboxClass} />
-          <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: String(source.color ?? "#4f46e5") }} />
-          <span className={cn("truncate", !visible && "text-[#706e6b] line-through")}>{String(source.name ?? "Calendar")}</span>
-        </label>
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button aria-label={`${String(source.name ?? "Calendar")} options`} className="rounded p-1 hover:bg-[#f3f3f3]">
-              <MoreHorizontal size={14} />
-            </button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content align="end" className="z-50 min-w-36 rounded border border-[#d8dde6] bg-white p-1 shadow-popover">
-              <DropdownMenu.Item onSelect={() => setCalendarDialog({ type: "edit", source })} className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm outline-none hover:bg-brand-50">
-                <Edit3 size={13} /> Edit
-              </DropdownMenu.Item>
-              <DropdownMenu.Item onSelect={() => void setCalendarSourceVisibility(source, !visible)} className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm outline-none hover:bg-brand-50">
-                <Eye size={13} /> {visible ? "Hide" : "Show"}
-              </DropdownMenu.Item>
-              <DropdownMenu.Item disabled={isFallbackCalendarSource(source)} onSelect={() => void deleteCalendarSource(source)} className="flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm text-[#ba0517] outline-none hover:bg-[#fff1f1] data-[disabled]:cursor-not-allowed data-[disabled]:text-[#a8a8a8] data-[disabled]:hover:bg-white">
-                <Trash2 size={13} /> Delete
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <div className={cn("grid gap-3", sidebarVisible && "xl:grid-cols-[280px_minmax(0,1fr)]")}>
-        {sidebarVisible && (
-          <aside className="rounded-lg border border-[#e4e7ec] bg-white shadow-card p-3">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <Button onClick={() => setMiniMonth((date) => addCalendarMonths(date, -1))}><ChevronLeft size={14} /></Button>
-              <div className="min-w-0 flex-1 text-center font-semibold">{monthYearLabel(miniMonth)}</div>
-              <Button onClick={() => setMiniMonth((date) => addCalendarMonths(date, 1))}><ChevronRight size={14} /></Button>
-            </div>
-            <FieldShell label="Year">
-              <NativeSelect options={yearOptions} value={String(miniMonth.getFullYear())} onChange={setMiniCalendarYear} />
-            </FieldShell>
-            <div className="mt-3 grid grid-cols-7 gap-1 text-center text-xs">
-              {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => <div key={`${day}-${index}`} className="font-semibold text-[#706e6b]">{day}</div>)}
-              {getMonthDays(miniMonth).map((day) => {
-                const active = toDateInputValue(day) === toDateInputValue(anchorDate);
-                const today = toDateInputValue(day) === toDateInputValue(new Date());
-                return (
-                  <button key={toDateInputValue(day)} onClick={() => setAnchorDate(day)} className={cn("rounded py-1 hover:bg-brand-50", active && "bg-brand-500 text-white", !sameMonth(day, miniMonth) && "text-[#a8a8a8]", today && !active && "ring-1 ring-brand-500")}>
-                    {day.getDate()}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="mt-4 border-t border-[#d8dde6] pt-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="font-semibold">My Calendars</div>
-                <button aria-label="Add calendar" className="rounded p-1 text-brand-700 hover:bg-brand-50" onClick={() => setCalendarDialog({ type: "new" })}>
-                  <Plus size={14} />
-                </button>
-              </div>
-              <div className="space-y-1">
-                {myCalendarSources.map(renderCalendarSource)}
-              </div>
-            </div>
-            <div className="mt-4 border-t border-[#d8dde6] pt-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <div className="font-semibold">Other Calendars</div>
-                <button className="text-sm text-brand-700 hover:underline" onClick={() => setCalendarDialog({ type: "new" })}>Add calendar</button>
-              </div>
-              <div className="space-y-1">
-                {otherCalendarSources.length > 0 ? otherCalendarSources.map(renderCalendarSource) : <div className="text-sm text-[#706e6b]">No other calendars</div>}
-              </div>
-            </div>
-          </aside>
-        )}
-        <section className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#d8dde6] p-3">
-            <div>
-              <h1 className="text-xl font-semibold">Calendar</h1>
-              <div className="text-xs text-[#706e6b]">{rangeLabel} | {calendarTimeZone} | Updated {formatDateTime(refreshedAt.toISOString())}</div>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              <Button onClick={movePrevious}>{viewMode === "Day" ? "Previous Day" : viewMode === "Month" ? "Previous Month" : "Previous Week"}</Button>
-              <Button onClick={moveNext}>{viewMode === "Day" ? "Next Day" : viewMode === "Month" ? "Next Month" : "Next Week"}</Button>
-              <Button onClick={() => setAnchorDate(new Date())}>Today</Button>
-              <Button onClick={() => void refreshCalendar()}><RefreshCw size={14} /> Refresh</Button>
-              <a href="/api/calendar/export" className="inline-flex min-h-8 items-center justify-center gap-1 rounded border border-[#c9c9c9] bg-white px-3 py-1 text-xs font-semibold text-brand-700 hover:bg-[#f3f3f3]"><Download size={14} /> Export .ics</a>
-              <NativeSelect options={["Week", "Day", "Month"]} value={viewMode} onChange={(value) => setViewMode(value as "Week" | "Day" | "Month")} />
-              <Button onClick={() => setSidebarVisible((visible) => !visible)}>{sidebarVisible ? "Hide Sidebar" : "Show Sidebar"}</Button>
-              <Button variant="primary" onClick={() => createAt(anchorDate)}>New Event</Button>
-            </div>
-          </div>
-          {viewMode === "Month" ? (
-            <div className="grid grid-cols-7 border-b border-[#d8dde6] text-xs">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <div key={day} className="border-b border-l border-[#d8dde6] bg-[#f3f3f3] p-2 text-center font-semibold">{day}</div>)}
-              {monthDays.map((day) => {
-                const dayEvents = visibleEvents.filter((event) => sameDateInTimeZone(event.startAt, day, calendarTimeZone));
-                return (
-                  <button key={toDateInputValue(day)} onClick={() => { setAnchorDate(day); setViewMode("Day"); }} className={cn("min-h-28 border-l border-t border-[#d8dde6] p-2 text-left align-top hover:bg-brand-50", !sameMonth(day, anchorDate) && "bg-[#fafafa] text-[#a8a8a8]")}>
-                    <div className="mb-1 font-semibold">{day.getDate()}</div>
-                    <div className="space-y-1">
-                      {dayEvents.slice(0, 3).map((event) => <CalendarEventChip key={requiredId(event)} event={event} timeZone={calendarTimeZone} />)}
-                      {dayEvents.length > 3 && <div className="text-[11px] text-brand-700">+{dayEvents.length - 3} more</div>}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="overflow-auto">
-              <div className={cn("grid min-w-[980px] border-b border-[#d8dde6] text-xs", viewMode === "Day" ? "grid-cols-[80px_1fr]" : "grid-cols-[80px_repeat(7,1fr)]")}>
-                <div className="bg-[#f3f3f3] p-2" />
-                {visibleDays.map((day) => <div key={toDateInputValue(day)} className="border-l border-[#d8dde6] bg-[#f3f3f3] p-2 text-center font-semibold">{shortDayLabel(day)}</div>)}
-                <div className="border-t border-[#d8dde6] p-2 text-[#706e6b]">All-Day Events</div>
-                {visibleDays.map((day) => (
-                  <div key={`${toDateInputValue(day)}-all`} className="min-h-10 border-l border-t border-[#d8dde6] p-1 text-xs">
-                    {visibleEvents.filter((event) => event.allDay && sameDateInTimeZone(event.startAt, day, calendarTimeZone)).map((event) => <CalendarEventChip key={requiredId(event)} event={event} timeZone={calendarTimeZone} />)}
-                  </div>
-                ))}
-                {hours.map((hour) => (
-                  <div key={hour} className="contents">
-                    <button className="border-t border-[#d8dde6] p-2 text-right text-[#706e6b] hover:bg-brand-50" onClick={() => createAt(anchorDate, hour)}>{hour}</button>
-                    {visibleDays.map((day) => {
-                      const cellEvents = visibleEvents.filter((event) => !event.allDay && sameDateInTimeZone(event.startAt, day, calendarTimeZone) && hourFromDate(event.startAt, calendarTimeZone) === hour.slice(0, 2));
-                      return (
-                        <button
-                          key={`${toDateInputValue(day)}-${hour}`}
-                          onClick={(event) => {
-                            if ((event.target as HTMLElement).closest("[data-calendar-event]")) return;
-                            createAt(day, hour);
-                          }}
-                          className="min-h-12 border-l border-t border-[#d8dde6] p-1 text-left hover:bg-brand-50"
-                        >
-                          <div className="space-y-1">
-                            {cellEvents.map((event) => <CalendarEventChip key={requiredId(event)} event={event} timeZone={calendarTimeZone} />)}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-      </div>
-      {calendarDialog && <CalendarSourceModal state={calendarDialog} onClose={() => setCalendarDialog(null)} onSave={saveCalendarSource} />}
-    </>
-  );
-}
-
-function CalendarSourceModal({ state, onClose, onSave }: { state: Exclude<CalendarSourceDialogState, null>; onClose: () => void; onSave: (values: RecordData, source?: RecordData) => Promise<void> }) {
-  const source = state.type === "edit" ? state.source : undefined;
-  const [values, setValues] = useState<RecordData>(() => ({
-    name: String(source?.name ?? ""),
-    type: calendarSourceType(source ?? { type: "My" }),
-    color: String(source?.color ?? "#4f46e5"),
-    visible: source?.visible !== false
-  }));
-  const [error, setError] = useState("");
-
-  async function submit() {
-    if (!String(values.name ?? "").trim()) {
-      setError("Complete this field.");
-      return;
-    }
-    setError("");
-    await onSave(values, source);
-  }
-
-  return (
-    <BaseDialog open title={source ? "Edit Calendar" : "Add Calendar"} onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" onClick={submit}>Save</Button></>}>
-      <div className="grid gap-3">
-        <div className="rounded border border-[#d8dde6] bg-[#f8f9fb] p-3 text-xs text-[#514f4d]">This creates a local CRM calendar. Google, Microsoft, and CalDAV synchronization require a configured provider connection and are not simulated. Use the calendar&apos;s .ics export for interoperability.</div>
-        <FieldShell label="Calendar Name" required error={error}>
-          <input className={inputClass} value={String(values.name ?? "")} onChange={(event) => setValues({ ...values, name: event.target.value })} />
-        </FieldShell>
-        <FieldShell label="Type">
-          <NativeSelect options={["My", "Other"]} value={calendarSourceType(values)} onChange={(value) => setValues({ ...values, type: value })} />
-        </FieldShell>
-        <FieldShell label="Color">
-          <div className="flex flex-wrap gap-2">
-            {CALENDAR_SOURCE_COLORS.map((option) => {
-              const selected = String(values.color ?? "#4f46e5") === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-label={`Use ${option.label}`}
-                  onClick={() => setValues({ ...values, color: option.value })}
-                  className={cn("h-8 w-8 rounded border border-[#c9c9c9] ring-offset-2", selected && "ring-2 ring-brand-500")}
-                  style={{ backgroundColor: option.value }}
-                />
-              );
-            })}
-          </div>
-        </FieldShell>
-        <FieldShell label="Visible">
-          <RadixCheckbox checked={values.visible !== false} onCheckedChange={(checked) => setValues({ ...values, visible: Boolean(checked) })} />
-        </FieldShell>
-      </div>
-    </BaseDialog>
-  );
-}
-
 function QuickTextPage({ data, onCreate, onCreateFolder, onEdit, onDelete, onDataChange, onToast }: { data: BootstrapData; onCreate: () => void; onCreateFolder: () => void; onEdit: (record: RecordData) => void; onDelete: (record: RecordData) => void; onDataChange: BootstrapDataUpdater; onToast: (toast: ToastState) => void }) {
   const [activeView, setActiveView] = useState("Recent");
   const [query, setQuery] = useState("");
@@ -6732,6 +6452,7 @@ function ModalHost({
   campaignMembers,
   onClose,
   onSaveRecord,
+  onDeleteEvent,
   onSaveAppNav,
   onResetAppNav,
   onDataChange,
@@ -6747,6 +6468,7 @@ function ModalHost({
   campaignMembers: Record<string, string[]>;
   onClose: () => void;
   onSaveRecord: (object: CrmObject, values: RecordData, options?: { id?: string; stayOpen?: boolean }) => Promise<boolean>;
+  onDeleteEvent: (record: RecordData, scope: "single" | "all", occurrenceStart: string | null) => void;
   onSaveAppNav: (app: AppKey, items: AppNavItem[]) => Promise<boolean>;
   onResetAppNav: (app: AppKey) => Promise<boolean>;
   onDataChange: BootstrapDataUpdater;
@@ -6771,7 +6493,25 @@ function ModalHost({
   if (modal.type === "campaign") return <CampaignEditorModal data={data} initial={modal.record} onClose={onClose} onSaved={onCampaignSaved} onToast={onToast} />;
   if (modal.type === "navEdit") return <NavEditModal app={modal.app} data={data} onClose={onClose} onSave={onSaveAppNav} onReset={onResetAppNav} />;
   if (modal.type === "product") return <ProductWizardModal data={data} onClose={onClose} onSave={(values) => onSaveRecord("Product2", values)} />;
-  if (modal.type === "event") return <EventModal data={data} relatedObjectType={modal.relatedObjectType} relatedRecordId={modal.relatedRecordId} startDate={modal.startDate} startTime={modal.startTime} endDate={modal.endDate} endTime={modal.endTime} onClose={onClose} onSave={(values) => onSaveRecord("Event", values)} />;
+  if (modal.type === "event") {
+    return (
+      <EventModal
+        data={data}
+        record={modal.record}
+        occurrenceStart={modal.occurrenceStart}
+        recurring={modal.recurring}
+        relatedObjectType={modal.relatedObjectType}
+        relatedRecordId={modal.relatedRecordId}
+        startDate={modal.startDate}
+        startTime={modal.startTime}
+        endDate={modal.endDate}
+        endTime={modal.endTime}
+        onClose={onClose}
+        onSave={(values, options) => onSaveRecord("Event", values, options)}
+        onDelete={(record, scope) => onDeleteEvent(record, scope, modal.occurrenceStart ?? null)}
+      />
+    );
+  }
   if (modal.type === "quickText") return <QuickTextModal data={data} initial={modal.record} onClose={onClose} onSave={(values) => onSaveRecord("QuickText", values, { id: modal.record?.id })} />;
   if (modal.type === "knowledge") return <KnowledgeModal initial={modal.record} onClose={onClose} onSave={(values) => onSaveRecord("Knowledge__kav", values, { id: modal.record?.id })} />;
   if (modal.type === "listEmail") return <ListEmailWizard data={data} initialValues={modal.initialValues} startingStep={modal.startingStep} initialLayout={modal.layout} onClose={onClose} onSave={(values) => onSaveRecord("ListEmail", values, { id: modal.record?.id })} />;
@@ -6927,206 +6667,15 @@ function ListActionModal({
   }
 
   if (modal.object === "Lead" && ["Show more actions", "Convert Lead"].includes(modal.action)) {
-    const firstLead = selectedRecords[0] ?? {};
-    const defaultAccountName = String(firstLead.company ?? "").trim() || "Converted Lead Account";
-    const defaultContactName = contactName(firstLead) || "Converted Contact";
-    const defaultOpportunityName = `${String(firstLead.company ?? contactName(firstLead) ?? "Converted Lead").trim() || "Converted Lead"} Opportunity`;
-    const accountName = String(values.accountName ?? defaultAccountName);
-    const accountMode = String(values.accountMode ?? "new") === "existing" ? "existing" : "new";
-    const contactMode = String(values.contactMode ?? "new") === "existing" ? "existing" : "new";
-    const opportunityMode = String(values.opportunityMode ?? "new") === "existing" ? "existing" : "new";
-    const existingAccountId = String(values.existingAccountId ?? "");
-    const existingContactId = String(values.existingContactId ?? "");
-    const existingOpportunityId = String(values.existingOpportunityId ?? "");
-    const createOpportunity = values.createOpportunity !== false;
-    const closeDate = String(values.closeDate ?? defaultLeadConversionCloseDate());
-    const convertedStatus = String(values.convertedStatus ?? "Qualified");
-    const matchedAccounts = targetCount === 1 ? matchingAccountsForLead(data.accounts, firstLead) : [];
-    const matchedContacts = targetCount === 1 ? matchingContactsForLead(data.contacts, firstLead) : [];
-    const opportunityOptions = data.opportunities.filter((opportunity) => {
-      if (!existingAccountId) return true;
-      return String(opportunity.accountId ?? "") === existingAccountId;
-    });
-    const canConvert =
-      targetCount > 0 &&
-      (targetCount > 1 ||
-        ((accountMode === "new" ? Boolean(accountName.trim()) : Boolean(existingAccountId)) &&
-          (contactMode === "new" || Boolean(existingContactId)) &&
-          (!createOpportunity || opportunityMode === "new" || Boolean(existingOpportunityId))));
-    const accountLookupField: FieldDefinition = { name: "existingAccountId", label: "Account", section: "Account", type: "lookup", lookupObject: "Account" };
-    const contactLookupField: FieldDefinition = { name: "existingContactId", label: "Contact", section: "Contact", type: "lookup", lookupObject: "Contact" };
-    const opportunityLookupField: FieldDefinition = { name: "existingOpportunityId", label: "Opportunity", section: "Opportunity", type: "lookup", lookupObject: "Opportunity" };
-    const footer = (
-      <>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button
-          variant="primary"
-          disabled={!canConvert}
-          onClick={() =>
-            onApply("Convert Lead", "Lead", effectiveSelectedIds, {
-              accountName,
-              accountMode,
-              existingAccountId: accountMode === "existing" ? existingAccountId : "",
-              contactMode,
-              existingContactId: contactMode === "existing" ? existingContactId : "",
-              createOpportunity,
-              opportunityMode: createOpportunity ? opportunityMode : "new",
-              existingOpportunityId: createOpportunity && opportunityMode === "existing" ? existingOpportunityId : "",
-              opportunityName: String(values.opportunityName ?? defaultOpportunityName),
-              closeDate,
-              stage: "Qualify",
-              forecastCategory: "Pipeline",
-              convertedStatus
-            })
-          }
-        >
-          Convert
-        </Button>
-      </>
-    );
     return (
-      <BaseDialog open title={modal.action === "Convert Lead" ? "Convert Lead" : "Show More Actions: Leads"} onClose={onClose} wide footer={footer}>
-        <div className="grid gap-4">
-          <div className="rounded border border-[#d8dde6] bg-[#f3f9ff] px-3 py-2 text-sm text-[#16325c]">
-            {targetCount === 0
-              ? "Select a lead before converting."
-              : targetCount === 1
-                ? `Convert ${defaultContactName} into an account, contact, and optional opportunity.`
-                : `${targetCount} leads will each convert into an account, contact, and optional opportunity.`}
-          </div>
-          {targetCount === 1 ? (
-            <div className="grid gap-3">
-              <ConversionSection
-                icon={Building2}
-                title="Account"
-                subtitle="Company the contact belongs to"
-                mode={accountMode}
-                onModeChange={(mode) => setValues({ ...values, accountMode: mode, existingAccountId: mode === "existing" ? existingAccountId || requiredId(matchedAccounts[0] ?? {}) : "" })}
-              >
-                {accountMode === "new" ? (
-                  <FieldShell label="Account Name">
-                    <input className={inputClass} value={accountName} onChange={(event) => setValues({ ...values, accountName: event.target.value })} />
-                  </FieldShell>
-                ) : (
-                  <div className="space-y-2">
-                    {matchedAccounts.length > 0 && !existingAccountId && (
-                      <button
-                        type="button"
-                        className="w-full rounded border border-[#94d0ff] bg-[#f3f9ff] px-3 py-2 text-left text-sm hover:bg-[#e8f4ff]"
-                        onClick={() => setValues({ ...values, accountMode: "existing", existingAccountId: requiredId(matchedAccounts[0]) })}
-                      >
-                        Suggested match: <span className="font-semibold">{String(matchedAccounts[0].name)}</span>
-                      </button>
-                    )}
-                    <LookupField field={accountLookupField} value={existingAccountId} data={data} onChange={(next) => setValues({ ...values, existingAccountId: next })} />
-                  </div>
-                )}
-              </ConversionSection>
-
-              <ConversionSection
-                icon={User}
-                title="Contact"
-                subtitle={defaultContactName}
-                mode={contactMode}
-                onModeChange={(mode) => setValues({ ...values, contactMode: mode, existingContactId: mode === "existing" ? existingContactId || requiredId(matchedContacts[0] ?? {}) : "" })}
-              >
-                {contactMode === "new" ? (
-                  <div className="rounded border border-dashed border-[#d8dde6] bg-[#fafaf9] px-3 py-2 text-sm text-[#706e6b]">
-                    A new contact will be created as <span className="font-medium text-[#080707]">{defaultContactName}</span>
-                    {firstLead.email ? <> · {String(firstLead.email)}</> : null}
-                    {firstLead.phone ? <> · {String(firstLead.phone)}</> : null}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {matchedContacts.length > 0 && !existingContactId && (
-                      <button
-                        type="button"
-                        className="w-full rounded border border-[#94d0ff] bg-[#f3f9ff] px-3 py-2 text-left text-sm hover:bg-[#e8f4ff]"
-                        onClick={() => setValues({ ...values, contactMode: "existing", existingContactId: requiredId(matchedContacts[0]) })}
-                      >
-                        Suggested match: <span className="font-semibold">{contactName(matchedContacts[0])}</span>
-                        {matchedContacts[0].email ? <span className="text-[#706e6b]"> · {String(matchedContacts[0].email)}</span> : null}
-                      </button>
-                    )}
-                    <LookupField field={contactLookupField} value={existingContactId} data={data} onChange={(next) => setValues({ ...values, existingContactId: next })} />
-                  </div>
-                )}
-              </ConversionSection>
-
-              <ConversionSection
-                icon={Target}
-                title="Opportunity"
-                subtitle="Optional deal for this conversion"
-                mode={createOpportunity ? opportunityMode : "new"}
-                onModeChange={(mode) => setValues({ ...values, createOpportunity: true, opportunityMode: mode })}
-                disabled={!createOpportunity}
-                extraHeader={
-                  <label className="flex items-center gap-2 text-sm text-[#444]">
-                    <RadixCheckbox
-                      checked={!createOpportunity}
-                      onCheckedChange={(checked) => setValues({ ...values, createOpportunity: !checked, opportunityMode: "new", existingOpportunityId: "" })}
-                    />
-                    Don&apos;t create an opportunity
-                  </label>
-                }
-              >
-                {createOpportunity ? (
-                  opportunityMode === "new" ? (
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <FieldShell label="Opportunity Name">
-                        <input className={inputClass} value={String(values.opportunityName ?? defaultOpportunityName)} onChange={(event) => setValues({ ...values, opportunityName: event.target.value })} />
-                      </FieldShell>
-                      <FieldShell label="Close Date">
-                        <input className={inputClass} type="date" value={closeDate} onChange={(event) => setValues({ ...values, closeDate: event.target.value })} />
-                      </FieldShell>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {opportunityOptions.length === 0 && existingAccountId ? (
-                        <p className="text-xs text-[#706e6b]">No open opportunities on the selected account. Search all opportunities below, or create a new one.</p>
-                      ) : null}
-                      <LookupField
-                        field={opportunityLookupField}
-                        value={existingOpportunityId}
-                        data={{ ...data, opportunities: opportunityOptions.length ? opportunityOptions : data.opportunities }}
-                        onChange={(next) => setValues({ ...values, existingOpportunityId: next })}
-                      />
-                    </div>
-                  )
-                ) : (
-                  <p className="text-sm text-[#706e6b]">This lead will convert to an account and contact only.</p>
-                )}
-              </ConversionSection>
-
-              <FieldShell label="Converted Status">
-                <NativeSelect options={LEAD_STATUS.filter((status) => status !== "--None--")} value={convertedStatus} onChange={(value) => setValues({ ...values, convertedStatus: value })} />
-              </FieldShell>
-            </div>
-          ) : targetCount > 1 ? (
-            <div className="grid gap-3">
-              <p className="text-sm text-[#706e6b]">Each selected lead uses its Company value for the converted account and creates a matching contact.</p>
-              <FieldShell label="Create Opportunity">
-                <RadixCheckbox checked={createOpportunity} onCheckedChange={(value) => setValues({ ...values, createOpportunity: Boolean(value) })} />
-              </FieldShell>
-              <FieldShell label="Converted Status">
-                <NativeSelect options={LEAD_STATUS.filter((status) => status !== "--None--")} value={convertedStatus} onChange={(value) => setValues({ ...values, convertedStatus: value })} />
-              </FieldShell>
-              <div className="rounded border border-[#d8dde6]">
-                <div className="border-b border-[#d8dde6] bg-[#f8f8f8] px-3 py-2 text-xs font-semibold uppercase text-[#706e6b]">Selected Leads</div>
-                <div className="max-h-48 overflow-auto p-2">
-                  {selectedRecords.map((lead) => (
-                    <div key={requiredId(lead)} className="grid gap-1 border-b border-[#f3f3f3] px-2 py-2 text-sm last:border-b-0 md:grid-cols-[1fr_1fr_120px]">
-                      <span className="font-medium">{contactName(lead) || "Unnamed Lead"}</span>
-                      <span className="text-[#706e6b]">{String(lead.company ?? "No company")}</span>
-                      <span className="text-[#706e6b]">{String(lead.status ?? "New")}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </BaseDialog>
+      <LeadConversionDialog
+        title={modal.action === "Convert Lead" ? "Convert Lead" : "Show More Actions: Leads"}
+        leads={selectedRecords}
+        selectedIds={effectiveSelectedIds}
+        data={data}
+        onClose={onClose}
+        onApply={onApply}
+      />
     );
   }
 
@@ -7639,6 +7188,9 @@ function ProductWizardModal({ data, onClose, onSave }: { data: BootstrapData; on
 
 function EventModal({
   data,
+  record,
+  occurrenceStart,
+  recurring = false,
   relatedObjectType,
   relatedRecordId,
   startDate = toDateInputValue(new Date()),
@@ -7646,9 +7198,13 @@ function EventModal({
   endDate,
   endTime,
   onClose,
-  onSave
+  onSave,
+  onDelete
 }: {
   data: BootstrapData;
+  record?: RecordData;
+  occurrenceStart?: string | null;
+  recurring?: boolean;
   relatedObjectType?: CrmObject;
   relatedRecordId?: string;
   startDate?: string;
@@ -7656,8 +7212,18 @@ function EventModal({
   endDate?: string;
   endTime?: string;
   onClose: () => void;
-  onSave: (values: RecordData) => Promise<boolean>;
+  onSave: (values: RecordData, options?: { id?: string }) => Promise<boolean>;
+  onDelete?: (record: RecordData, scope: "single" | "all") => void;
 }) {
+  const timeZone = String(data.userPreferences[0]?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const isEdit = Boolean(record?.id);
+  // A recurring occurrence is opened at its own slot, not at the series anchor.
+  const editStart = record ? String(record.occurrenceStartAt ?? record.startAt ?? "") : "";
+  const editEnd = record ? String(record.occurrenceEndAt ?? record.endAt ?? "") : "";
+  const editStartParts = editStart ? utcToZonedFormValues(editStart, timeZone) : null;
+  const editEndParts = editEnd ? utcToZonedFormValues(editEnd, timeZone) : null;
+  const existingRecurrence = parseRecurrenceRule(record?.recurrenceRule) ?? null;
+  const [scope, setScope] = useState<"single" | "all">(recurring ? "single" : "all");
   const relatedPlural = relatedObjectType && relatedObjectType !== "Event"
     ? OBJECT_DEFINITIONS[relatedObjectType]?.plural
     : undefined;
@@ -7681,19 +7247,28 @@ function EventModal({
         : undefined;
 
   const [initialValues] = useState<RecordData>(() => ({
-    subject: "--None--",
-    startDate,
-    startTime,
-    endDate: endDate ?? startDate,
-    endTime: endTime ?? nextTimeSlot(startTime),
-    assignedToId: data.user.id,
-    showTimeAs: "Busy",
-    attendeeIds: [data.user.id],
-    nameObjectType: nameTypeDefault,
-    nameRecordId: nameRecordDefault ?? "",
-    relatedObjectType: relatedTypeDefault,
-    relatedRecordId: relatedRecordDefault ?? "",
-    calendarSourceId: data.calendarSources.find((source) => calendarSourceType(source) === "My")?.id ?? ""
+    subject: record ? String(record.subject ?? "--None--") : "--None--",
+    description: record ? String(record.description ?? "") : "",
+    startDate: editStartParts?.date ?? startDate,
+    startTime: editStartParts?.time ?? startTime,
+    endDate: editEndParts?.date ?? endDate ?? startDate,
+    endTime: editEndParts?.time ?? endTime ?? nextTimeSlot(startTime),
+    assignedToId: record ? String(record.assignedToId ?? data.user.id) : data.user.id,
+    showTimeAs: record ? String(record.showTimeAs ?? "Busy") : "Busy",
+    attendeeIds: record && Array.isArray(record.attendeeIds) ? record.attendeeIds.map(String) : [data.user.id],
+    nameObjectType: record ? String(record.nameObjectType ?? nameTypeDefault) : nameTypeDefault,
+    nameRecordId: record ? String(record.nameRecordId ?? "") : nameRecordDefault ?? "",
+    relatedObjectType: record ? String(record.relatedObjectType ?? relatedTypeDefault) : relatedTypeDefault,
+    relatedRecordId: record ? String(record.relatedRecordId ?? "") : relatedRecordDefault ?? "",
+    calendarSourceId: record ? String(record.calendarSourceId ?? "") : String(data.calendarSources.find((source) => String(source.type ?? "My") !== "Other")?.id ?? ""),
+    location: record ? String(record.location ?? "") : "",
+    allDay: record ? Boolean(record.allDay) : false,
+    private: record ? Boolean(record.private) : false,
+    reminderMinutes: record?.reminderMinutes === null || record?.reminderMinutes === undefined ? "" : String(record.reminderMinutes),
+    repeatFrequency: existingRecurrence?.freq ?? "None",
+    repeatInterval: String(existingRecurrence?.interval ?? 1),
+    repeatByDay: existingRecurrence?.byDay ?? [],
+    repeatUntil: record?.recurrenceEndAt ? utcToZonedFormValues(record.recurrenceEndAt, timeZone).date : existingRecurrence?.until ? utcToZonedFormValues(existingRecurrence.until, timeZone).date : ""
   }));
   const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -7737,28 +7312,83 @@ function EventModal({
     });
   }
 
+  const repeatFrequency = String(values.repeatFrequency ?? "None");
+  const repeatByDay = Array.isArray(values.repeatByDay) ? values.repeatByDay.map(String) : [];
+  const recurrenceRule =
+    repeatFrequency === "None"
+      ? null
+      : formatRecurrenceRule({
+          freq: repeatFrequency as RecurrenceFrequency,
+          interval: Math.max(1, Number(values.repeatInterval) || 1),
+          byDay: repeatByDay as RecurrenceDay[]
+        });
+  const recurrenceSummary = recurrenceRule ? describeRecurrence(recurrenceRule, timeZone) : "";
+
   async function submit(stayOpen = false) {
     const required = ["subject", "startDate", "startTime", "endDate", "endTime", "assignedToId"];
     const nextErrors = Object.fromEntries(required.filter((key) => !values[key] || values[key] === "--None--").map((key) => [key, "Complete this field."]));
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
-    const payload = {
-      ...values,
+
+    // The grid renders in the user's preference zone, so the form must write in it too.
+    const startAt = zonedTimeToUtc(String(values.startDate), String(values.startTime), timeZone);
+    const endAt = zonedTimeToUtc(String(values.endDate), String(values.endTime), timeZone);
+    if (endAt <= startAt) {
+      setErrors({ endTime: "End must be after the start." });
+      return;
+    }
+
+    const { repeatFrequency: _frequency, repeatInterval: _interval, repeatByDay: _byDay, repeatUntil: _until, ...rest } = values;
+    const payload: RecordData = {
+      ...rest,
       nameRecordId: values.nameRecordId || null,
       relatedRecordId: values.relatedRecordId || null,
       calendarSourceId: values.calendarSourceId || null,
-      startAt: new Date(`${values.startDate}T${values.startTime}:00`).toISOString(),
-      endAt: new Date(`${values.endDate}T${values.endTime}:00`).toISOString()
+      reminderMinutes: values.reminderMinutes === "" || values.reminderMinutes === undefined ? null : Number(values.reminderMinutes),
+      recurrenceRule,
+      recurrenceEndAt: recurrenceRule && values.repeatUntil ? zonedTimeToUtc(String(values.repeatUntil), "23:59", timeZone).toISOString() : null,
+      startAt: startAt.toISOString(),
+      endAt: endAt.toISOString()
     };
-    const ok = await onSave(payload);
+    if (isEdit) {
+      payload.recurrenceScope = scope;
+      payload.occurrenceStart = occurrenceStart ?? null;
+    }
+
+    const ok = await onSave(payload, isEdit ? { id: String(record?.id) } : undefined);
     if (ok && stayOpen) {
       setValues(initialValues);
       setErrors({});
     }
   }
+
   if (discardDialog) return discardDialog;
   return (
-    <BaseDialog open title="New Event" onClose={requestClose} wide footer={<><Button onClick={requestClose}>Cancel</Button><Button onClick={() => submit(true)}>Save & New</Button><Button variant="primary" onClick={() => submit(false)}>Save</Button></>}>
+    <BaseDialog
+      open
+      title={isEdit ? "Edit Event" : "New Event"}
+      onClose={requestClose}
+      wide
+      footer={
+        <>
+          <Button onClick={requestClose}>Cancel</Button>
+          {isEdit && onDelete && record && (
+            <Button onClick={() => onDelete(record, recurring ? scope : "all")} className="border-[#ea001e] text-[#ba0517] hover:bg-[#fff1f1]">Delete</Button>
+          )}
+          {!isEdit && <Button onClick={() => submit(true)}>Save &amp; New</Button>}
+          <Button variant="primary" onClick={() => submit(false)}>Save</Button>
+        </>
+      }
+    >
+      {recurring && (
+        <div className="mb-4 rounded border border-[#d8dde6] bg-[#f8f9fb] p-3">
+          <div className="mb-2 text-xs font-semibold text-[#514f4d]">This event repeats. Apply your changes to:</div>
+          <div className="flex flex-wrap gap-3 text-sm">
+            <label className="flex items-center gap-2"><input type="radio" name="event-scope" className={checkboxClass} checked={scope === "single"} onChange={() => setScope("single")} /> This occurrence</label>
+            <label className="flex items-center gap-2"><input type="radio" name="event-scope" className={checkboxClass} checked={scope === "all"} onChange={() => setScope("all")} /> All occurrences</label>
+          </div>
+        </div>
+      )}
       <div className="mb-4 text-xs text-[#706e6b]"><span className="text-[#ba0517]">*</span>= Required Information</div>
       <div className="grid gap-4 md:grid-cols-2">
         <FieldShell label="Subject" required error={errors.subject}><NativeSelect options={["--None--", ...EVENT_SUBJECTS]} value={String(values.subject ?? "--None--")} onChange={(value) => setValues({ ...values, subject: value })} /></FieldShell>
@@ -7827,10 +7457,83 @@ function EventModal({
         <FieldShell label="Show Time As"><NativeSelect options={SHOW_TIME_AS} value={String(values.showTimeAs)} onChange={(value) => setValues({ ...values, showTimeAs: value })} /></FieldShell>
         <FieldShell label="All-Day Event"><RadixCheckbox checked={Boolean(values.allDay)} onCheckedChange={(value) => setValues({ ...values, allDay: Boolean(value) })} /></FieldShell>
         <FieldShell label="Private"><RadixCheckbox checked={Boolean(values.private)} onCheckedChange={(value) => setValues({ ...values, private: Boolean(value) })} /><p className="mt-1 text-xs text-[#706e6b]">Private details remain visible to organization admins and users with View All Data.</p></FieldShell>
+        <FieldShell label="Reminder">
+          <NativeSelect
+            options={REMINDER_OPTIONS.map((option) => option.label)}
+            value={REMINDER_OPTIONS.find((option) => option.value === String(values.reminderMinutes ?? ""))?.label ?? "None"}
+            onChange={(label) => setValues({ ...values, reminderMinutes: REMINDER_OPTIONS.find((option) => option.label === label)?.value ?? "" })}
+          />
+        </FieldShell>
+        <FieldShell label="Repeat">
+          <div className="grid gap-2">
+            <NativeSelect
+              options={REPEAT_OPTIONS.map((option) => option.label)}
+              value={REPEAT_OPTIONS.find((option) => option.value === repeatFrequency)?.label ?? "Does not repeat"}
+              onChange={(label) => setValues({ ...values, repeatFrequency: REPEAT_OPTIONS.find((option) => option.label === label)?.value ?? "None" })}
+            />
+            {repeatFrequency !== "None" && (
+              <>
+                <label className="flex items-center gap-2 text-sm">
+                  Every
+                  <input
+                    className={cn(inputClass, "w-20")}
+                    type="number"
+                    min="1"
+                    max="52"
+                    value={String(values.repeatInterval ?? "1")}
+                    onChange={(event) => setValues({ ...values, repeatInterval: event.target.value })}
+                  />
+                  {repeatFrequency === "DAILY" ? "day(s)" : repeatFrequency === "WEEKLY" ? "week(s)" : repeatFrequency === "MONTHLY" ? "month(s)" : "year(s)"}
+                </label>
+                {repeatFrequency === "WEEKLY" && (
+                  <div className="flex flex-wrap gap-1">
+                    {RECURRENCE_DAYS.map((day) => {
+                      const selected = repeatByDay.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => setValues({ ...values, repeatByDay: selected ? repeatByDay.filter((value) => value !== day) : [...repeatByDay, day] })}
+                          className={cn("h-8 w-9 rounded border border-[#c9c9c9] text-xs font-semibold", selected ? "border-brand-700 bg-brand-600 text-white" : "bg-white text-[#514f4d] hover:bg-[#f3f3f3]")}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <label className="block text-xs text-[#514f4d]">
+                  Ends on
+                  <input className={inputClass} type="date" value={String(values.repeatUntil ?? "")} onChange={(event) => setValues({ ...values, repeatUntil: event.target.value })} />
+                </label>
+                {recurrenceSummary && <p className="text-xs text-[#706e6b]">{recurrenceSummary}</p>}
+              </>
+            )}
+          </div>
+        </FieldShell>
       </div>
     </BaseDialog>
   );
 }
+
+const REMINDER_OPTIONS = [
+  { label: "None", value: "" },
+  { label: "5 minutes before", value: "5" },
+  { label: "10 minutes before", value: "10" },
+  { label: "15 minutes before", value: "15" },
+  { label: "30 minutes before", value: "30" },
+  { label: "1 hour before", value: "60" },
+  { label: "1 day before", value: "1440" }
+];
+
+const REPEAT_OPTIONS = [
+  { label: "Does not repeat", value: "None" },
+  { label: "Daily", value: "DAILY" },
+  { label: "Weekly", value: "WEEKLY" },
+  { label: "Monthly", value: "MONTHLY" },
+  { label: "Yearly", value: "YEARLY" }
+];
 
 function relatedPluralToCrmObject(plural: string): CrmObject | null {
   const match = (Object.keys(OBJECT_DEFINITIONS) as CrmObject[]).find((object) => OBJECT_DEFINITIONS[object].plural === plural);
@@ -8966,22 +8669,412 @@ function lookupPlaceholder(field: FieldDefinition) {
   return `Search ${OBJECT_DEFINITIONS[field.lookupObject as CrmObject]?.plural ?? "Records"}...`;
 }
 
-function matchingAccountsForLead(accounts: RecordData[], lead: RecordData) {
-  const company = normalizedText(lead.company);
-  if (!company) return [];
-  return accounts.filter((account) => {
-    const name = normalizedText(account.name);
-    return name === company || name.includes(company) || company.includes(name);
-  }).slice(0, 3);
+type LeadConversionForm = {
+  accountMode: "new" | "existing";
+  accountName: string;
+  existingAccountId: string;
+  contactMode: "new" | "existing";
+  existingContactId: string;
+  contact: { salutation: string; firstName: string; lastName: string; title: string; phone: string; email: string };
+  createOpportunity: boolean;
+  opportunityMode: "new" | "existing";
+  existingOpportunityId: string;
+  opportunity: { name: string; amount: string; closeDate: string; stage: string; forecastCategory: string };
+  convertedStatus: string;
+};
+
+function initialLeadConversionForm(lead: RecordData): LeadConversionForm {
+  const accountName = accountNameForLead(leadForConversion(lead));
+  return {
+    accountMode: "new",
+    accountName,
+    existingAccountId: "",
+    contactMode: "new",
+    existingContactId: "",
+    contact: {
+      salutation: String(lead.salutation ?? ""),
+      firstName: String(lead.firstName ?? ""),
+      lastName: String(lead.lastName ?? ""),
+      title: String(lead.title ?? ""),
+      phone: String(lead.phone ?? ""),
+      email: String(lead.email ?? "")
+    },
+    createOpportunity: true,
+    opportunityMode: "new",
+    existingOpportunityId: "",
+    opportunity: {
+      name: opportunityNameFor(accountName),
+      amount: "",
+      closeDate: defaultLeadConversionCloseDate(),
+      stage: "Qualify",
+      forecastCategory: "Pipeline"
+    },
+    convertedStatus: "Qualified"
+  };
 }
 
-function matchingContactsForLead(contacts: RecordData[], lead: RecordData) {
-  const email = String(lead.email ?? "").trim().toLowerCase();
-  const fullName = normalizedText(contactName(lead));
-  return contacts.filter((contact) => {
-    if (email && String(contact.email ?? "").trim().toLowerCase() === email) return true;
-    return Boolean(fullName) && normalizedText(contactName(contact)) === fullName;
-  }).slice(0, 3);
+/** Adapt a loosely-typed bootstrap record to the shape the conversion helpers read. */
+function leadForConversion(lead: RecordData): ConvertibleLead {
+  return {
+    id: requiredId(lead),
+    firstName: lead.firstName == null ? null : String(lead.firstName),
+    lastName: String(lead.lastName ?? ""),
+    company: lead.company == null ? null : String(lead.company),
+    ownerId: String(lead.ownerId ?? ""),
+    phone: lead.phone == null ? null : String(lead.phone),
+    email: lead.email == null ? null : String(lead.email)
+  };
+}
+
+function LeadConversionDialog({
+  title,
+  leads,
+  selectedIds,
+  data,
+  onClose,
+  onApply
+}: {
+  title: string;
+  leads: RecordData[];
+  selectedIds: string[];
+  data: BootstrapData;
+  onClose: () => void;
+  onApply: (action: string, object: CrmObject, selectedIds: string[], payload: RecordData) => Promise<void>;
+}) {
+  const targetCount = leads.length;
+  const firstLead = leads[0] ?? {};
+  const [form, setForm] = useState<LeadConversionForm>(() => initialLeadConversionForm(firstLead));
+
+  const update = (patch: Partial<LeadConversionForm>) => setForm((current) => ({ ...current, ...patch }));
+  const updateContact = (patch: Partial<LeadConversionForm["contact"]>) =>
+    setForm((current) => ({ ...current, contact: { ...current.contact, ...patch } }));
+  const updateOpportunity = (patch: Partial<LeadConversionForm["opportunity"]>) =>
+    setForm((current) => ({ ...current, opportunity: { ...current.opportunity, ...patch } }));
+
+  const convertible = leadForConversion(firstLead);
+  const contactDisplayName = contactName(firstLead) || "Converted Contact";
+  const matchedAccounts = targetCount === 1 ? matchAccountsForLead(data.accounts.map(toNamedAccount), convertible) : [];
+  const matchedContacts = targetCount === 1 ? matchContactsForLead(data.contacts.map(toNamedContact), convertible) : [];
+  const duplicateAccount = targetCount === 1 && form.accountMode === "new" ? findExactAccountMatch(data.accounts.map(toNamedAccount), form.accountName) : undefined;
+  const duplicateContact = targetCount === 1 && form.contactMode === "new" ? matchedContacts[0] : undefined;
+
+  const opportunityOptions = data.opportunities.filter((opportunity) => {
+    if (!form.existingAccountId) return true;
+    return String(opportunity.accountId ?? "") === form.existingAccountId;
+  });
+
+  const errors = leadConversionFormErrors(form, targetCount);
+  const canConvert = targetCount > 0 && Object.keys(errors).length === 0;
+
+  const accountLookupField: FieldDefinition = { name: "existingAccountId", label: "Account", section: "Account", type: "lookup", lookupObject: "Account" };
+  const contactLookupField: FieldDefinition = { name: "existingContactId", label: "Contact", section: "Contact", type: "lookup", lookupObject: "Contact" };
+  const opportunityLookupField: FieldDefinition = { name: "existingOpportunityId", label: "Opportunity", section: "Opportunity", type: "lookup", lookupObject: "Opportunity" };
+
+  const footer = (
+    <>
+      <Button onClick={onClose}>Cancel</Button>
+      <Button variant="primary" disabled={!canConvert} onClick={() => onApply("Convert Lead", "Lead", selectedIds, leadConversionPayload(form, targetCount))}>
+        Convert
+      </Button>
+    </>
+  );
+
+  return (
+    <BaseDialog open title={title} onClose={onClose} wide footer={footer}>
+      <div className="grid gap-4">
+        <div className="rounded border border-[#d8dde6] bg-[#f3f9ff] px-3 py-2 text-sm text-[#16325c]">
+          {targetCount === 0
+            ? "Select a lead before converting."
+            : targetCount === 1
+              ? `Convert ${contactDisplayName} into an account, contact, and optional opportunity.`
+              : `${targetCount} leads will each convert into an account, contact, and optional opportunity.`}
+        </div>
+        {targetCount === 1 ? (
+          <div className="grid gap-3">
+            <ConversionSection
+              icon={Building2}
+              title="Account"
+              subtitle="Company the contact belongs to"
+              mode={form.accountMode}
+              onModeChange={(mode) =>
+                update({ accountMode: mode, existingAccountId: mode === "existing" ? form.existingAccountId || requiredId(matchedAccounts[0] ?? {}) : "" })
+              }
+            >
+              {form.accountMode === "new" ? (
+                <div className="space-y-2">
+                  <FieldShell label="Account Name" error={errors.accountName}>
+                    <input className={inputClass} value={form.accountName} onChange={(event) => update({ accountName: event.target.value })} />
+                  </FieldShell>
+                  {duplicateAccount ? (
+                    <DuplicateWarning
+                      message={`An account named "${String(duplicateAccount.name)}" already exists. Converting will reuse it instead of creating a duplicate.`}
+                      actionLabel="Choose it explicitly"
+                      onAction={() => update({ accountMode: "existing", existingAccountId: duplicateAccount.id })}
+                    />
+                  ) : null}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {matchedAccounts.length > 0 && !form.existingAccountId && (
+                    <button
+                      type="button"
+                      className="w-full rounded border border-[#94d0ff] bg-[#f3f9ff] px-3 py-2 text-left text-sm hover:bg-[#e8f4ff]"
+                      onClick={() => update({ existingAccountId: matchedAccounts[0].id })}
+                    >
+                      Suggested match: <span className="font-semibold">{String(matchedAccounts[0].name)}</span>
+                    </button>
+                  )}
+                  <FieldShell label="Account" error={errors.existingAccountId}>
+                    <LookupField field={accountLookupField} value={form.existingAccountId} data={data} onChange={(next) => update({ existingAccountId: next })} />
+                  </FieldShell>
+                </div>
+              )}
+            </ConversionSection>
+
+            <ConversionSection
+              icon={User}
+              title="Contact"
+              subtitle={contactDisplayName}
+              mode={form.contactMode}
+              onModeChange={(mode) =>
+                update({ contactMode: mode, existingContactId: mode === "existing" ? form.existingContactId || requiredId(matchedContacts[0] ?? {}) : "" })
+              }
+            >
+              {form.contactMode === "new" ? (
+                <div className="space-y-2">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <FieldShell label="Salutation">
+                      <NativeSelect options={SALUTATIONS} value={form.contact.salutation || "--None--"} onChange={(value) => updateContact({ salutation: value })} />
+                    </FieldShell>
+                    <FieldShell label="Title">
+                      <input className={inputClass} value={form.contact.title} onChange={(event) => updateContact({ title: event.target.value })} />
+                    </FieldShell>
+                    <FieldShell label="First Name">
+                      <input className={inputClass} value={form.contact.firstName} onChange={(event) => updateContact({ firstName: event.target.value })} />
+                    </FieldShell>
+                    <FieldShell label="Last Name" required error={errors["contact.lastName"]}>
+                      <input className={inputClass} value={form.contact.lastName} onChange={(event) => updateContact({ lastName: event.target.value })} />
+                    </FieldShell>
+                    <FieldShell label="Email" error={errors["contact.email"]}>
+                      <input className={inputClass} value={form.contact.email} onChange={(event) => updateContact({ email: event.target.value })} />
+                    </FieldShell>
+                    <FieldShell label="Phone">
+                      <input className={inputClass} value={form.contact.phone} onChange={(event) => updateContact({ phone: event.target.value })} />
+                    </FieldShell>
+                  </div>
+                  {duplicateContact ? (
+                    <DuplicateWarning
+                      message={`${contactName(duplicateContact as RecordData) || "An existing contact"} already looks like this lead. Creating a new contact will duplicate them.`}
+                      actionLabel="Use the existing contact"
+                      onAction={() => update({ contactMode: "existing", existingContactId: duplicateContact.id })}
+                    />
+                  ) : null}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {matchedContacts.length > 0 && !form.existingContactId && (
+                    <button
+                      type="button"
+                      className="w-full rounded border border-[#94d0ff] bg-[#f3f9ff] px-3 py-2 text-left text-sm hover:bg-[#e8f4ff]"
+                      onClick={() => update({ existingContactId: matchedContacts[0].id })}
+                    >
+                      Suggested match: <span className="font-semibold">{contactName(matchedContacts[0] as RecordData)}</span>
+                      {matchedContacts[0].email ? <span className="text-[#706e6b]"> · {String(matchedContacts[0].email)}</span> : null}
+                    </button>
+                  )}
+                  <FieldShell label="Contact" error={errors.existingContactId}>
+                    <LookupField field={contactLookupField} value={form.existingContactId} data={data} onChange={(next) => update({ existingContactId: next })} />
+                  </FieldShell>
+                </div>
+              )}
+            </ConversionSection>
+
+            <ConversionSection
+              icon={Target}
+              title="Opportunity"
+              subtitle="Optional deal for this conversion"
+              mode={form.createOpportunity ? form.opportunityMode : "new"}
+              onModeChange={(mode) => update({ createOpportunity: true, opportunityMode: mode })}
+              disabled={!form.createOpportunity}
+              extraHeader={
+                <label className="flex items-center gap-2 text-sm text-[#444]">
+                  <RadixCheckbox
+                    checked={!form.createOpportunity}
+                    onCheckedChange={(checked) => update({ createOpportunity: !checked, opportunityMode: "new", existingOpportunityId: "" })}
+                  />
+                  Don&apos;t create an opportunity
+                </label>
+              }
+            >
+              {form.createOpportunity ? (
+                form.opportunityMode === "new" ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <FieldShell label="Opportunity Name" error={errors["opportunity.name"]}>
+                      <input className={inputClass} value={form.opportunity.name} onChange={(event) => updateOpportunity({ name: event.target.value })} />
+                    </FieldShell>
+                    <FieldShell label="Amount" error={errors["opportunity.amount"]}>
+                      <input className={inputClass} inputMode="decimal" placeholder="0.00" value={form.opportunity.amount} onChange={(event) => updateOpportunity({ amount: event.target.value })} />
+                    </FieldShell>
+                    <FieldShell label="Close Date" error={errors["opportunity.closeDate"]}>
+                      <input className={inputClass} type="date" value={form.opportunity.closeDate} onChange={(event) => updateOpportunity({ closeDate: event.target.value })} />
+                    </FieldShell>
+                    <FieldShell label="Stage">
+                      <NativeSelect
+                        options={OPPORTUNITY_STAGE.filter((stage) => stage !== "--None--")}
+                        value={form.opportunity.stage}
+                        onChange={(value) => updateOpportunity({ stage: value })}
+                      />
+                    </FieldShell>
+                    <FieldShell label="Forecast Category">
+                      <NativeSelect
+                        options={FORECAST_CATEGORY.filter((category) => category !== "--None--")}
+                        value={form.opportunity.forecastCategory}
+                        onChange={(value) => updateOpportunity({ forecastCategory: value })}
+                      />
+                    </FieldShell>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {opportunityOptions.length === 0 && form.existingAccountId ? (
+                      <p className="text-xs text-[#706e6b]">No open opportunities on the selected account. Search all opportunities below, or create a new one.</p>
+                    ) : null}
+                    <FieldShell label="Opportunity" error={errors.existingOpportunityId}>
+                      <LookupField
+                        field={opportunityLookupField}
+                        value={form.existingOpportunityId}
+                        data={{ ...data, opportunities: opportunityOptions.length ? opportunityOptions : data.opportunities }}
+                        onChange={(next) => update({ existingOpportunityId: next })}
+                      />
+                    </FieldShell>
+                  </div>
+                )
+              ) : (
+                <p className="text-sm text-[#706e6b]">This lead will convert to an account and contact only.</p>
+              )}
+            </ConversionSection>
+
+            <FieldShell label="Converted Status">
+              <NativeSelect options={LEAD_STATUS.filter((status) => status !== "--None--")} value={form.convertedStatus} onChange={(value) => update({ convertedStatus: value })} />
+            </FieldShell>
+          </div>
+        ) : targetCount > 1 ? (
+          <div className="grid gap-3">
+            <p className="text-sm text-[#706e6b]">Each selected lead uses its Company value for the converted account and creates a matching contact.</p>
+            <FieldShell label="Create Opportunity">
+              <RadixCheckbox checked={form.createOpportunity} onCheckedChange={(value) => update({ createOpportunity: Boolean(value) })} />
+            </FieldShell>
+            <FieldShell label="Converted Status">
+              <NativeSelect options={LEAD_STATUS.filter((status) => status !== "--None--")} value={form.convertedStatus} onChange={(value) => update({ convertedStatus: value })} />
+            </FieldShell>
+            <div className="rounded border border-[#d8dde6]">
+              <div className="border-b border-[#d8dde6] bg-[#f8f8f8] px-3 py-2 text-xs font-semibold uppercase text-[#706e6b]">Selected Leads</div>
+              <div className="max-h-48 overflow-auto p-2">
+                {leads.map((lead) => (
+                  <div key={requiredId(lead)} className="grid gap-1 border-b border-[#f3f3f3] px-2 py-2 text-sm last:border-b-0 md:grid-cols-[1fr_1fr_120px]">
+                    <span className="font-medium">{contactName(lead) || "Unnamed Lead"}</span>
+                    <span className="text-[#706e6b]">{String(lead.company ?? "No company")}</span>
+                    <span className="text-[#706e6b]">{String(lead.status ?? "New")}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </BaseDialog>
+  );
+}
+
+function DuplicateWarning({ message, actionLabel, onAction }: { message: string; actionLabel: string; onAction: () => void }) {
+  return (
+    <div className="rounded border border-[#f5c26b] bg-[#fdf5e6] px-3 py-2 text-sm text-[#8a6116]">
+      {message}{" "}
+      <button type="button" className="font-semibold underline hover:no-underline" onClick={onAction}>
+        {actionLabel}
+      </button>
+    </div>
+  );
+}
+
+/** Mirrors the server-side checks in `normalizeConversionValues` so problems surface per field. */
+function leadConversionFormErrors(form: LeadConversionForm, targetCount: number) {
+  const errors: Record<string, string> = {};
+  if (targetCount !== 1) return errors;
+
+  if (form.accountMode === "new") {
+    if (!form.accountName.trim()) errors.accountName = "Account Name is required.";
+  } else if (!form.existingAccountId) {
+    errors.existingAccountId = "Choose an account.";
+  }
+
+  if (form.contactMode === "new") {
+    if (!form.contact.lastName.trim()) errors["contact.lastName"] = "Last Name is required.";
+    if (form.contact.email.trim() && !isValidEmail(form.contact.email)) errors["contact.email"] = "Enter a valid email address.";
+  } else if (!form.existingContactId) {
+    errors.existingContactId = "Choose a contact.";
+  }
+
+  if (form.createOpportunity) {
+    if (form.opportunityMode === "new") {
+      if (!form.opportunity.name.trim()) errors["opportunity.name"] = "Opportunity Name is required.";
+      const amount = form.opportunity.amount.trim();
+      if (amount && (!Number.isFinite(Number(amount)) || Number(amount) < 0)) {
+        errors["opportunity.amount"] = "Amount must be a non-negative number.";
+      }
+      if (!form.opportunity.closeDate || !Number.isFinite(new Date(form.opportunity.closeDate).getTime())) {
+        errors["opportunity.closeDate"] = "Choose a valid Close Date.";
+      }
+    } else if (!form.existingOpportunityId) {
+      errors.existingOpportunityId = "Choose an opportunity.";
+    }
+  }
+
+  return errors;
+}
+
+function leadConversionPayload(form: LeadConversionForm, targetCount: number): RecordData {
+  if (targetCount !== 1) {
+    return { createOpportunity: form.createOpportunity, convertedStatus: form.convertedStatus };
+  }
+  const usesNewOpportunity = form.createOpportunity && form.opportunityMode === "new";
+  return {
+    accountName: form.accountMode === "new" ? form.accountName : "",
+    existingAccountId: form.accountMode === "existing" ? form.existingAccountId : "",
+    existingContactId: form.contactMode === "existing" ? form.existingContactId : "",
+    contact:
+      form.contactMode === "new"
+        ? {
+            salutation: form.contact.salutation,
+            firstName: form.contact.firstName,
+            lastName: form.contact.lastName,
+            title: form.contact.title,
+            phone: form.contact.phone,
+            email: form.contact.email
+          }
+        : undefined,
+    createOpportunity: form.createOpportunity,
+    existingOpportunityId: form.createOpportunity && form.opportunityMode === "existing" ? form.existingOpportunityId : "",
+    opportunityName: usesNewOpportunity ? form.opportunity.name : "",
+    amount: usesNewOpportunity ? form.opportunity.amount : "",
+    closeDate: usesNewOpportunity ? form.opportunity.closeDate : "",
+    stage: usesNewOpportunity ? form.opportunity.stage : "Qualify",
+    forecastCategory: usesNewOpportunity ? form.opportunity.forecastCategory : "Pipeline",
+    convertedStatus: form.convertedStatus
+  };
+}
+
+function toNamedAccount(account: RecordData) {
+  return { id: requiredId(account), name: account.name == null ? null : String(account.name) };
+}
+
+function toNamedContact(contact: RecordData) {
+  return {
+    id: requiredId(contact),
+    firstName: contact.firstName == null ? null : String(contact.firstName),
+    lastName: contact.lastName == null ? null : String(contact.lastName),
+    email: contact.email == null ? null : String(contact.email),
+    phone: contact.phone == null ? null : String(contact.phone)
+  };
 }
 
 function ConversionSection({
@@ -9585,16 +9678,6 @@ function EmptyPanel({ title, body, action, onAction }: { title: string; body: st
       <h1 className="text-2xl font-semibold">{title}</h1>
       <p className="mx-auto mt-2 max-w-lg text-sm text-[#706e6b]">{body}</p>
       {action && <Button className="mt-4" variant="primary" onClick={onAction}>{action}</Button>}
-    </div>
-  );
-}
-
-function CalendarEventChip({ event, timeZone }: { event: RecordData; timeZone: string }) {
-  const color = String(event.calendarColor ?? "#4f46e5");
-  return (
-    <div data-calendar-event className="rounded border bg-white px-1.5 py-1 text-[11px] leading-tight text-[#181818]" style={{ borderColor: color, boxShadow: `inset 3px 0 0 ${color}` }}>
-      <div className="truncate font-semibold">{String(event.subject ?? "Event")}</div>
-      <div className="truncate text-[#514f4d]">{calendarTimeRange(event, timeZone)}</div>
     </div>
   );
 }
@@ -10296,30 +10379,6 @@ function quickTextTimestamp(record: RecordData) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function calendarSourceType(source: RecordData) {
-  return String(source.type ?? "My") === "Other" ? "Other" : "My";
-}
-
-function isFallbackCalendarSource(source: RecordData) {
-  return requiredId(source).startsWith("calendar-default-");
-}
-
-function isLocalCalendarSource(source: RecordData) {
-  return requiredId(source).startsWith("calendar-local-");
-}
-
-function calendarSourceListFromResponse(response: RecordData | null) {
-  const sources = response?.calendarSources;
-  if (!Array.isArray(sources)) return null;
-  return sources.filter(isRecordData);
-}
-
-function upsertCalendarSource(sources: RecordData[], source: RecordData) {
-  const sourceId = requiredId(source);
-  const withoutSource = sources.filter((item) => requiredId(item) !== sourceId && !isFallbackCalendarSource(item));
-  return [source, ...withoutSource];
-}
-
 function requiredId(record: RecordData) {
   return String(record.id ?? "");
 }
@@ -10359,123 +10418,13 @@ function campaignMembersFromData(members: RecordData[] = [], campaigns: RecordDa
   }, {});
 }
 
-function leadConversionResultFromWorkflow(result: RecordData, leads: RecordData[], data: BootstrapData, payload: RecordData) {
-  const accounts = recordArray(result.accounts);
-  const contacts = recordArray(result.contacts);
-  const opportunities = recordArray(result.opportunities);
-  const convertedLeads = recordArray(result.leads);
-  if (contacts.length > 0 || convertedLeads.length > 0) return { accounts, contacts, opportunities, leads: convertedLeads };
-  return fallbackLeadConversionRecords(leads, data, payload);
-}
-
-function fallbackLeadConversionRecords(leads: RecordData[], data: BootstrapData, payload: RecordData) {
-  const now = new Date().toISOString();
-  const status = String(payload.convertedStatus ?? "Qualified");
-  const closeDate = String(payload.closeDate ?? defaultLeadConversionCloseDate());
-  const stage = String(payload.stage ?? "Qualify");
-  const forecastCategory = String(payload.forecastCategory ?? "Pipeline");
-  const createOpportunity = payload.createOpportunity !== false;
-  const singleLead = leads.length === 1;
-  const singleAccountName = singleLead ? String(payload.accountName ?? "").trim() : "";
-  const existingAccountId = singleLead ? String(payload.existingAccountId ?? "").trim() : "";
-  const existingContactId = singleLead ? String(payload.existingContactId ?? "").trim() : "";
-  const existingOpportunityId = singleLead && createOpportunity ? String(payload.existingOpportunityId ?? "").trim() : "";
-  const accounts: RecordData[] = [];
-  const contacts: RecordData[] = [];
-  const opportunities: RecordData[] = [];
-  const convertedLeads: RecordData[] = [];
-
-  leads.forEach((lead, index) => {
-    const leadId = requiredId(lead) || `lead-${Date.now()}-${index}`;
-    const accountName = singleAccountName || String(lead.company ?? contactName(lead) ?? "Converted Lead Account").trim() || "Converted Lead Account";
-    const existingAccount =
-      (existingAccountId ? data.accounts.find((account) => requiredId(account) === existingAccountId) : undefined) ??
-      data.accounts.find((account) => normalizedText(account.name) === normalizedText(accountName));
-    const account =
-      existingAccount ??
-      ({
-        id: `converted-account-${leadId}`,
-        name: accountName,
-        website: lead.website ?? null,
-        type: "Prospect",
-        ownerId: lead.ownerId ?? data.user.id,
-        phone: lead.phone ?? null,
-        billingCountry: lead.country ?? null,
-        billingStreet: lead.street ?? null,
-        billingPostalCode: lead.postalCode ?? null,
-        billingCity: lead.city ?? null,
-        billingState: lead.state ?? null,
-        createdById: data.user.id,
-        updatedById: data.user.id,
-        createdAt: now,
-        updatedAt: now
-      } satisfies RecordData);
-
-    const existingContact = existingContactId ? data.contacts.find((contact) => requiredId(contact) === existingContactId) : undefined;
-    const contact = existingContact
-      ? ({ ...existingContact, accountId: requiredId(account), updatedById: data.user.id, updatedAt: now } satisfies RecordData)
-      : ({
-          id: `converted-contact-${leadId}`,
-          salutation: lead.salutation ?? null,
-          firstName: lead.firstName ?? null,
-          lastName: String(lead.lastName ?? "Converted"),
-          accountId: requiredId(account),
-          title: lead.title ?? null,
-          description: lead.description ?? null,
-          ownerId: lead.ownerId ?? data.user.id,
-          phone: lead.phone ?? null,
-          email: lead.email ?? null,
-          mailingCountry: lead.country ?? null,
-          mailingStreet: lead.street ?? null,
-          mailingPostalCode: lead.postalCode ?? null,
-          mailingCity: lead.city ?? null,
-          mailingState: lead.state ?? null,
-          createdById: data.user.id,
-          updatedById: data.user.id,
-          createdAt: now,
-          updatedAt: now
-        } satisfies RecordData);
-
-    const existingOpportunity = existingOpportunityId ? data.opportunities.find((opportunity) => requiredId(opportunity) === existingOpportunityId) : undefined;
-    const opportunity = !createOpportunity
-      ? null
-      : existingOpportunity
-        ? ({ ...existingOpportunity, accountId: requiredId(account), contactId: requiredId(contact), updatedById: data.user.id, updatedAt: now } satisfies RecordData)
-        : ({
-            id: `converted-opportunity-${leadId}`,
-            name: singleLead ? String(payload.opportunityName ?? `${accountName} Opportunity`) : `${accountName} Opportunity`,
-            accountId: requiredId(account),
-            contactId: requiredId(contact),
-            closeDate,
-            amount: null,
-            description: lead.description ?? null,
-            ownerId: lead.ownerId ?? data.user.id,
-            stage,
-            probability: stage === "Qualify" ? 10 : null,
-            forecastCategory,
-            nextStep: "Follow up after lead conversion",
-            createdById: data.user.id,
-            updatedById: data.user.id,
-            createdAt: now,
-            updatedAt: now
-          } satisfies RecordData);
-
-    accounts.push(account);
-    contacts.push(contact);
-    if (opportunity) opportunities.push(opportunity);
-    convertedLeads.push({
-      ...lead,
-      status,
-      convertedAt: now,
-      convertedAccountId: requiredId(account),
-      convertedContactId: requiredId(contact),
-      convertedOpportunityId: opportunity ? requiredId(opportunity) : null,
-      updatedById: data.user.id,
-      updatedAt: now
-    });
-  });
-
-  return { accounts, contacts, opportunities, leads: convertedLeads };
+function leadConversionResultFromWorkflow(result: RecordData) {
+  return {
+    accounts: recordArray(result.accounts),
+    contacts: recordArray(result.contacts),
+    opportunities: recordArray(result.opportunities),
+    leads: recordArray(result.leads)
+  };
 }
 
 function recordArray(value: unknown) {
@@ -10636,106 +10585,6 @@ function formatListCell(object: CrmObject, record: RecordData, key: string) {
 
 function fieldLabel(field: string) {
   return field.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase());
-}
-
-function startOfSaturdayWeek(date: Date) {
-  const copy = new Date(date);
-  copy.setHours(12, 0, 0, 0);
-  const offset = (copy.getDay() + 1) % 7;
-  copy.setDate(copy.getDate() - offset);
-  return copy;
-}
-
-function startOfDay(date: Date) {
-  const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
-
-function addCalendarDays(date: Date, days: number) {
-  const copy = new Date(date);
-  copy.setDate(copy.getDate() + days);
-  return copy;
-}
-
-function addCalendarMonths(date: Date, months: number) {
-  const copy = new Date(date);
-  copy.setMonth(copy.getMonth() + months);
-  return copy;
-}
-
-function getMonthDays(date: Date) {
-  const first = new Date(date.getFullYear(), date.getMonth(), 1, 12);
-  const gridStart = addCalendarDays(first, -first.getDay());
-  return Array.from({ length: 42 }, (_, index) => addCalendarDays(gridStart, index));
-}
-
-function sameDate(left: Date, right: Date) {
-  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
-}
-
-function sameMonth(left: Date, right: Date) {
-  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth();
-}
-
-function toDateInputValue(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function monthYearLabel(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(date);
-}
-
-function monthDayYearLabel(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" }).format(date);
-}
-
-function fullDateLabel(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(date);
-}
-
-function shortDayLabel(date: Date) {
-  return `${new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(date).toUpperCase()} ${date.getDate()}`;
-}
-
-function datePartsInTimeZone(value: unknown, timeZone: string) {
-  const date = new Date(String(value));
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    hourCycle: "h23"
-  }).formatToParts(date);
-  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
-}
-
-function sameDateInTimeZone(value: unknown, day: Date, timeZone: string) {
-  const parts = datePartsInTimeZone(value, timeZone);
-  return Number(parts.year) === day.getFullYear() && Number(parts.month) === day.getMonth() + 1 && Number(parts.day) === day.getDate();
-}
-
-function hourFromDate(value: unknown, timeZone: string) {
-  return datePartsInTimeZone(value, timeZone).hour;
-}
-
-function nextTimeSlot(time: string) {
-  const [hourText = "09", minuteText = "00"] = time.split(":");
-  const date = new Date(Date.UTC(2026, 0, 1, Number(hourText), Number(minuteText)));
-  date.setUTCHours(date.getUTCHours() + 1);
-  return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
-}
-
-function calendarTimeRange(event: RecordData, timeZone: string) {
-  if (event.allDay) return "All day";
-  const start = new Date(String(event.startAt));
-  const end = new Date(String(event.endAt));
-  const fmt = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
-  return `${fmt.format(start)}-${fmt.format(end)}`;
 }
 
 function addressValue(record: RecordData, prefix: string) {

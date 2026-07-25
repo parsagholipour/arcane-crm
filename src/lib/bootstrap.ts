@@ -10,6 +10,7 @@ import { campaignInclude, hydrateCampaign } from "@/lib/campaigns";
 import { commerceOrderInclude, commerceStoreInclude } from "@/lib/commerce";
 import { emailDeliveryConfigured } from "@/lib/email/service";
 import { marketingLandingPageInclude } from "@/lib/marketing-pages";
+import { bootstrapEventWindow, loadEventsForWindow } from "@/lib/calendar-events";
 import type { BootstrapData } from "@/lib/crm-types";
 
 export async function loadBootstrapData(): Promise<BootstrapData> {
@@ -18,6 +19,7 @@ export async function loadBootstrapData(): Promise<BootstrapData> {
   const userId = context.userId;
   const organizationWhere = { organizationId };
   const personalWhere = { organizationId, userId };
+  const eventWindow = bootstrapEventWindow();
 
   await markPastDueInvoices(organizationId, userId);
 
@@ -85,7 +87,9 @@ export async function loadBootstrapData(): Promise<BootstrapData> {
     prisma.product.findMany({ where: organizationWhere, orderBy: { updatedAt: "desc" } }),
     prisma.priceBook.findMany({ where: organizationWhere, orderBy: { updatedAt: "desc" } }),
     prisma.priceBookEntry.findMany({ where: organizationWhere, include: { product: true, priceBook: true } }),
-    prisma.event.findMany({ where: { ...organizationWhere, OR: [{ private: false }, { assignedToId: userId }] }, orderBy: { startAt: "asc" } }),
+    // Windowed so a large org's full event history never lands in the initial payload.
+    // The calendar fetches wider ranges on demand from /api/calendar/events.
+    loadEventsForWindow(organizationId, userId, eventWindow.start, eventWindow.end),
     prisma.calendarSource.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } }),
     prisma.quickText.findMany({ where: organizationWhere, orderBy: { updatedAt: "desc" } }),
     prisma.quickTextFolder.findMany({ where: organizationWhere }),

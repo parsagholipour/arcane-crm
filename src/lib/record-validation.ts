@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { parseRecurrenceRule } from "@/lib/calendar-recurrence";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 
 export class RecordPayloadValidationError extends Error {
@@ -8,13 +9,17 @@ export class RecordPayloadValidationError extends Error {
   }
 }
 
-const LEAD_STATUSES = new Set(["New", "Contacted", "Nurturing", "Qualified", "Unqualified"]);
-const OPPORTUNITY_STAGES = new Set(["Qualify", "Meet & Present", "Propose", "Negotiate", "Closed Won", "Closed Lost"]);
-const FORECAST_CATEGORIES = new Set(["Pipeline", "Best Case", "Commit", "Closed", "Omitted"]);
+export const LEAD_STATUSES = new Set(["New", "Contacted", "Nurturing", "Qualified", "Unqualified"]);
+export const OPPORTUNITY_STAGES = new Set(["Qualify", "Meet & Present", "Propose", "Negotiate", "Closed Won", "Closed Lost"]);
+export const FORECAST_CATEGORIES = new Set(["Pipeline", "Best Case", "Commit", "Closed", "Omitted"]);
 const CASE_STATUSES = new Set(["New", "Working", "Waiting on Customer", "Escalated", "Closed"]);
 const CASE_PRIORITIES = new Set(["Low", "Medium", "High"]);
 
 export function validateRecordPayload(object: CrmObject, payload: RecordData) {
+  if (object === "Account") {
+    optionalNonNegativeInteger(payload.numberOfEmployees, "Number of Employees", "numberOfEmployees");
+    optionalNonNegativeDecimal(payload.annualRevenue, "Annual Revenue", "annualRevenue");
+  }
   if (object === "Contact") {
     optionalDate(payload.birthDate, "Choose a valid birthdate.", "birthDate");
     optionalEmail(payload.email, "email");
@@ -46,6 +51,16 @@ export function validateRecordPayload(object: CrmObject, payload: RecordData) {
   if (object === "Event") {
     optionalDate(payload.startAt, "Choose a valid event start time.", "startAt");
     optionalDate(payload.endAt, "Choose a valid event end time.", "endAt");
+    optionalDate(payload.recurrenceEndAt, "Choose a valid repeat end date.", "recurrenceEndAt");
+    if (payload.recurrenceRule !== null && payload.recurrenceRule !== undefined && !parseRecurrenceRule(payload.recurrenceRule)) {
+      throw new RecordPayloadValidationError("This repeat pattern isn't supported. Choose a daily, weekly, monthly, or yearly repeat.", ["recurrenceRule"]);
+    }
+    if (payload.reminderMinutes !== null && payload.reminderMinutes !== undefined) {
+      const reminderMinutes = Number(payload.reminderMinutes);
+      if (!Number.isInteger(reminderMinutes) || reminderMinutes < 0 || reminderMinutes > 40320) {
+        throw new RecordPayloadValidationError("Reminder must be a whole number of minutes from 0 through 40320 (four weeks).", ["reminderMinutes"]);
+      }
+    }
   }
   if (object === "ListEmail") optionalDate(payload.scheduledAt, "Choose a valid scheduled date and time.", "scheduledAt");
   if (object === "Knowledge__kav" && payload.urlName !== null && payload.urlName !== undefined) {
@@ -62,9 +77,13 @@ function optionalDate(value: unknown, message: string, field: string) {
   if (!Number.isFinite(date.getTime())) throw new RecordPayloadValidationError(message, [field]);
 }
 
+export function isValidEmail(value: unknown) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim());
+}
+
 function optionalEmail(value: unknown, field: string) {
   if (value === null || value === undefined || String(value).trim() === "") return;
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim())) {
+  if (!isValidEmail(value)) {
     throw new RecordPayloadValidationError("Enter a valid email address.", [field]);
   }
 }

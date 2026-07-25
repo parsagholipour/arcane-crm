@@ -1,3 +1,4 @@
+import { describeRecurrence } from "@/lib/calendar-recurrence";
 import type { BootstrapData, CrmObject, RecordData } from "@/lib/crm-types";
 
 export function decorateBootstrap(data: BootstrapData): BootstrapData {
@@ -16,6 +17,44 @@ export function decorateBootstrap(data: BootstrapData): BootstrapData {
 
   const ownerAlias = (ownerId?: unknown) => usersById.get(String(ownerId || data.user.id))?.alias ?? String(ownerId || data.user.alias);
   const ownerName = (ownerId?: unknown) => usersById.get(String(ownerId || data.user.id))?.name ?? String(ownerId || data.user.name);
+
+  const leadsById = new Map(data.leads.map((lead) => [String(lead.id), lead]));
+  const casesById = new Map(data.cases.map((record) => [String(record.id), record]));
+  const campaignsById = new Map(data.campaigns.map((record) => [String(record.id), record]));
+  const calendarSourcesById = new Map(data.calendarSources.map((source) => [String(source.id), source]));
+
+  /** Attendees are stored as bare ids that may point at a user, contact or lead. */
+  const attendeeName = (attendeeId: string) => {
+    const user = usersById.get(attendeeId);
+    if (user) return user.name;
+    const contact = contactsById.get(attendeeId);
+    if (contact) return contactName(contact);
+    const lead = leadsById.get(attendeeId);
+    if (lead) return contactName(lead);
+    return "";
+  };
+
+  /** Resolve a polymorphic `{objectType, recordId}` pair to a display name. */
+  const lookupRecordName = (objectType: unknown, recordId: unknown) => {
+    const id = String(recordId ?? "");
+    if (!id) return "";
+    switch (String(objectType ?? "")) {
+      case "Contacts":
+        return contactsById.get(id) ? contactName(contactsById.get(id)!) : "";
+      case "Leads":
+        return leadsById.get(id) ? contactName(leadsById.get(id)!) : "";
+      case "Accounts":
+        return String(accountsById.get(id)?.name ?? "");
+      case "Opportunities":
+        return String(opportunitiesById.get(id)?.name ?? "");
+      case "Cases":
+        return String(casesById.get(id)?.caseNumber ?? casesById.get(id)?.subject ?? "");
+      case "Campaigns":
+        return String(campaignsById.get(id)?.name ?? "");
+      default:
+        return "";
+    }
+  };
 
   return {
     ...data,
@@ -96,7 +135,21 @@ export function decorateBootstrap(data: BootstrapData): BootstrapData {
       name: invoice.invoiceNumber,
       accountName: accountsById.get(String(invoice.accountId))?.name ?? (invoice.account as RecordData | undefined)?.name ?? "",
       opportunityName: opportunitiesById.get(String(invoice.opportunityId))?.name ?? (invoice.opportunity as RecordData | undefined)?.name ?? ""
-    }))
+    })),
+    events: data.events.map((event) => {
+      const attendeeIds = Array.isArray(event.attendeeIds) ? event.attendeeIds.map(String) : [];
+      return {
+        ...event,
+        name: event.subject,
+        assignedToName: ownerName(event.assignedToId),
+        assignedToAlias: ownerAlias(event.assignedToId),
+        attendeeNames: attendeeIds.map((attendeeId) => attendeeName(attendeeId)).filter(Boolean),
+        nameRecordName: lookupRecordName(event.nameObjectType, event.nameRecordId),
+        relatedRecordName: lookupRecordName(event.relatedObjectType, event.relatedRecordId),
+        calendarSourceName: calendarSourcesById.get(String(event.calendarSourceId))?.name ?? "",
+        recurrenceSummary: describeRecurrence(event.recurrenceRule)
+      };
+    })
   };
 }
 

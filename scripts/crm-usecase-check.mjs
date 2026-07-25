@@ -1389,6 +1389,203 @@ async function main() {
       assert(convertedLeadHtml.includes(fragment), `converted Lead detail missing ${fragment}`);
     }
 
+    // Segment fields used to be dropped on conversion; they must now reach the created records.
+    const mappingLead = await postRecord("Lead", {
+      status: "New",
+      firstName: "Mapping",
+      lastName: `${tag} Mapping`,
+      company: `${tag} Mapping Co`,
+      email: `mapping-${tag}@example.com`,
+      phone: "+1 (415) 555-0142",
+      rating: "Hot",
+      leadSource: "Web",
+      industry: "Technology",
+      numberOfEmployees: 250,
+      annualRevenue: "4200000"
+    }, "leads");
+    const mappingConversion = await workflow("Convert Lead", "Lead", [mappingLead.id], {
+      accountName: `${tag} Mapping Account`,
+      opportunityName: `${tag} Mapping Opportunity`,
+      createOpportunity: true,
+      amount: "75000",
+      stage: "Propose",
+      forecastCategory: "Best Case",
+      closeDate: "2026-10-15",
+      convertedStatus: "Qualified"
+    });
+    mappingConversion.accounts?.forEach((record) => remember("accounts", record));
+    mappingConversion.contacts?.forEach((record) => remember("contacts", record));
+    mappingConversion.opportunities?.forEach((record) => remember("opportunities", record));
+    const mappedAccount = await prisma.account.findUnique({ where: { id: mappingConversion.accounts[0].id } });
+    assert(mappedAccount?.industry === "Technology", "Convert Lead did not carry industry onto the account");
+    assert(mappedAccount?.rating === "Hot", "Convert Lead did not carry rating onto the account");
+    assert(mappedAccount?.numberOfEmployees === 250, "Convert Lead did not carry employee count onto the account");
+    assert(Number(mappedAccount?.annualRevenue) === 4200000, "Convert Lead did not carry annual revenue onto the account");
+    const mappedContact = await prisma.contact.findUnique({ where: { id: mappingConversion.contacts[0].id } });
+    assert(mappedContact?.leadSource === "Web", "Convert Lead did not carry lead source onto the contact");
+    const mappedOpportunity = await prisma.opportunity.findUnique({ where: { id: mappingConversion.opportunities[0].id } });
+    assert(Number(mappedOpportunity?.amount) === 75000, "Convert Lead ignored the opportunity amount");
+    assert(mappedOpportunity?.stage === "Propose", "Convert Lead ignored the chosen stage");
+    assert(mappedOpportunity?.forecastCategory === "Best Case", "Convert Lead ignored the chosen forecast category");
+    assert(mappedOpportunity?.probability === 50, "Convert Lead did not derive probability from the stage");
+    assert(mappedOpportunity?.leadSource === "Web", "Convert Lead did not carry lead source onto the opportunity");
+
+    // A converted lead is read-only, so its history has to follow the new contact.
+    const historyLead = await postRecord("Lead", {
+      status: "New",
+      firstName: "History",
+      lastName: `${tag} History`,
+      company: `${tag} History Co`,
+      email: `history-${tag}@example.com`
+    }, "leads");
+    const historyTask = remember("tasks", await prisma.task.create({
+      data: {
+        organizationId,
+        subject: `${tag} Lead Task`,
+        status: "Not Started",
+        priority: "Normal",
+        ownerId: currentUserId,
+        relatedObjectType: "Lead",
+        relatedRecordId: historyLead.id
+      }
+    }));
+    // The activity dialogs write the plural spelling, record pages write the singular one.
+    const historyEvent = remember("events", await prisma.event.create({
+      data: {
+        organizationId,
+        subject: `${tag} Lead Event`,
+        startAt: new Date("2026-08-01T10:00:00.000Z"),
+        endAt: new Date("2026-08-01T11:00:00.000Z"),
+        assignedToId: currentUserId,
+        relatedObjectType: "Leads",
+        relatedRecordId: historyLead.id,
+        nameObjectType: "Leads",
+        nameRecordId: historyLead.id
+      }
+    }));
+    const sharedCampaignName = `${tag} Shared Campaign`;
+    await workflow("Add to Campaign", "Lead", [historyLead.id], { campaign: sharedCampaignName, status: "Sent" });
+    await workflow("Assign Label", "Lead", [historyLead.id], { label: `${tag} Priority`, color: "blue" });
+    const sharedCampaign = await prisma.campaign.findFirst({ where: { organizationId, name: sharedCampaignName } });
+    assert(sharedCampaign, "Add to Campaign did not create the shared campaign");
+    remember("campaigns", sharedCampaign);
+    // Pre-load the target contact into the same campaign so the move hits the unique constraint.
+    const historyContact = await postRecord("Contact", {
+      lastName: `${tag} History`,
+      accountId: account.id,
+      email: `history-contact-${tag}@example.com`
+    }, "contacts");
+    await workflow("Add to Campaign", "Contact", [historyContact.id], { campaign: sharedCampaignName, status: "Sent" });
+
+    const historyConversion = await workflow("Convert Lead", "Lead", [historyLead.id], {
+      existingContactId: historyContact.id,
+      accountName: `${tag} History Account`,
+      createOpportunity: false,
+      convertedStatus: "Qualified"
+    });
+    historyConversion.accounts?.forEach((record) => remember("accounts", record));
+    assert(historyConversion.opportunities?.length === 0, "createOpportunity:false still created an opportunity");
+    const reparentedTask = await prisma.task.findUnique({ where: { id: historyTask.id } });
+    assert(reparentedTask?.relatedObjectType === "Contact" && reparentedTask?.relatedRecordId === historyContact.id, "Convert Lead stranded the task on the converted lead");
+    const reparentedEvent = await prisma.event.findUnique({ where: { id: historyEvent.id } });
+    assert(reparentedEvent?.relatedObjectType === "Contacts" && reparentedEvent?.relatedRecordId === historyContact.id, "Convert Lead stranded the plural-typed event");
+    assert(reparentedEvent?.nameObjectType === "Contacts" && reparentedEvent?.nameRecordId === historyContact.id, "Convert Lead did not move the event Name link");
+    const remainingLeadMembers = await prisma.campaignMember.count({ where: { organizationId, objectType: "Lead", recordId: historyLead.id } });
+    assert(remainingLeadMembers === 0, "Convert Lead left campaign members on the lead");
+    const contactMembers = await prisma.campaignMember.count({ where: { organizationId, campaignId: sharedCampaign.id, objectType: "Contact", recordId: historyContact.id } });
+    assert(contactMembers === 1, "Convert Lead duplicated a campaign membership instead of dropping the collision");
+    const movedLabels = await prisma.recordLabel.count({ where: { organizationId, objectType: "Contact", recordId: historyContact.id, label: `${tag} Priority` } });
+    assert(movedLabels === 1, "Convert Lead did not move the record label onto the contact");
+
+    // Account dedup must ignore case rather than creating a near-duplicate account.
+    const dedupeLead = await postRecord("Lead", {
+      status: "New",
+      lastName: `${tag} Dedupe`,
+      company: `${tag} Mapping Co`,
+      email: `dedupe-${tag}@example.com`
+    }, "leads");
+    const dedupeConversion = await workflow("Convert Lead", "Lead", [dedupeLead.id], {
+      accountName: `${tag} mapping account`,
+      createOpportunity: false,
+      convertedStatus: "Qualified"
+    });
+    dedupeConversion.contacts?.forEach((record) => remember("contacts", record));
+    assert(dedupeConversion.accounts?.[0]?.id === mappingConversion.accounts[0].id, "Convert Lead created a case-variant duplicate account");
+
+    // Existing account and opportunity are re-pointed rather than duplicated.
+    const reuseAccount = await postRecord("Account", { name: `${tag} Reuse Account`, type: "Prospect" }, "accounts");
+    const reuseOpportunity = await postRecord("Opportunity", {
+      name: `${tag} Reuse Opportunity`,
+      accountId: reuseAccount.id,
+      closeDate: "2026-11-01",
+      stage: "Qualify",
+      forecastCategory: "Pipeline"
+    }, "opportunities");
+    const reuseLead = await postRecord("Lead", {
+      status: "New",
+      lastName: `${tag} Reuse`,
+      company: `${tag} Reuse Co`,
+      email: `reuse-${tag}@example.com`
+    }, "leads");
+    const reuseConversion = await workflow("Convert Lead", "Lead", [reuseLead.id], {
+      existingAccountId: reuseAccount.id,
+      existingOpportunityId: reuseOpportunity.id,
+      createOpportunity: true,
+      convertedStatus: "Qualified"
+    });
+    reuseConversion.contacts?.forEach((record) => remember("contacts", record));
+    assert(reuseConversion.accounts?.[0]?.id === reuseAccount.id, "Convert Lead did not reuse the selected account");
+    assert(reuseConversion.opportunities?.[0]?.id === reuseOpportunity.id, "Convert Lead did not reuse the selected opportunity");
+    const reusedOpportunity = await prisma.opportunity.findUnique({ where: { id: reuseOpportunity.id } });
+    assert(reusedOpportunity?.contactId === reuseConversion.contacts[0].id, "Convert Lead did not re-point the reused opportunity at the new contact");
+
+    // Bulk conversion derives each account from its own lead.
+    const bulkLeads = [];
+    for (const index of [1, 2]) {
+      bulkLeads.push(await postRecord("Lead", {
+        status: "New",
+        lastName: `${tag} Bulk ${index}`,
+        company: `${tag} Bulk Co ${index}`,
+        email: `bulk-${index}-${tag}@example.com`
+      }, "leads"));
+    }
+    const bulkConversion = await workflow("Convert Lead", "Lead", bulkLeads.map((lead) => lead.id), {
+      createOpportunity: true,
+      convertedStatus: "Qualified"
+    });
+    bulkConversion.accounts?.forEach((record) => remember("accounts", record));
+    bulkConversion.contacts?.forEach((record) => remember("contacts", record));
+    bulkConversion.opportunities?.forEach((record) => remember("opportunities", record));
+    assert(bulkConversion.accounts?.length === 2, "Bulk Convert Lead did not create one account per lead");
+    assert(bulkConversion.opportunities?.length === 2, "Bulk Convert Lead did not create one opportunity per lead");
+    const bulkNames = bulkConversion.accounts.map((record) => record.name).sort();
+    assert(bulkNames[0] === `${tag} Bulk Co 1` && bulkNames[1] === `${tag} Bulk Co 2`, "Bulk Convert Lead ignored each lead's own company");
+
+    // Bad input must be rejected with a 400 rather than persisting or blowing up as a 500.
+    const rejectLead = await postRecord("Lead", {
+      status: "New",
+      lastName: `${tag} Reject`,
+      company: `${tag} Reject Co`,
+      email: `reject-${tag}@example.com`
+    }, "leads");
+    for (const badValues of [
+      { convertedStatus: "Banana" },
+      { closeDate: "not-a-date" },
+      { stage: "Banana" },
+      { forecastCategory: "Banana" },
+      { amount: "-10" },
+      { contact: { lastName: "  " } },
+      { contact: { email: "nope" } }
+    ]) {
+      await request("/api/workflows", {
+        method: "POST",
+        body: { action: "Convert Lead", object: "Lead", selectedIds: [rejectLead.id], values: badValues },
+        expected: [400]
+      });
+    }
+    const stillUnconverted = await prisma.lead.findUnique({ where: { id: rejectLead.id } });
+    assert(!stillUnconverted?.convertedAt, "A rejected conversion still marked the lead as converted");
+
     const mergeTask = remember("tasks", await prisma.task.create({
       data: {
         organizationId,
@@ -1473,6 +1670,69 @@ async function main() {
     assert(icsResponse.headers.get("content-type")?.includes("text/calendar"), "calendar export did not return text/calendar");
     assert(icsResponse.headers.get("content-disposition")?.includes("calendar.ics"), "calendar export filename was incorrect");
     for (const fragment of ["BEGIN:VCALENDAR", "BEGIN:VEVENT", `${tag} event`, "END:VCALENDAR"]) assert(icsText.includes(fragment), `calendar export missing ${fragment}`);
+    const windowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const windowEnd = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString();
+    const windowResponse = await request(`/api/calendar/events?start=${encodeURIComponent(windowStart)}&end=${encodeURIComponent(windowEnd)}`);
+    assert(Array.isArray(windowResponse.items), "windowed calendar endpoint did not return an items array");
+    await request(`/api/calendar/events?start=${encodeURIComponent(windowEnd)}&end=${encodeURIComponent(windowStart)}`, { expected: [400] });
+    await request(`/api/calendar/events?start=not-a-date&end=${encodeURIComponent(windowEnd)}`, { expected: [400] });
+
+    const editedEvent = await patchRecord("Event", event.id, { subject: "Meeting", location: `${tag} Room` });
+    assert(editedEvent.location === `${tag} Room`, "event edit did not persist through PATCH");
+
+    const seriesStart = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    seriesStart.setUTCHours(9, 0, 0, 0);
+    const seriesEnd = new Date(seriesStart.getTime() + 60 * 60 * 1000);
+    const series = await postRecord(
+      "Event",
+      {
+        subject: "Meeting",
+        description: `${tag} standup`,
+        startAt: seriesStart.toISOString(),
+        endAt: seriesEnd.toISOString(),
+        assignedToId: currentUserId,
+        recurrenceRule: "FREQ=DAILY;COUNT=5",
+        reminderMinutes: 15
+      },
+      "events"
+    );
+    assert(series.recurrenceRule === "FREQ=DAILY;COUNT=5" && series.reminderMinutes === 15, "recurrence and reminder fields did not persist on create");
+    await request("/api/records/Event", { method: "POST", body: { subject: "Meeting", startAt: seriesStart.toISOString(), endAt: seriesEnd.toISOString(), assignedToId: currentUserId, recurrenceRule: "FREQ=HOURLY" }, expected: [400] });
+
+    const expanded = await request(`/api/calendar/events?start=${encodeURIComponent(windowStart)}&end=${encodeURIComponent(windowEnd)}`);
+    const seriesItems = expanded.items.filter((item) => item.id === series.id);
+    assert(seriesItems.length === 5, `daily COUNT=5 series expanded to ${seriesItems.length} occurrences instead of 5`);
+    assert(seriesItems.every((item) => item.recurring && item.occurrenceStart), "expanded occurrences did not carry recurrence identity");
+
+    const secondSlot = seriesItems[1].occurrenceStart;
+    await request(`/api/records/Event/${series.id}`, {
+      method: "PATCH",
+      body: { subject: "Call", recurrenceScope: "single", occurrenceStart: secondSlot },
+      expected: [200]
+    });
+    const afterSingleEdit = await request(`/api/calendar/events?start=${encodeURIComponent(windowStart)}&end=${encodeURIComponent(windowEnd)}`);
+    const detached = afterSingleEdit.items.filter((item) => item.record?.recurrenceParentId === series.id);
+    assert(detached.length === 1 && detached[0].title === "Call", "editing a single occurrence did not detach exactly one overridden event");
+    assert(afterSingleEdit.items.filter((item) => item.id === series.id).length === 4, "the detached slot was not removed from the series");
+    detached.forEach((item) => remember("events", item.record));
+
+    const thirdSlot = seriesItems[2].occurrenceStart;
+    await request(`/api/records/Event/${series.id}?scope=single&occurrenceStart=${encodeURIComponent(thirdSlot)}`, { method: "DELETE" });
+    const afterSingleDelete = await request(`/api/calendar/events?start=${encodeURIComponent(windowStart)}&end=${encodeURIComponent(windowEnd)}`);
+    assert(afterSingleDelete.items.filter((item) => item.id === series.id).length === 3, "deleting a single occurrence removed the wrong number of occurrences");
+
+    const seriesIcs = await (await requestRaw("/api/calendar/export")).text();
+    for (const fragment of ["RRULE:FREQ=DAILY;COUNT=5", "EXDATE:", "BEGIN:VALARM", "TRIGGER:-PT15M"]) {
+      assert(seriesIcs.includes(fragment), `calendar export missing ${fragment}`);
+    }
+
+    const reminderSweep = await request("/api/calendar/reminders", { method: "POST" });
+    assert(reminderSweep.ok, "reminder sweep did not return ok");
+    assert(Array.isArray(reminderSweep.notifications), "reminder sweep did not return a notifications array");
+
+    await request(`/api/records/Event/${series.id}?scope=all`, { method: "DELETE" });
+    created.events = created.events.filter((id) => id !== series.id);
+
     await utility("updateCalendarSource", { id: calendarResult.source.id, name: `${tag} Calendar Updated`, type: "Other", color: "#2e844a", visible: false }, calendarResult.source.id);
     await utility("deleteCalendarSource", { id: calendarResult.source.id }, calendarResult.source.id);
     const eventAfterCalendarDelete = await prisma.event.findUnique({ where: { id: event.id } });
