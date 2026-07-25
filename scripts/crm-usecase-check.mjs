@@ -659,6 +659,14 @@ async function main() {
       assignedToId: currentUserId,
       showTimeAs: "Busy"
     }, "events");
+    assert(event.reminderMinutes === 1440, "new events did not default to a 24-hour reminder");
+    event = await patchRecord("Event", event.id, { reminderMinutes: null });
+    assert(event.reminderMinutes === null, "explicitly disabling an event reminder did not persist");
+    const invalidReminder = await request(`/api/records/Event/${event.id}`, { method: "PATCH", body: { reminderMinutes: -1 }, expected: [400] });
+    assert(
+      invalidReminder.field === "reminderMinutes" || invalidReminder.fields?.includes("reminderMinutes"),
+      "Event API did not identify the invalid reminder field"
+    );
     await patchRecord("Event", event.id, { location: "Conference Room" });
 
     quickTextFolder = (await workflow("New Folder", "QuickText", [], { name: `${tag} Folder`, sharing: "Private" })).folder;

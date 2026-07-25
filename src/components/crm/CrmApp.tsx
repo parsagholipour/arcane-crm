@@ -114,6 +114,7 @@ import { CampaignDetailPage, CampaignEditorModal, CampaignStatusBadge, type Camp
 import { CommerceWorkspace } from "@/components/crm/CommerceWorkspace";
 import { CalendarWorkspace } from "@/components/crm/CalendarWorkspace";
 import { addCalendarDays, nextTimeSlot, sameDate, startOfDay, toDateInputValue, utcToZonedFormValues, zonedTimeToUtc } from "@/lib/calendar";
+import { DEFAULT_EVENT_REMINDER_MINUTES, EVENT_REMINDER_OPTIONS, formatReminderOffset } from "@/lib/calendar-reminder-values";
 import { RECURRENCE_DAYS, describeRecurrence, formatRecurrenceRule, parseRecurrenceRule, type RecurrenceDay, type RecurrenceFrequency } from "@/lib/calendar-recurrence";
 import { MarketingLandingPagesPanel } from "@/components/crm/MarketingLandingPagesPanel";
 import { PriceBookDetailPage, ProductDetailPage } from "@/components/crm/CatalogWorkspace";
@@ -337,7 +338,7 @@ const appRail: Array<{ key: AppKey; label: string; href: string; icon: ElementTy
   { key: "your-account", label: "Your Account", href: "/lightning/app/your-account", icon: User }
 ];
 
-const notificationCategories = ["Records", "Workflow", "Marketing", "Activity", "Files", "Email"] as const;
+const notificationCategories = ["Records", "Workflow", "Marketing", "Activity", "Files", "Email", "Calendar"] as const;
 const displayDensityOptions = ["Comfy", "Compact"];
 const timezoneOptions = ["Asia/Dubai", "UTC", "America/New_York", "America/Los_Angeles", "Europe/London"];
 const localeOptions = ["en-US", "en-GB", "ar-AE", "fr-FR", "de-DE"];
@@ -7264,7 +7265,9 @@ function EventModal({
     location: record ? String(record.location ?? "") : "",
     allDay: record ? Boolean(record.allDay) : false,
     private: record ? Boolean(record.private) : false,
-    reminderMinutes: record?.reminderMinutes === null || record?.reminderMinutes === undefined ? "" : String(record.reminderMinutes),
+    reminderMinutes: record
+      ? record.reminderMinutes === null || record.reminderMinutes === undefined ? "" : String(record.reminderMinutes)
+      : String(DEFAULT_EVENT_REMINDER_MINUTES),
     repeatFrequency: existingRecurrence?.freq ?? "None",
     repeatInterval: String(existingRecurrence?.interval ?? 1),
     repeatByDay: existingRecurrence?.byDay ?? [],
@@ -7314,6 +7317,11 @@ function EventModal({
 
   const repeatFrequency = String(values.repeatFrequency ?? "None");
   const repeatByDay = Array.isArray(values.repeatByDay) ? values.repeatByDay.map(String) : [];
+  const reminderValue = String(values.reminderMinutes ?? "");
+  const reminderOptions: Array<{ value: string; label: string }> = EVENT_REMINDER_OPTIONS.map((option) => ({ ...option }));
+  if (reminderValue && !reminderOptions.some((option) => option.value === reminderValue)) {
+    reminderOptions.push({ value: reminderValue, label: formatReminderOffset(reminderValue) });
+  }
   const recurrenceRule =
     repeatFrequency === "None"
       ? null
@@ -7457,12 +7465,17 @@ function EventModal({
         <FieldShell label="Show Time As"><NativeSelect options={SHOW_TIME_AS} value={String(values.showTimeAs)} onChange={(value) => setValues({ ...values, showTimeAs: value })} /></FieldShell>
         <FieldShell label="All-Day Event"><RadixCheckbox checked={Boolean(values.allDay)} onCheckedChange={(value) => setValues({ ...values, allDay: Boolean(value) })} /></FieldShell>
         <FieldShell label="Private"><RadixCheckbox checked={Boolean(values.private)} onCheckedChange={(value) => setValues({ ...values, private: Boolean(value) })} /><p className="mt-1 text-xs text-[#706e6b]">Private details remain visible to organization admins and users with View All Data.</p></FieldShell>
-        <FieldShell label="Reminder">
+        <FieldShell label="Notify me">
           <NativeSelect
-            options={REMINDER_OPTIONS.map((option) => option.label)}
-            value={REMINDER_OPTIONS.find((option) => option.value === String(values.reminderMinutes ?? ""))?.label ?? "None"}
-            onChange={(label) => setValues({ ...values, reminderMinutes: REMINDER_OPTIONS.find((option) => option.label === label)?.value ?? "" })}
+            options={reminderOptions}
+            value={reminderValue}
+            onChange={(value) => setValues({ ...values, reminderMinutes: value })}
           />
+          <p className={cn("mt-1 text-xs", data.emailDeliveryConfigured ? "text-[#706e6b]" : "text-[#8e6a00]")}>
+            {data.emailDeliveryConfigured
+              ? "Emails the Assigned To user and also creates an in-app notification."
+              : "The in-app reminder will still work, but email requires SendGrid configuration before this reminder is due."}
+          </p>
         </FieldShell>
         <FieldShell label="Repeat">
           <div className="grid gap-2">
@@ -7516,16 +7529,6 @@ function EventModal({
     </BaseDialog>
   );
 }
-
-const REMINDER_OPTIONS = [
-  { label: "None", value: "" },
-  { label: "5 minutes before", value: "5" },
-  { label: "10 minutes before", value: "10" },
-  { label: "15 minutes before", value: "15" },
-  { label: "30 minutes before", value: "30" },
-  { label: "1 hour before", value: "60" },
-  { label: "1 day before", value: "1440" }
-];
 
 const REPEAT_OPTIONS = [
   { label: "Does not repeat", value: "None" },

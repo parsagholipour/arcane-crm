@@ -338,7 +338,7 @@ model Event {
   recurrenceParentId       String?
   recurrenceOriginalStart  DateTime?
   recurrenceExceptionDates DateTime[]
-  reminderMinutes          Int?
+  reminderMinutes          Int?            @default(1440)
   createdAt                DateTime        @default(now())
   updatedAt                DateTime        @updatedAt
   calendarSource           CalendarSource? @relation(fields: [calendarSourceId], references: [id], onDelete: SetNull)
@@ -351,15 +351,25 @@ model Event {
 }
 
 model EventReminderDispatch {
-  id             String   @id @default(cuid())
-  organizationId String
-  userId         String
-  eventId        String
-  occurrenceAt   DateTime
-  createdAt      DateTime @default(now())
+  id                    String    @id @default(cuid())
+  organizationId        String
+  userId                String
+  eventId               String
+  occurrenceAt          DateTime
+  status                String    @default("Legacy")
+  attemptCount          Int       @default(0)
+  lastAttemptAt         DateTime?
+  nextAttemptAt         DateTime?
+  emailAcceptedAt       DateTime?
+  notificationId        String?
+  warningNotificationId String?
+  lastError             String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @default(now()) @updatedAt
 
   @@unique([organizationId, userId, eventId, occurrenceAt])
   @@index([organizationId, userId])
+  @@index([status, nextAttemptAt])
 }
 
 model CalendarSource {

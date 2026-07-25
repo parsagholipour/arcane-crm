@@ -4,7 +4,7 @@ import { EmailConfigurationError, EmailDeliveryError, EmailValidationError } fro
 import { resolveRecipientRecords } from "@/lib/email/recipients";
 import { sendConfiguredEmail, validateScheduledAt } from "@/lib/email/service";
 import { SendGridEmailAdapter, toSendGridMailData } from "@/lib/email/sendgrid";
-import { caseNotificationTemplate, organizationInvitationTemplate } from "@/lib/email/templates";
+import { calendarReminderTemplate, caseNotificationTemplate, organizationInvitationTemplate } from "@/lib/email/templates";
 import { sendGridDeliveryState } from "@/lib/email/tracking";
 import type { EmailAdapter, OutboundEmail } from "@/lib/email/types";
 
@@ -112,6 +112,23 @@ test("case notifications include the case identity and customer-facing details",
   assert.equal(message.subject, "Case 00001234: Login issue");
   assert.match(message.text, /Status: New/);
   assert.match(message.text, /Cannot sign in\./);
+});
+
+test("calendar reminder emails include localized schedule details and an event link", () => {
+  const message = calendarReminderTemplate({
+    organizationName: "Example CRM",
+    eventSubject: "Customer review",
+    startText: "Thursday, August 20, 2026 at 2:00 PM",
+    endText: "Thursday, August 20, 2026 at 3:00 PM",
+    allDay: false,
+    location: "Conference Room",
+    eventUrl: "https://crm.example.com/lightning/o/Event/home?eventId=event-1"
+  });
+  assert.equal(message.subject, "Reminder: Customer review");
+  assert.match(message.text, /Starts: Thursday, August 20/);
+  assert.match(message.text, /Location: Conference Room/);
+  assert.match(message.html, /Open event/);
+  assert.match(message.html, /eventId=event-1/);
 });
 
 test("organization invitations are branded, role-aware, and HTML escaped", () => {

@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { parseRecurrenceRule } from "@/lib/calendar-recurrence";
 import { DEFAULT_CALENDAR_COLOR, TASK_OVERLAY_COLOR, VIDEO_CALL_OVERLAY_COLOR, expandEventsToItems, occurrenceKey } from "@/lib/calendar-items";
+import { MAX_EVENT_REMINDER_MINUTES } from "@/lib/calendar-reminder-values";
 import type { CalendarItem } from "@/lib/calendar";
 import type { RecordData } from "@/lib/crm-types";
 
@@ -30,6 +31,20 @@ export class CalendarValidationError extends Error {
 export function calendarErrorResponse(error: unknown) {
   if (error instanceof CalendarValidationError) return { error: error.message, status: error.status, field: error.field };
   return null;
+}
+
+export function validateEventReminderMinutes(value: unknown): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  const minutes = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes > MAX_EVENT_REMINDER_MINUTES) {
+    throw new CalendarValidationError(
+      `Reminder must be a whole number of minutes from 0 to ${MAX_EVENT_REMINDER_MINUTES}.`,
+      400,
+      "reminderMinutes"
+    );
+  }
+  return minutes;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -157,7 +172,7 @@ export function eventUpdateData(payload: RecordData) {
     private: payload.private === undefined ? undefined : Boolean(payload.private),
     recurrenceRule: payload.recurrenceRule === undefined ? undefined : (payload.recurrenceRule as string | null),
     recurrenceEndAt: payload.recurrenceEndAt === undefined ? undefined : payload.recurrenceEndAt ? new Date(String(payload.recurrenceEndAt)) : null,
-    reminderMinutes: payload.reminderMinutes === undefined ? undefined : payload.reminderMinutes === null ? null : Number(payload.reminderMinutes)
+    reminderMinutes: validateEventReminderMinutes(payload.reminderMinutes)
   };
 }
 

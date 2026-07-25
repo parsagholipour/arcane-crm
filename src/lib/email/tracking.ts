@@ -168,7 +168,11 @@ export async function ingestSendGridEvents(events: unknown[]) {
 }
 
 function emailSourceHref(sourceType: string, sourceId: string) {
-  const object = sourceType === "ListEmail" ? "ListEmail" : sourceType === "Invoice" ? "Invoice" : sourceType === "VideoCall" ? "VideoCall" : "";
+  if (sourceType === "Event") return `/lightning/o/Event/home?eventId=${encodeURIComponent(sourceId)}`;
+  const object =
+    sourceType === "ListEmail" ? "ListEmail" :
+    sourceType === "Invoice" ? "Invoice" :
+    sourceType === "VideoCall" ? "VideoCall" : "";
   return object ? `/lightning/r/${object}/${sourceId}/view` : "/lightning/page/home";
 }
 

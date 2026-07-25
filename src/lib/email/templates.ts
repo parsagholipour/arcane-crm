@@ -37,6 +37,39 @@ export function caseNotificationTemplate(input: {
   return { subject, text: lines.join("\n") };
 }
 
+export function calendarReminderTemplate(input: {
+  organizationName: string;
+  eventSubject: string;
+  startText: string;
+  endText: string;
+  allDay: boolean;
+  location?: string | null;
+  eventUrl: string;
+}) {
+  const subject = `Reminder: ${text(input.eventSubject)}`;
+  const schedule = input.allDay
+    ? [`Date: ${text(input.startText)}`, ...(input.endText && input.endText !== input.startText ? [`Ends: ${text(input.endText)}`] : [])]
+    : [`Starts: ${text(input.startText)}`, `Ends: ${text(input.endText)}`];
+  const plainText = [
+    `${input.organizationName} calendar reminder`,
+    "",
+    text(input.eventSubject),
+    ...schedule,
+    ...(text(input.location) ? [`Location: ${text(input.location)}`] : []),
+    "",
+    `Open event: ${input.eventUrl}`
+  ].join("\n");
+  const html = [
+    `<div style="font-family:Arial,sans-serif;color:#181818">`,
+    `<p style="color:#706e6b">${escapeHtml(input.organizationName)} calendar reminder</p>`,
+    `<h2>${escapeHtml(input.eventSubject)}</h2>`,
+    `<p>${schedule.map((line) => escapeHtml(line)).join("<br>")}${text(input.location) ? `<br><strong>Location:</strong> ${escapeHtml(input.location)}` : ""}</p>`,
+    `<p><a href="${escapeHtml(input.eventUrl)}">Open event</a></p>`,
+    `</div>`
+  ].join("");
+  return { subject, text: plainText, html };
+}
+
 export function organizationInvitationTemplate(input: {
   recipientName: string;
   organizationName: string;

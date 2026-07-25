@@ -12,7 +12,7 @@
     "test:user-management": "tsx --conditions=react-server --test src/lib/organization-invitations.test.ts src/lib/organization-context.test.ts",
     "test:keycloak-email": "node --test scripts/configure-keycloak-email.test.mjs",
     "test:files": "tsx --test src/lib/files.test.ts",
-    "test:calendar": "tsx --test src/lib/calendar.test.ts src/lib/calendar-recurrence.test.ts",
+    "test:calendar": "tsx --conditions=react-server --test src/lib/calendar.test.ts src/lib/calendar-recurrence.test.ts src/lib/calendar-reminder-values.test.ts src/lib/calendar-reminders.test.ts",
     "test:ai": "tsx --conditions=react-server --test src/lib/ai/*.test.ts",
     "lint": "next lint",
     "prisma:generate": "prisma generate",

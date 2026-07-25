@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { parseRecurrenceRule } from "@/lib/calendar-recurrence";
+import { MAX_EVENT_REMINDER_MINUTES } from "@/lib/calendar-reminder-values";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 
 export class RecordPayloadValidationError extends Error {
@@ -57,8 +58,8 @@ export function validateRecordPayload(object: CrmObject, payload: RecordData) {
     }
     if (payload.reminderMinutes !== null && payload.reminderMinutes !== undefined) {
       const reminderMinutes = Number(payload.reminderMinutes);
-      if (!Number.isInteger(reminderMinutes) || reminderMinutes < 0 || reminderMinutes > 40320) {
-        throw new RecordPayloadValidationError("Reminder must be a whole number of minutes from 0 through 40320 (four weeks).", ["reminderMinutes"]);
+      if (!Number.isInteger(reminderMinutes) || reminderMinutes < 0 || reminderMinutes > MAX_EVENT_REMINDER_MINUTES) {
+        throw new RecordPayloadValidationError(`Reminder must be a whole number of minutes from 0 through ${MAX_EVENT_REMINDER_MINUTES} (four weeks).`, ["reminderMinutes"]);
       }
     }
   }

@@ -3,6 +3,8 @@ import { EmailValidationError } from "@/lib/email/errors";
 import { emailErrorResponse } from "@/lib/email/http";
 import { deliverCaseNotification, deliverListEmail } from "@/lib/email/workflows";
 import { attachTrackedDeliveries } from "@/lib/email/tracking";
+import { DEFAULT_EVENT_REMINDER_MINUTES } from "@/lib/calendar-reminder-values";
+import { calendarErrorResponse, validateEventReminderMinutes } from "@/lib/calendar-events";
 import { prisma } from "@/lib/prisma";
 import { RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
@@ -27,6 +29,9 @@ export async function POST(request: NextRequest, context: { params: Params }) {
       const endAt = new Date(String(payload.endAt));
       if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime())) return NextResponse.json({ error: "Choose valid event start and end times." }, { status: 400 });
       if (endAt <= startAt) return NextResponse.json({ error: "Event end time must be after its start time." }, { status: 400 });
+      payload.reminderMinutes = payload.reminderMinutes === undefined
+        ? DEFAULT_EVENT_REMINDER_MINUTES
+        : validateEventReminderMinutes(payload.reminderMinutes);
     }
     await validateReferences(object, payload, authContext.organizationId, authContext.userId);
     let delivery = null;
@@ -85,6 +90,8 @@ export async function POST(request: NextRequest, context: { params: Params }) {
     if (response) return response;
     const deliveryResponse = emailErrorResponse(error);
     if (deliveryResponse) return deliveryResponse;
+    const calendarResponse = calendarErrorResponse(error);
+    if (calendarResponse) return NextResponse.json({ error: calendarResponse.error, field: calendarResponse.field }, { status: calendarResponse.status });
     if (error instanceof RecordPayloadValidationError) return NextResponse.json({ error: error.message, fields: error.fields }, { status: 400 });
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return NextResponse.json({ error: "A record with that unique name or identifier already exists." }, { status: 409 });
     return NextResponse.json({ error: "Unable to create record." }, { status: 500 });
@@ -373,7 +380,9 @@ async function createRecord(object: CrmObject, payload: RecordData, organization
           private: Boolean(payload.private),
           recurrenceRule: (payload.recurrenceRule as string | null) ?? null,
           recurrenceEndAt: payload.recurrenceEndAt ? new Date(String(payload.recurrenceEndAt)) : null,
-          reminderMinutes: payload.reminderMinutes === null || payload.reminderMinutes === undefined ? null : Number(payload.reminderMinutes)
+          reminderMinutes: payload.reminderMinutes === undefined
+            ? DEFAULT_EVENT_REMINDER_MINUTES
+            : validateEventReminderMinutes(payload.reminderMinutes)
         }
       });
     case "QuickText":

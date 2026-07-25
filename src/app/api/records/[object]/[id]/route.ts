@@ -4,7 +4,7 @@ import { emailErrorResponse } from "@/lib/email/http";
 import { deliverCaseNotification, deliverListEmail } from "@/lib/email/workflows";
 import { prisma } from "@/lib/prisma";
 import { RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
-import { calendarErrorResponse, detachOccurrence, eventUpdateData, excludeOccurrence, parseRecurrenceScope } from "@/lib/calendar-events";
+import { calendarErrorResponse, detachOccurrence, eventUpdateData, excludeOccurrence, parseRecurrenceScope, validateEventReminderMinutes } from "@/lib/calendar-events";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
@@ -27,6 +27,7 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     validateRecordPayload(object, payload);
     await validateReferences(payload, authContext.organizationId, authContext.userId);
     if (object === "Event") {
+      if (payload.reminderMinutes !== undefined) payload.reminderMinutes = validateEventReminderMinutes(payload.reminderMinutes);
       const existingEvent = await prisma.event.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { startAt: true, endAt: true } });
       if (!existingEvent) return NextResponse.json({ error: "Record not found." }, { status: 404 });
       const startAt = payload.startAt ? new Date(String(payload.startAt)) : existingEvent.startAt;

@@ -32,6 +32,7 @@ import {
   type CalendarItem
 } from "@/lib/calendar";
 import { DEFAULT_CALENDAR_COLOR, expandEventsToItems, taskToItem, videoCallToItem } from "@/lib/calendar-items";
+import { formatReminderOffset } from "@/lib/calendar-reminder-values";
 import { describeRecurrence } from "@/lib/calendar-recurrence";
 import { cn } from "@/lib/utils";
 import type { BootstrapData, RecordData } from "@/lib/crm-types";
@@ -121,6 +122,7 @@ export function CalendarWorkspace({ data, onCreate, onEditEvent, onOpenVideoCall
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const didScrollRef = useRef(false);
   const defaultSourceRef = useRef(false);
+  const calendarDataRef = useRef({ events: data.events, tasks: data.tasks, videoCalls: data.videoCalls });
 
   // ---------------------------------------------------------------- window
 
@@ -333,7 +335,16 @@ export function CalendarWorkspace({ data, onCreate, onEditEvent, onOpenVideoCall
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windowKey]);
 
-  /** Reminders have no scheduler behind them, so the open calendar drives the sweep. */
+  // Record editors update the bootstrap payload outside this workspace. Refresh
+  // the active window so its fetched cache cannot mask the newly saved values.
+  useEffect(() => {
+    const previous = calendarDataRef.current;
+    if (previous.events === data.events && previous.tasks === data.tasks && previous.videoCalls === data.videoCalls) return;
+    calendarDataRef.current = { events: data.events, tasks: data.tasks, videoCalls: data.videoCalls };
+    void loadWindow();
+  }, [data.events, data.tasks, data.videoCalls, loadWindow]);
+
+  /** Keep the open calendar synchronized while the server scheduler handles reliable delivery. */
   useEffect(() => {
     let active = true;
     async function sweep() {
@@ -714,8 +725,9 @@ function TimeGridView({
   }
 
   function beginDrag(event: ReactPointerEvent<HTMLElement>, item: CalendarItem, dayIndex: number, mode: "move" | "resize") {
-    if (event.button !== 0 || item.kind !== "event") return;
+    if (event.button !== 0) return;
     event.stopPropagation();
+    if (item.kind !== "event") return;
     const column = event.currentTarget.closest("[data-day-column]") as HTMLElement | null;
     if (!column) return;
 
@@ -834,6 +846,9 @@ function TimeGridView({
                       tabIndex={0}
                       aria-label={`${item.title} ${calendarTimeRange(item, timeZone)}`}
                       onPointerDown={(event) => beginDrag(event, item, dayIndex, "move")}
+                      onClick={() => {
+                        if (item.kind !== "event") onSelect(item.occurrenceKey);
+                      }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
@@ -1039,7 +1054,12 @@ function ItemPopover({
     <Popover.Root open={open} onOpenChange={onOpenChange}>
       <Popover.Anchor asChild>{children}</Popover.Anchor>
       <Popover.Portal>
-        <Popover.Content align="start" sideOffset={6} className="z-[80] w-80 rounded border border-[#d8dde6] bg-white p-3 shadow-popover">
+        <Popover.Content
+          align="start"
+          sideOffset={6}
+          className="z-[80] w-80 rounded border border-[#d8dde6] bg-white p-3 shadow-popover"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           {renderPopover(item)}
           <Popover.Arrow className="fill-white" />
         </Popover.Content>
@@ -1095,7 +1115,7 @@ function EventDetail({
         {related && <DetailRow label="Related to" value={related} />}
         {calendarSourceName && <DetailRow label="Calendar" value={calendarSourceName} />}
         {Boolean(item.record.showTimeAs) && <DetailRow label="Shows as" value={text(item.record.showTimeAs)} />}
-        {reminderMinutes !== null && reminderMinutes !== undefined && <DetailRow label="Reminder" value={`${Number(reminderMinutes)} minutes before`} />}
+        {reminderMinutes !== null && reminderMinutes !== undefined && <DetailRow label="Reminder" value={formatReminderOffset(reminderMinutes)} />}
       </dl>
 
       {Boolean(item.record.description) && <p className="max-h-24 overflow-auto whitespace-pre-wrap rounded bg-[#f8f9fb] p-2 text-xs text-[#514f4d]">{text(item.record.description)}</p>}
@@ -1202,7 +1222,7 @@ function CalendarSidebar({
             <button
               key={toDateInputValue(day)}
               onClick={() => onPickDate(day)}
-              className={cn("rounded py-1 hover:bg-brand-50", active && "bg-brand-500 text-white", !sameMonth(day, miniMonth) && "text-[#a8a8a8]", today && !active && "ring-1 ring-brand-500")}
+              className={cn("rounded py-1 hover:bg-brand-50", active && "bg-brand-500 text-white hover:bg-brand-600", !sameMonth(day, miniMonth) && "text-[#a8a8a8]", today && !active && "ring-1 ring-brand-500")}
             >
               {day.getDate()}
             </button>
