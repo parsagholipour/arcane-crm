@@ -7225,6 +7225,7 @@ function EventModal({
   const editEndParts = editEnd ? utcToZonedFormValues(editEnd, timeZone) : null;
   const existingRecurrence = parseRecurrenceRule(record?.recurrenceRule) ?? null;
   const [scope, setScope] = useState<"single" | "all">(recurring ? "single" : "all");
+  const allDayCheckboxId = useId();
   const relatedPlural = relatedObjectType && relatedObjectType !== "Event"
     ? OBJECT_DEFINITIONS[relatedObjectType]?.plural
     : undefined;
@@ -7333,16 +7334,24 @@ function EventModal({
   const recurrenceSummary = recurrenceRule ? describeRecurrence(recurrenceRule, timeZone) : "";
 
   async function submit(stayOpen = false) {
-    const required = ["subject", "startDate", "startTime", "endDate", "endTime", "assignedToId"];
+    const required = [
+      "subject",
+      "startDate",
+      "endDate",
+      "assignedToId",
+      ...(values.allDay ? [] : ["startTime", "endTime"])
+    ];
     const nextErrors = Object.fromEntries(required.filter((key) => !values[key] || values[key] === "--None--").map((key) => [key, "Complete this field."]));
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
     // The grid renders in the user's preference zone, so the form must write in it too.
-    const startAt = zonedTimeToUtc(String(values.startDate), String(values.startTime), timeZone);
-    const endAt = zonedTimeToUtc(String(values.endDate), String(values.endTime), timeZone);
+    const startAt = zonedTimeToUtc(String(values.startDate), values.allDay ? "00:00" : String(values.startTime), timeZone);
+    const endAt = zonedTimeToUtc(String(values.endDate), values.allDay ? "23:59" : String(values.endTime), timeZone);
     if (endAt <= startAt) {
-      setErrors({ endTime: "End must be after the start." });
+      setErrors(values.allDay
+        ? { endDate: "End date must be on or after the start date." }
+        : { endTime: "End must be after the start." });
       return;
     }
 
@@ -7383,7 +7392,6 @@ function EventModal({
           {isEdit && onDelete && record && (
             <Button onClick={() => onDelete(record, recurring ? scope : "all")} className="border-[#ea001e] text-[#ba0517] hover:bg-[#fff1f1]">Delete</Button>
           )}
-          {!isEdit && <Button onClick={() => submit(true)}>Save &amp; New</Button>}
           <Button variant="primary" onClick={() => submit(false)}>Save</Button>
         </>
       }
@@ -7414,13 +7422,23 @@ function EventModal({
             placeholder="Type Control + period to insert quick text."
           />
         </FieldShell>
+        <div className="flex items-center gap-2 md:col-span-2">
+          <RadixCheckbox
+            id={allDayCheckboxId}
+            checked={Boolean(values.allDay)}
+            onCheckedChange={(value) => setValues({ ...values, allDay: Boolean(value) })}
+          />
+          <label htmlFor={allDayCheckboxId} className="cursor-pointer text-xs font-semibold text-[var(--control-label,#444)]">
+            All-day Event
+          </label>
+        </div>
         <FieldShell label="Start Date" required error={errors.startDate}><input className={inputClass} type="date" value={String(values.startDate)} onChange={(event) => setValues({ ...values, startDate: event.target.value })} /></FieldShell>
-        <FieldShell label="Start Time" required error={errors.startTime}><NativeSelect options={TIME_SLOTS} value={String(values.startTime)} onChange={(value) => setValues({ ...values, startTime: value })} /></FieldShell>
+        {!values.allDay && <FieldShell label="Start Time" required error={errors.startTime}><NativeSelect options={TIME_SLOTS} value={String(values.startTime)} onChange={(value) => setValues({ ...values, startTime: value })} /></FieldShell>}
         <FieldShell label="End Date" required error={errors.endDate}><input className={inputClass} type="date" value={String(values.endDate)} onChange={(event) => setValues({ ...values, endDate: event.target.value })} /></FieldShell>
-        <FieldShell label="End Time" required error={errors.endTime}><NativeSelect options={TIME_SLOTS} value={String(values.endTime)} onChange={(value) => setValues({ ...values, endTime: value })} /></FieldShell>
+        {!values.allDay && <FieldShell label="End Time" required error={errors.endTime}><NativeSelect options={TIME_SLOTS} value={String(values.endTime)} onChange={(value) => setValues({ ...values, endTime: value })} /></FieldShell>}
         <FieldShell label="Attendees"><AttendeePicker field={attendeeField} value={attendeeIds} data={data} onChange={(next) => setValues({ ...values, attendeeIds: next })} /></FieldShell>
         <FieldShell label="Name">
-          <div className="grid grid-cols-[120px_1fr] gap-2">
+          <div className="grid grid-cols-[120px_minmax(0,1fr)] items-end gap-2">
             <NativeSelect
               options={NAME_OBJECT_TYPES}
               value={String(values.nameObjectType ?? "Contacts")}
@@ -7430,12 +7448,13 @@ function EventModal({
               field={nameLookupField}
               value={String(values.nameRecordId ?? "")}
               data={data}
+              inlineSelection
               onChange={(next) => setValues({ ...values, nameRecordId: next })}
             />
           </div>
         </FieldShell>
         <FieldShell label="Related To">
-          <div className="grid grid-cols-[160px_1fr] gap-2">
+          <div className="grid grid-cols-[160px_minmax(0,1fr)] items-end gap-2">
             <NativeSelect
               options={RELATED_OBJECT_TYPES}
               value={String(values.relatedObjectType ?? "Accounts")}
@@ -7446,6 +7465,7 @@ function EventModal({
                 field={relatedLookupField}
                 value={String(values.relatedRecordId ?? "")}
                 data={data}
+                inlineSelection
                 onChange={(next) => setValues({ ...values, relatedRecordId: next })}
               />
             ) : (
@@ -7463,7 +7483,6 @@ function EventModal({
         <FieldShell label="Calendar"><select className={inputClass} value={String(values.calendarSourceId ?? "")} onChange={(event) => setValues({ ...values, calendarSourceId: event.target.value })}><option value="">{data.user.name} (default local calendar)</option>{data.calendarSources.map((source) => <option key={requiredId(source)} value={requiredId(source)}>{String(source.name ?? "Calendar")}</option>)}</select></FieldShell>
         <FieldShell label="Location"><input className={inputClass} value={String(values.location ?? "")} onChange={(event) => setValues({ ...values, location: event.target.value })} /></FieldShell>
         <FieldShell label="Show Time As"><NativeSelect options={SHOW_TIME_AS} value={String(values.showTimeAs)} onChange={(value) => setValues({ ...values, showTimeAs: value })} /></FieldShell>
-        <FieldShell label="All-Day Event"><RadixCheckbox checked={Boolean(values.allDay)} onCheckedChange={(value) => setValues({ ...values, allDay: Boolean(value) })} /></FieldShell>
         <FieldShell label="Private"><RadixCheckbox checked={Boolean(values.private)} onCheckedChange={(value) => setValues({ ...values, private: Boolean(value) })} /><p className="mt-1 text-xs text-[#706e6b]">Private details remain visible to organization admins and users with View All Data.</p></FieldShell>
         <FieldShell label="Notify me">
           <NativeSelect
@@ -8367,6 +8386,7 @@ function LookupField({
   value,
   data,
   error,
+  inlineSelection = false,
   onChange,
   id,
   "aria-invalid": ariaInvalid,
@@ -8376,6 +8396,7 @@ function LookupField({
   value: string;
   data: BootstrapData;
   error?: boolean;
+  inlineSelection?: boolean;
   onChange: (value: string) => void;
   id?: string;
   "aria-invalid"?: boolean;
@@ -8412,8 +8433,8 @@ function LookupField({
   }
 
   return (
-    <div className="space-y-1">
-      {selected && (
+    <div className={cn(!inlineSelection && "space-y-1")}>
+      {!inlineSelection && selected && (
         <div className="inline-flex items-center gap-1 rounded-full border border-[#c9c9c9] bg-[#f8f8f8] px-2 py-1 text-xs">
           {selected.label}
           <button type="button" aria-label="Clear selection" onClick={() => { onChange(""); closeLookup(); }}><X size={12} /></button>
@@ -8442,7 +8463,7 @@ function LookupField({
               aria-invalid={invalid || undefined}
               aria-describedby={ariaDescribedBy}
               aria-label={field.label}
-              value={query}
+              value={inlineSelection && selected && !open ? selected.label : query}
               onFocus={() => setOpen(true)}
               onClick={() => setOpen(true)}
               onChange={(event) => {
@@ -8470,9 +8491,25 @@ function LookupField({
                 }
                 if (event.key === "Backspace" && !query && value) onChange("");
               }}
-              className={cn(inputClass, "pl-8", invalid && inputErrorClass)}
+              className={cn(inputClass, "pl-8", inlineSelection && selected && !open && "pr-9", invalid && inputErrorClass)}
               placeholder={placeholder}
             />
+            {inlineSelection && selected && !open && (
+              <button
+                type="button"
+                aria-label={`Clear ${field.label}`}
+                className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-[#706e6b] hover:bg-[#f3f3f3] hover:text-[#181818] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onChange("");
+                  closeLookup();
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
         </Popover.Anchor>
         <Popover.Portal>
@@ -9594,9 +9631,10 @@ function NativeSelect({
   );
 }
 
-function RadixCheckbox({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: (checked: boolean | "indeterminate") => void }) {
+function RadixCheckbox({ checked, onCheckedChange, id }: { checked: boolean; onCheckedChange: (checked: boolean | "indeterminate") => void; id?: string }) {
   return (
     <Checkbox.Root
+      id={id}
       checked={checked}
       onCheckedChange={onCheckedChange}
       className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[#c9c9c9] bg-white outline-none transition-all hover:border-[#a0a0a0] focus-visible:border-brand-500 focus-visible:shadow-[0_0_0_3px_rgba(79,70,229,0.16)] active:scale-90 data-[state=checked]:border-brand-600 data-[state=checked]:bg-brand-600 data-[state=checked]:hover:border-brand-600"

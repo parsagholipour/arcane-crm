@@ -371,13 +371,12 @@ export function CalendarWorkspace({ data, onCreate, onEditEvent, onOpenVideoCall
     return () => clearInterval(timer);
   }, []);
 
-  /** Open on the working day rather than at midnight. */
+  /** A fresh calendar load should begin at the top of the timed grid. */
   useEffect(() => {
     if (didScrollRef.current || !scrollRef.current || viewMode === "Month" || viewMode === "Agenda") return;
     didScrollRef.current = true;
-    const target = Math.max(0, (minutesFromMidnight(new Date(), timeZone) / MINUTES_PER_DAY) * DAY_COLUMN_HEIGHT - HOUR_HEIGHT);
-    scrollRef.current.scrollTop = target;
-  }, [viewMode, timeZone]);
+    scrollRef.current.scrollTop = 0;
+  }, [viewMode]);
 
   // ------------------------------------------------------------ navigation
 
@@ -604,7 +603,9 @@ export function CalendarWorkspace({ data, onCreate, onEditEvent, onOpenVideoCall
               days={visibleDays}
               timeZone={timeZone}
               now={now}
+              selectedDate={anchorDate}
               selectedKey={selectedKey}
+              onSelectDate={setAnchorDate}
               onSelect={setSelectedKey}
               onCreateRange={(day, startMinutes, endMinutes) => onCreate(toDateInputValue(day), minutesToTimeText(startMinutes), minutesToTimeText(endMinutes))}
               onMove={requestMove}
@@ -668,7 +669,9 @@ function TimeGridView({
   days,
   timeZone,
   now,
+  selectedDate,
   selectedKey,
+  onSelectDate,
   onSelect,
   onCreateRange,
   onMove,
@@ -679,7 +682,9 @@ function TimeGridView({
   days: Date[];
   timeZone: string;
   now: Date;
+  selectedDate: Date;
   selectedKey: string | null;
+  onSelectDate: (date: Date) => void;
   onSelect: (key: string | null) => void;
   onCreateRange: (day: Date, startMinutes: number, endMinutes: number) => void;
   onMove: (item: CalendarItem, startAt: Date, endAt: Date) => void;
@@ -690,6 +695,7 @@ function TimeGridView({
 
   const hours = Array.from({ length: 24 }, (_, hour) => hour);
   const nowMinutes = minutesFromMidnight(now, timeZone);
+  const selectedDateKey = toDateInputValue(selectedDate);
 
   function minutesFromPointer(element: HTMLElement, clientY: number) {
     const bounds = element.getBoundingClientRect();
@@ -700,6 +706,7 @@ function TimeGridView({
   function beginCreate(event: ReactPointerEvent<HTMLDivElement>, dayIndex: number) {
     if (event.button !== 0) return;
     const column = event.currentTarget;
+    onSelectDate(days[dayIndex]);
     const startMinutes = minutesFromPointer(column, event.clientY);
     column.setPointerCapture(event.pointerId);
     setDraft({ dayIndex, startMinutes, endMinutes: startMinutes + SNAP_MINUTES });
@@ -727,6 +734,7 @@ function TimeGridView({
   function beginDrag(event: ReactPointerEvent<HTMLElement>, item: CalendarItem, dayIndex: number, mode: "move" | "resize") {
     if (event.button !== 0) return;
     event.stopPropagation();
+    onSelectDate(days[dayIndex]);
     if (item.kind !== "event") return;
     const column = event.currentTarget.closest("[data-day-column]") as HTMLElement | null;
     if (!column) return;
@@ -775,28 +783,51 @@ function TimeGridView({
     <div ref={scrollRef} className="max-h-[70vh] overflow-auto">
       <div className={cn("grid min-w-[820px]", days.length === 1 ? "grid-cols-[64px_1fr]" : "grid-cols-[64px_repeat(7,minmax(0,1fr))]")}>
         <div className="sticky top-0 z-20 border-b border-[#d8dde6] bg-[#f3f3f3] p-2" />
-        {days.map((day) => (
-          <div key={toDateInputValue(day)} className="sticky top-0 z-20 border-b border-l border-[#d8dde6] bg-[#f3f3f3] p-2 text-center text-xs font-semibold">
-            {shortDayLabel(day)}
-          </div>
-        ))}
+        {days.map((day) => {
+          const dayKey = toDateInputValue(day);
+          const selected = dayKey === selectedDateKey;
+          return (
+            <button
+              type="button"
+              key={dayKey}
+              data-day-header={dayKey}
+              aria-pressed={selected}
+              onClick={() => onSelectDate(day)}
+              className={cn(
+                "sticky top-0 z-20 border-b border-l border-[#d8dde6] bg-[#f3f3f3] p-2 text-center text-xs font-semibold hover:bg-brand-50",
+                selected && "border-b-brand-300 bg-brand-100 text-brand-800 hover:bg-brand-100"
+              )}
+            >
+              {shortDayLabel(day)}
+            </button>
+          );
+        })}
 
         <div className="border-b border-[#d8dde6] p-2 text-[11px] text-[#706e6b]">All day</div>
-        {days.map((day) => (
-          <div key={`${toDateInputValue(day)}-allday`} className="min-h-10 space-y-1 border-b border-l border-[#d8dde6] p-1">
-            {allDayItemsForDay(items, day, timeZone).map((item) => (
-              <ItemPopover key={item.occurrenceKey} item={item} open={selectedKey === item.occurrenceKey} onOpenChange={(open) => onSelect(open ? item.occurrenceKey : null)} renderPopover={renderPopover}>
-                <button
-                  className="block w-full truncate rounded px-1.5 py-1 text-left text-[11px] font-semibold text-white"
-                  style={{ backgroundColor: item.color }}
-                  onClick={() => onSelect(selectedKey === item.occurrenceKey ? null : item.occurrenceKey)}
-                >
-                  {item.title}
-                </button>
-              </ItemPopover>
-            ))}
-          </div>
-        ))}
+        {days.map((day) => {
+          const dayKey = toDateInputValue(day);
+          const selected = dayKey === selectedDateKey;
+          return (
+            <div
+              key={`${dayKey}-allday`}
+              data-day-all-day={dayKey}
+              className={cn("min-h-10 space-y-1 border-b border-l border-[#d8dde6] p-1", selected && "bg-brand-50")}
+              onClick={() => onSelectDate(day)}
+            >
+              {allDayItemsForDay(items, day, timeZone).map((item) => (
+                <ItemPopover key={item.occurrenceKey} item={item} open={selectedKey === item.occurrenceKey} onOpenChange={(open) => onSelect(open ? item.occurrenceKey : null)} renderPopover={renderPopover}>
+                  <button
+                    className="block w-full truncate rounded px-1.5 py-1 text-left text-[11px] font-semibold text-white"
+                    style={{ backgroundColor: item.color }}
+                    onClick={() => onSelect(selectedKey === item.occurrenceKey ? null : item.occurrenceKey)}
+                  >
+                    {item.title}
+                  </button>
+                </ItemPopover>
+              ))}
+            </div>
+          );
+        })}
 
         <div className="relative" style={{ height: DAY_COLUMN_HEIGHT }}>
           {hours.map((hour) => (
@@ -809,11 +840,12 @@ function TimeGridView({
         {days.map((day, dayIndex) => {
           const positioned = layoutDayItems(items, day, timeZone);
           const isToday = toDateInputValue(day) === toDateInputValue(now);
+          const selected = toDateInputValue(day) === selectedDateKey;
           return (
             <div
               key={`${toDateInputValue(day)}-grid`}
-              data-day-column
-              className="relative border-l border-[#d8dde6]"
+              data-day-column={toDateInputValue(day)}
+              className={cn("relative border-l border-[#d8dde6]", selected && "bg-brand-50")}
               style={{ height: DAY_COLUMN_HEIGHT }}
               onPointerDown={(event) => beginCreate(event, dayIndex)}
             >
