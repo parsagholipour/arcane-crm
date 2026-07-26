@@ -33,7 +33,10 @@ export type CalculatedInvoiceTotals = {
 };
 
 export class InvoiceInputError extends Error {
-  constructor(message: string, readonly field?: string) {
+  constructor(
+    message: string,
+    readonly field?: string
+  ) {
     super(message);
     this.name = "InvoiceInputError";
   }
@@ -57,21 +60,44 @@ export function money(value: Prisma.Decimal.Value) {
 
 export function calculateInvoiceTotals(inputs: InvoiceLineInput[]): CalculatedInvoiceTotals {
   const lineItems = inputs.map((input, index) => {
-    const quantity = decimal(input.quantity, `Line ${index + 1} quantity`).toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_UP);
+    const quantity = decimal(input.quantity, `Line ${index + 1} quantity`).toDecimalPlaces(
+      4,
+      Prisma.Decimal.ROUND_HALF_UP
+    );
     const unitPrice = money(decimal(input.unitPrice, `Line ${index + 1} unit price`));
     const discountAmount = money(decimal(input.discountAmount, `Line ${index + 1} discount`));
-    const taxRate = decimal(input.taxRate, `Line ${index + 1} tax rate`).toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_UP);
+    const taxRate = decimal(input.taxRate, `Line ${index + 1} tax rate`).toDecimalPlaces(
+      4,
+      Prisma.Decimal.ROUND_HALF_UP
+    );
     const description = String(input.description ?? "").trim();
 
-    if (!description) throw new InvoiceInputError(`Line ${index + 1} requires a description.`, `lineItems.${index}.description`);
-    if (quantity.lte(0)) throw new InvoiceInputError(`Line ${index + 1} quantity must be greater than zero.`, `lineItems.${index}.quantity`);
-    if (unitPrice.lt(0)) throw new InvoiceInputError(`Line ${index + 1} unit price cannot be negative.`, `lineItems.${index}.unitPrice`);
-    if (discountAmount.lt(0)) throw new InvoiceInputError(`Line ${index + 1} discount cannot be negative.`, `lineItems.${index}.discountAmount`);
-    if (taxRate.lt(0) || taxRate.gt(100)) throw new InvoiceInputError(`Line ${index + 1} tax rate must be between 0 and 100.`, `lineItems.${index}.taxRate`);
+    if (!description)
+      throw new InvoiceInputError(`Line ${index + 1} requires a description.`, `lineItems.${index}.description`);
+    if (quantity.lte(0))
+      throw new InvoiceInputError(
+        `Line ${index + 1} quantity must be greater than zero.`,
+        `lineItems.${index}.quantity`
+      );
+    if (unitPrice.lt(0))
+      throw new InvoiceInputError(`Line ${index + 1} unit price cannot be negative.`, `lineItems.${index}.unitPrice`);
+    if (discountAmount.lt(0))
+      throw new InvoiceInputError(
+        `Line ${index + 1} discount cannot be negative.`,
+        `lineItems.${index}.discountAmount`
+      );
+    if (taxRate.lt(0) || taxRate.gt(100))
+      throw new InvoiceInputError(
+        `Line ${index + 1} tax rate must be between 0 and 100.`,
+        `lineItems.${index}.taxRate`
+      );
 
     const lineSubtotal = money(quantity.mul(unitPrice));
     if (discountAmount.gt(lineSubtotal)) {
-      throw new InvoiceInputError(`Line ${index + 1} discount cannot exceed the line subtotal.`, `lineItems.${index}.discountAmount`);
+      throw new InvoiceInputError(
+        `Line ${index + 1} discount cannot exceed the line subtotal.`,
+        `lineItems.${index}.discountAmount`
+      );
     }
     const taxableAmount = lineSubtotal.minus(discountAmount);
     const taxAmount = money(taxableAmount.mul(taxRate).div(100));

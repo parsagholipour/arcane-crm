@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { describeRecurrence, expandRecurrence, formatRecurrenceRule, parseRecurrenceRule } from "@/lib/calendar-recurrence";
+import {
+  describeRecurrence,
+  expandRecurrence,
+  formatRecurrenceRule,
+  parseRecurrenceRule
+} from "@/lib/calendar-recurrence";
 
 const TZ = "America/New_York";
 
@@ -23,7 +28,10 @@ test("parseRecurrenceRule reads frequency, interval, by-day, count and until", (
   });
   assert.equal(parseRecurrenceRule("FREQ=DAILY;COUNT=5")?.count, 5);
   assert.equal(parseRecurrenceRule("RRULE:FREQ=MONTHLY")?.freq, "MONTHLY");
-  assert.equal(parseRecurrenceRule("FREQ=DAILY;UNTIL=20260731T235959Z")?.until?.toISOString(), "2026-07-31T23:59:59.000Z");
+  assert.equal(
+    parseRecurrenceRule("FREQ=DAILY;UNTIL=20260731T235959Z")?.until?.toISOString(),
+    "2026-07-31T23:59:59.000Z"
+  );
 });
 
 test("parseRecurrenceRule rejects unsupported or malformed rules instead of throwing", () => {
@@ -114,7 +122,11 @@ test("expandRecurrence stops at COUNT", () => {
     new Date("2026-08-01T00:00:00.000Z"),
     TZ
   );
-  assert.deepEqual(starts(occurrences), ["2026-07-01T13:00:00.000Z", "2026-07-02T13:00:00.000Z", "2026-07-03T13:00:00.000Z"]);
+  assert.deepEqual(starts(occurrences), [
+    "2026-07-01T13:00:00.000Z",
+    "2026-07-02T13:00:00.000Z",
+    "2026-07-03T13:00:00.000Z"
+  ]);
 });
 
 test("expandRecurrence counts occurrences, not weeks, when COUNT meets BYDAY", () => {
@@ -124,7 +136,11 @@ test("expandRecurrence counts occurrences, not weeks, when COUNT meets BYDAY", (
     new Date("2026-08-01T00:00:00.000Z"),
     TZ
   );
-  assert.deepEqual(starts(occurrences), ["2026-07-01T13:00:00.000Z", "2026-07-06T13:00:00.000Z", "2026-07-08T13:00:00.000Z"]);
+  assert.deepEqual(starts(occurrences), [
+    "2026-07-01T13:00:00.000Z",
+    "2026-07-06T13:00:00.000Z",
+    "2026-07-08T13:00:00.000Z"
+  ]);
 });
 
 test("expandRecurrence stops at UNTIL", () => {
@@ -139,12 +155,18 @@ test("expandRecurrence stops at UNTIL", () => {
 
 test("expandRecurrence stops at recurrenceEndAt", () => {
   const occurrences = expandRecurrence(
-    series("FREQ=DAILY", "2026-07-01T13:00:00.000Z", "2026-07-01T14:00:00.000Z", { recurrenceEndAt: new Date("2026-07-04T00:00:00.000Z") }),
+    series("FREQ=DAILY", "2026-07-01T13:00:00.000Z", "2026-07-01T14:00:00.000Z", {
+      recurrenceEndAt: new Date("2026-07-04T00:00:00.000Z")
+    }),
     new Date("2026-07-01T00:00:00.000Z"),
     new Date("2026-08-01T00:00:00.000Z"),
     TZ
   );
-  assert.deepEqual(starts(occurrences), ["2026-07-01T13:00:00.000Z", "2026-07-02T13:00:00.000Z", "2026-07-03T13:00:00.000Z"]);
+  assert.deepEqual(starts(occurrences), [
+    "2026-07-01T13:00:00.000Z",
+    "2026-07-02T13:00:00.000Z",
+    "2026-07-03T13:00:00.000Z"
+  ]);
 });
 
 test("expandRecurrence removes exception dates", () => {
@@ -183,7 +205,12 @@ test("expandRecurrence preserves wall-clock time across a DST transition", () =>
     new Date("2026-11-20T00:00:00.000Z"),
     TZ
   );
-  assert.deepEqual(starts(occurrences), ["2026-10-28T13:00:00.000Z", "2026-11-04T14:00:00.000Z", "2026-11-11T14:00:00.000Z", "2026-11-18T14:00:00.000Z"]);
+  assert.deepEqual(starts(occurrences), [
+    "2026-10-28T13:00:00.000Z",
+    "2026-11-04T14:00:00.000Z",
+    "2026-11-11T14:00:00.000Z",
+    "2026-11-18T14:00:00.000Z"
+  ]);
 });
 
 test("expandRecurrence reaches a window far after a long-running series start", () => {
@@ -193,7 +220,11 @@ test("expandRecurrence reaches a window far after a long-running series start", 
     new Date("2026-07-23T00:00:00.000Z"),
     TZ
   );
-  assert.deepEqual(starts(occurrences), ["2026-07-20T13:00:00.000Z", "2026-07-21T13:00:00.000Z", "2026-07-22T13:00:00.000Z"]);
+  assert.deepEqual(starts(occurrences), [
+    "2026-07-20T13:00:00.000Z",
+    "2026-07-21T13:00:00.000Z",
+    "2026-07-22T13:00:00.000Z"
+  ]);
 });
 
 test("expandRecurrence keeps the occurrence duration of the series", () => {

@@ -15,7 +15,11 @@ const STAGE_PROBABILITY: Record<string, number> = {
 };
 
 export class LeadConversionValidationError extends Error {
-  constructor(message: string, readonly status: 400 | 409 = 400, readonly field?: string) {
+  constructor(
+    message: string,
+    readonly status: 400 | 409 = 400,
+    readonly field?: string
+  ) {
     super(message);
     this.name = "LeadConversionValidationError";
   }
@@ -249,7 +253,7 @@ export function buildContactData(lead: ConvertibleLead, accountId: string, overr
 }
 
 function override(value: string | null | undefined, fallback: string | null | undefined) {
-  return value === undefined ? fallback ?? null : value;
+  return value === undefined ? (fallback ?? null) : value;
 }
 
 /**
@@ -293,7 +297,9 @@ export function buildOpportunityData(
 }
 
 export function normalizeName(value: unknown) {
-  return String(value ?? "").trim().toLowerCase();
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 export function normalizePhone(value: unknown) {
@@ -311,7 +317,13 @@ export function phoneMatchKey(value: unknown) {
 }
 
 type NamedAccount = { id: string; name?: string | null };
-type NamedContact = { id: string; firstName?: string | null; lastName?: string | null; email?: string | null; phone?: string | null };
+type NamedContact = {
+  id: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+};
 
 /** Case-insensitive account suggestions for a lead, exact matches ranked first. */
 export function matchAccountsForLead<T extends NamedAccount>(accounts: T[], lead: ConvertibleLead, limit = 3) {

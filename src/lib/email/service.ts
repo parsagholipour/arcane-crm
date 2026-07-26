@@ -41,11 +41,13 @@ export async function sendConfiguredEmail(
   dependencies: { adapter?: EmailAdapter; senderEmail?: string } = {}
 ): Promise<EmailSendResult> {
   const senderEmail = dependencies.senderEmail ?? process.env.SENDGRID_EMAIL?.trim() ?? "";
-  if (!isValidEmail(senderEmail)) throw new EmailConfigurationError("SENDGRID_EMAIL must be a valid verified sender address.");
+  if (!isValidEmail(senderEmail))
+    throw new EmailConfigurationError("SENDGRID_EMAIL must be a valid verified sender address.");
   if (!message.to.length) throw new EmailValidationError("Select at least one deliverable email recipient.");
   const recipients = new Map<string, EmailAddress>();
   for (const recipient of message.to) {
-    if (!isValidEmail(recipient.email)) throw new EmailValidationError("One or more recipient email addresses are invalid.");
+    if (!isValidEmail(recipient.email))
+      throw new EmailValidationError("One or more recipient email addresses are invalid.");
     const email = normalizeEmailAddress(recipient.email);
     if (!recipients.has(email)) recipients.set(email, { ...recipient, email });
   }

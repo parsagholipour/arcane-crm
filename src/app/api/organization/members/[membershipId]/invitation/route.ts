@@ -15,7 +15,11 @@ export async function POST(_request: Request, { params }: { params: Params }) {
     });
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof UserManagementError) return NextResponse.json({ error: error.message }, { status: error.status });
-    return authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to resend organization invitation." }, { status: 500 });
+    if (error instanceof UserManagementError)
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    return (
+      authorizationErrorResponse(error) ??
+      NextResponse.json({ error: "Unable to resend organization invitation." }, { status: 500 })
+    );
   }
 }

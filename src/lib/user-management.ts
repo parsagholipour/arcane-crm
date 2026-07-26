@@ -7,7 +7,10 @@ import { prisma } from "@/lib/prisma";
 import { normalizeEmail } from "@/lib/super-admin-constants";
 
 export class UserManagementError extends Error {
-  constructor(message: string, readonly status = 400) {
+  constructor(
+    message: string,
+    readonly status = 400
+  ) {
     super(message);
     this.name = "UserManagementError";
   }
@@ -25,19 +28,22 @@ function validEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export async function deliverMembershipOnboarding(input: {
-  organization: { id: string; name: string };
-  membership: { id: string; role: OrganizationRole };
-  user: { id: string; keycloakSub: string | null; email: string | null; name: string };
-  initiatedByUserId: string;
-  newIdentity: boolean;
-}, dependencies: {
-  sendInvitation?: typeof sendOrganizationInvitation;
-  sendSetup?: typeof sendKeycloakActionsEmail;
-  markSetupSent?: (userId: string, sentAt: Date) => Promise<void>;
-  now?: () => Date;
-  warn?: (message: string, reason: unknown) => void;
-} = {}) {
+export async function deliverMembershipOnboarding(
+  input: {
+    organization: { id: string; name: string };
+    membership: { id: string; role: OrganizationRole };
+    user: { id: string; keycloakSub: string | null; email: string | null; name: string };
+    initiatedByUserId: string;
+    newIdentity: boolean;
+  },
+  dependencies: {
+    sendInvitation?: typeof sendOrganizationInvitation;
+    sendSetup?: typeof sendKeycloakActionsEmail;
+    markSetupSent?: (userId: string, sentAt: Date) => Promise<void>;
+    now?: () => Date;
+    warn?: (message: string, reason: unknown) => void;
+  } = {}
+) {
   const invitationAttempt = (dependencies.sendInvitation ?? sendOrganizationInvitation)({
     organizationId: input.organization.id,
     organizationName: input.organization.name,
@@ -48,19 +54,23 @@ export async function deliverMembershipOnboarding(input: {
     initiatedByUserId: input.initiatedByUserId,
     newIdentity: input.newIdentity
   });
-  const setupAttempt = input.newIdentity && input.user.keycloakSub
-    ? (dependencies.sendSetup ?? sendKeycloakActionsEmail)(
-        input.user.keycloakSub,
-        ["VERIFY_EMAIL", "UPDATE_PASSWORD"],
-        `/organizations/activate?organizationId=${encodeURIComponent(input.organization.id)}`
-      ).then(async () => {
-        const sentAt = dependencies.now?.() ?? new Date();
-        await (dependencies.markSetupSent ?? (async (userId, timestamp) => {
-          await prisma.user.update({ where: { id: userId }, data: { setupEmailSentAt: timestamp } });
-        }))(input.user.id, sentAt);
-        return sentAt;
-      })
-    : Promise.resolve(null);
+  const setupAttempt =
+    input.newIdentity && input.user.keycloakSub
+      ? (dependencies.sendSetup ?? sendKeycloakActionsEmail)(
+          input.user.keycloakSub,
+          ["VERIFY_EMAIL", "UPDATE_PASSWORD"],
+          `/organizations/activate?organizationId=${encodeURIComponent(input.organization.id)}`
+        ).then(async () => {
+          const sentAt = dependencies.now?.() ?? new Date();
+          await (
+            dependencies.markSetupSent ??
+            (async (userId, timestamp) => {
+              await prisma.user.update({ where: { id: userId }, data: { setupEmailSentAt: timestamp } });
+            })
+          )(input.user.id, sentAt);
+          return sentAt;
+        })
+      : Promise.resolve(null);
   const [invitationResult, setupResult] = await Promise.allSettled([invitationAttempt, setupAttempt]);
   const warnings: string[] = [];
   const warn = dependencies.warn ?? console.warn;
@@ -96,7 +106,8 @@ export async function inviteOrganizationMember(input: {
   if (!(["ADMIN", "MEMBER"] as const).includes(input.role)) throw new UserManagementError("Invalid organization role.");
 
   const organization = await prisma.organization.findUnique({ where: { id: input.organizationId } });
-  if (!organization || organization.status !== "ACTIVE") throw new UserManagementError("Organization is not active.", 404);
+  if (!organization || organization.status !== "ACTIVE")
+    throw new UserManagementError("Organization is not active.", 404);
 
   const provisioned = await provisionKeycloakUser({ email, name });
   let membership: OrganizationMembership & { user: User };
@@ -105,19 +116,30 @@ export async function inviteOrganizationMember(input: {
       const bySub = await tx.user.findUnique({ where: { keycloakSub: provisioned.id } });
       const byEmail = bySub ? null : await tx.user.findUnique({ where: { email } });
       const existing = bySub ?? byEmail;
-      if (existing?.status === "SUSPENDED") throw new UserManagementError("This identity is globally suspended. A super admin must reactivate it.", 409);
+      if (existing?.status === "SUSPENDED")
+        throw new UserManagementError("This identity is globally suspended. A super admin must reactivate it.", 409);
 
       const user = existing
         ? await tx.user.update({ where: { id: existing.id }, data: { keycloakSub: provisioned.id, email, name } })
-        : await tx.user.create({ data: { keycloakSub: provisioned.id, email, name, alias: aliasFor(name, email), status: "ACTIVE" } });
+        : await tx.user.create({
+            data: { keycloakSub: provisioned.id, email, name, alias: aliasFor(name, email), status: "ACTIVE" }
+          });
 
       const current = await tx.organizationMembership.findUnique({
         where: { organizationId_userId: { organizationId: input.organizationId, userId: user.id } }
       });
-      if (current?.status === "ACTIVE") throw new UserManagementError("This user already belongs to the organization.", 409);
+      if (current?.status === "ACTIVE")
+        throw new UserManagementError("This user already belongs to the organization.", 409);
       return current
-        ? tx.organizationMembership.update({ where: { id: current.id }, data: { role: input.role, status: "ACTIVE", invitedAt: new Date() }, include: { user: true } })
-        : tx.organizationMembership.create({ data: { organizationId: input.organizationId, userId: user.id, role: input.role }, include: { user: true } });
+        ? tx.organizationMembership.update({
+            where: { id: current.id },
+            data: { role: input.role, status: "ACTIVE", invitedAt: new Date() },
+            include: { user: true }
+          })
+        : tx.organizationMembership.create({
+            data: { organizationId: input.organizationId, userId: user.id, role: input.role },
+            include: { user: true }
+          });
     });
   } catch (error) {
     if (provisioned.created) await deleteKeycloakUser(provisioned.id).catch(() => undefined);
@@ -134,7 +156,9 @@ export async function inviteOrganizationMember(input: {
   return {
     membership: {
       ...membership,
-      inviteSentAt: delivery.invitationEmailSent ? delivery.invitationDelivery?.acceptedAt ?? membership.inviteSentAt : membership.inviteSentAt
+      inviteSentAt: delivery.invitationEmailSent
+        ? (delivery.invitationDelivery?.acceptedAt ?? membership.inviteSentAt)
+        : membership.inviteSentAt
     },
     keycloakUserCreated: provisioned.created,
     ...delivery
@@ -156,10 +180,12 @@ export async function createOrganizationWithAdmin(input: {
   const email = normalizeEmail(input.adminEmail);
   const adminName = normalizeName(input.adminName);
   if (!name) throw new UserManagementError("Organization name is required.");
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new UserManagementError("Slug must contain lowercase letters, numbers, and single hyphens only.");
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug))
+    throw new UserManagementError("Slug must contain lowercase letters, numbers, and single hyphens only.");
   if (!adminName) throw new UserManagementError("Initial administrator name is required.");
   if (!validEmail(email)) throw new UserManagementError("A valid administrator email is required.");
-  if (await prisma.organization.findUnique({ where: { slug } })) throw new UserManagementError("That organization slug is already in use.", 409);
+  if (await prisma.organization.findUnique({ where: { slug } }))
+    throw new UserManagementError("That organization slug is already in use.", 409);
 
   const provisioned = await provisionKeycloakUser({ email, name: adminName });
   let result: { organization: Organization; user: User; membership: OrganizationMembership };
@@ -169,10 +195,16 @@ export async function createOrganizationWithAdmin(input: {
       const bySub = await tx.user.findUnique({ where: { keycloakSub: provisioned.id } });
       const byEmail = bySub ? null : await tx.user.findUnique({ where: { email } });
       const existing = bySub ?? byEmail;
-      if (existing?.status === "SUSPENDED") throw new UserManagementError("The initial administrator is globally suspended.", 409);
+      if (existing?.status === "SUSPENDED")
+        throw new UserManagementError("The initial administrator is globally suspended.", 409);
       const user = existing
-        ? await tx.user.update({ where: { id: existing.id }, data: { keycloakSub: provisioned.id, email, name: adminName } })
-        : await tx.user.create({ data: { keycloakSub: provisioned.id, email, name: adminName, alias: aliasFor(adminName, email) } });
+        ? await tx.user.update({
+            where: { id: existing.id },
+            data: { keycloakSub: provisioned.id, email, name: adminName }
+          })
+        : await tx.user.create({
+            data: { keycloakSub: provisioned.id, email, name: adminName, alias: aliasFor(adminName, email) }
+          });
       const membership = await tx.organizationMembership.create({
         data: { organizationId: organization.id, userId: user.id, role: "ADMIN", status: "ACTIVE" }
       });
@@ -194,7 +226,9 @@ export async function createOrganizationWithAdmin(input: {
     ...result,
     membership: {
       ...result.membership,
-      inviteSentAt: delivery.invitationEmailSent ? delivery.invitationDelivery?.acceptedAt ?? result.membership.inviteSentAt : result.membership.inviteSentAt
+      inviteSentAt: delivery.invitationEmailSent
+        ? (delivery.invitationDelivery?.acceptedAt ?? result.membership.inviteSentAt)
+        : result.membership.inviteSentAt
     },
     keycloakUserCreated: provisioned.created,
     ...delivery
@@ -216,7 +250,8 @@ export async function resendOrganizationInvitation(input: {
     },
     include: { organization: true, user: true }
   });
-  if (!membership || !membership.user.email) throw new UserManagementError("Active organization membership not found.", 404);
+  if (!membership || !membership.user.email)
+    throw new UserManagementError("Active organization membership not found.", 404);
 
   try {
     const delivery = await sendOrganizationInvitation({
@@ -237,7 +272,10 @@ export async function resendOrganizationInvitation(input: {
     };
   } catch (error) {
     console.warn("Organization invitation resend failed", error);
-    throw new UserManagementError("The organization invitation email could not be sent. Check email configuration and try again.", 503);
+    throw new UserManagementError(
+      "The organization invitation email could not be sent. Check email configuration and try again.",
+      503
+    );
   }
 }
 
@@ -253,10 +291,16 @@ export async function updateOrganizationMembership(input: {
   role?: OrganizationRole;
   status?: MembershipStatus;
 }) {
-  const membership = await prisma.organizationMembership.findFirst({ where: { id: input.membershipId, organizationId: input.organizationId } });
+  const membership = await prisma.organizationMembership.findFirst({
+    where: { id: input.membershipId, organizationId: input.organizationId }
+  });
   if (!membership) throw new UserManagementError("Membership not found.", 404);
-  const removesAdmin = membership.role === "ADMIN" && membership.status === "ACTIVE" && (input.role === "MEMBER" || input.status === "SUSPENDED");
-  if (removesAdmin && (await activeAdminCount(input.organizationId)) <= 1) throw new UserManagementError("An organization must retain at least one active administrator.", 409);
+  const removesAdmin =
+    membership.role === "ADMIN" &&
+    membership.status === "ACTIVE" &&
+    (input.role === "MEMBER" || input.status === "SUSPENDED");
+  if (removesAdmin && (await activeAdminCount(input.organizationId)) <= 1)
+    throw new UserManagementError("An organization must retain at least one active administrator.", 409);
   return prisma.organizationMembership.update({
     where: { id: membership.id },
     data: { role: input.role, status: input.status },

@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  desiredSmtpConfig,
-  smtpConfigMatches,
-  validateEmailEnvironment
-} from "./configure-keycloak-email.mjs";
+import { desiredSmtpConfig, smtpConfigMatches, validateEmailEnvironment } from "./configure-keycloak-email.mjs";
 
 const environment = {
   AUTH_KEYCLOAK_ISSUER: "https://identity.example.com/realms/crm",
@@ -35,19 +31,15 @@ test("Keycloak SMTP configuration uses the SendGrid relay without exposing alter
 
 test("Keycloak SMTP configuration fails safely when required values are absent", () => {
   assert.doesNotThrow(() => validateEmailEnvironment(environment));
-  assert.throws(
-    () => validateEmailEnvironment({ ...environment, SENDGRID_API_KEY: "" }),
-    /SENDGRID_API_KEY/
+  assert.throws(() => validateEmailEnvironment({ ...environment, SENDGRID_API_KEY: "" }), /SENDGRID_API_KEY/);
+  assert.throws(() => validateEmailEnvironment({ ...environment, SENDGRID_EMAIL: "not-an-email" }), /valid email/);
+  assert.doesNotThrow(() =>
+    validateEmailEnvironment({
+      ...environment,
+      AUTH_KEYCLOAK_ADMIN_CLIENT_ID: "",
+      AUTH_KEYCLOAK_ADMIN_CLIENT_SECRET: "",
+      KEYCLOAK_REALM_ADMIN_CLIENT_ID: "realm-config",
+      KEYCLOAK_REALM_ADMIN_CLIENT_SECRET: "realm-config-secret"
+    })
   );
-  assert.throws(
-    () => validateEmailEnvironment({ ...environment, SENDGRID_EMAIL: "not-an-email" }),
-    /valid email/
-  );
-  assert.doesNotThrow(() => validateEmailEnvironment({
-    ...environment,
-    AUTH_KEYCLOAK_ADMIN_CLIENT_ID: "",
-    AUTH_KEYCLOAK_ADMIN_CLIENT_SECRET: "",
-    KEYCLOAK_REALM_ADMIN_CLIENT_ID: "realm-config",
-    KEYCLOAK_REALM_ADMIN_CLIENT_SECRET: "realm-config-secret"
-  }));
 });

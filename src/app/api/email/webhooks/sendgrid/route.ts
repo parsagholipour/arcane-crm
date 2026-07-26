@@ -12,8 +12,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid SendGrid event webhook signature." }, { status: 401 });
   }
   let payload: unknown;
-  try { payload = JSON.parse(rawBody); } catch { return NextResponse.json({ error: "Webhook payload must be valid JSON." }, { status: 400 }); }
-  if (!Array.isArray(payload)) return NextResponse.json({ error: "Webhook payload must be an event array." }, { status: 400 });
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: "Webhook payload must be valid JSON." }, { status: 400 });
+  }
+  if (!Array.isArray(payload))
+    return NextResponse.json({ error: "Webhook payload must be an event array." }, { status: 400 });
   const result = await ingestSendGridEvents(payload);
   return NextResponse.json({ ok: true, ...result });
 }

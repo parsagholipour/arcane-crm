@@ -2,7 +2,16 @@ import { emailErrorResponse } from "@/lib/email/http";
 import { emailDeliveryConfigured, isValidEmail } from "@/lib/email/service";
 import { attachTrackedDeliveries, sendTrackedEmail } from "@/lib/email/tracking";
 import { authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
-import { buildVideoParticipants, createVideoCallNotification, requireVideoProvider, validateVideoDates, validateVideoReferences, validateWebUrl, videoCallErrorResponse, videoCallInclude } from "@/lib/video-calls";
+import {
+  buildVideoParticipants,
+  createVideoCallNotification,
+  requireVideoProvider,
+  validateVideoDates,
+  validateVideoReferences,
+  validateWebUrl,
+  videoCallErrorResponse,
+  videoCallInclude
+} from "@/lib/video-calls";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -17,7 +26,10 @@ export async function GET(request: NextRequest) {
       include: videoCallInclude,
       orderBy: { scheduledStartAt: "desc" }
     });
-    return NextResponse.json({ videoCalls: JSON.parse(JSON.stringify(calls)), capabilities: { emailInvitations: emailDeliveryConfigured() } });
+    return NextResponse.json({
+      videoCalls: JSON.parse(JSON.stringify(calls)),
+      capabilities: { emailInvitations: emailDeliveryConfigured() }
+    });
   } catch (error) {
     const response = authorizationErrorResponse(error);
     if (response) return response;
@@ -40,15 +52,33 @@ export async function POST(request: NextRequest) {
     const participants = await buildVideoParticipants(context.organizationId, participantInput);
     let invitation = null;
     if (payload.notifyParticipants === true) {
-      if (!emailDeliveryConfigured()) return NextResponse.json({ error: "Email invitations are unavailable until SendGrid is configured." }, { status: 503 });
-      const recipients = participants.filter((participant) => isValidEmail(participant.email)).map((participant) => ({ email: participant.email!, name: participant.name }));
-      if (!recipients.length) return NextResponse.json({ error: "Add at least one participant with a valid email address before sending invitations." }, { status: 400 });
-      invitation = await sendTrackedEmail({
-        fromName: context.organization.name,
-        to: recipients,
-        subject: `Video call: ${name}`,
-        text: [`You are invited to ${name}.`, `Starts: ${dates.scheduledStartAt.toISOString()}`, `Ends: ${dates.scheduledEndAt.toISOString()}`, meetingUrl ? `Join: ${meetingUrl}` : "The meeting link will be added by the organizer."].join("\n")
-      }, { organizationId: context.organizationId, userId: context.userId, sourceType: "VideoCall" });
+      if (!emailDeliveryConfigured())
+        return NextResponse.json(
+          { error: "Email invitations are unavailable until SendGrid is configured." },
+          { status: 503 }
+        );
+      const recipients = participants
+        .filter((participant) => isValidEmail(participant.email))
+        .map((participant) => ({ email: participant.email!, name: participant.name }));
+      if (!recipients.length)
+        return NextResponse.json(
+          { error: "Add at least one participant with a valid email address before sending invitations." },
+          { status: 400 }
+        );
+      invitation = await sendTrackedEmail(
+        {
+          fromName: context.organization.name,
+          to: recipients,
+          subject: `Video call: ${name}`,
+          text: [
+            `You are invited to ${name}.`,
+            `Starts: ${dates.scheduledStartAt.toISOString()}`,
+            `Ends: ${dates.scheduledEndAt.toISOString()}`,
+            meetingUrl ? `Join: ${meetingUrl}` : "The meeting link will be added by the organizer."
+          ].join("\n")
+        },
+        { organizationId: context.organizationId, userId: context.userId, sourceType: "VideoCall" }
+      );
     }
     const videoCall = await prisma.videoCall.create({
       data: {
@@ -70,9 +100,23 @@ export async function POST(request: NextRequest) {
       },
       include: videoCallInclude
     });
-    await attachTrackedDeliveries(invitation?.deliveryIds, { organizationId: context.organizationId, userId: context.userId, sourceType: "VideoCall", sourceId: videoCall.id });
-    const notification = await createVideoCallNotification(context.organizationId, context.userId, "Video call scheduled", `${name} is scheduled for ${dates.scheduledStartAt.toLocaleString()}.`, videoCall.id);
-    return NextResponse.json({ videoCall: JSON.parse(JSON.stringify(videoCall)), invitation, notifications: [notification] }, { status: 201 });
+    await attachTrackedDeliveries(invitation?.deliveryIds, {
+      organizationId: context.organizationId,
+      userId: context.userId,
+      sourceType: "VideoCall",
+      sourceId: videoCall.id
+    });
+    const notification = await createVideoCallNotification(
+      context.organizationId,
+      context.userId,
+      "Video call scheduled",
+      `${name} is scheduled for ${dates.scheduledStartAt.toLocaleString()}.`,
+      videoCall.id
+    );
+    return NextResponse.json(
+      { videoCall: JSON.parse(JSON.stringify(videoCall)), invitation, notifications: [notification] },
+      { status: 201 }
+    );
   } catch (error) {
     console.error(error);
     const response = authorizationErrorResponse(error);

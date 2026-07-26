@@ -181,7 +181,11 @@ async function main() {
       organizationId: organization.id,
       role: "assistant",
       text: "I can analyze CRM records, draft follow-up email copy, suggest next actions, and take you to the right workspace. I will never change data without you.",
-      metadata: { kind: "summary", facts: [], actions: [{ id: "open_home", label: "Open Home", href: "/lightning/page/home" }] },
+      metadata: {
+        kind: "summary",
+        facts: [],
+        actions: [{ id: "open_home", label: "Open Home", href: "/lightning/page/home" }]
+      },
       userId: user.id
     },
     create: {
@@ -189,7 +193,11 @@ async function main() {
       organizationId: organization.id,
       role: "assistant",
       text: "I can analyze CRM records, draft follow-up email copy, suggest next actions, and take you to the right workspace. I will never change data without you.",
-      metadata: { kind: "summary", facts: [], actions: [{ id: "open_home", label: "Open Home", href: "/lightning/page/home" }] },
+      metadata: {
+        kind: "summary",
+        facts: [],
+        actions: [{ id: "open_home", label: "Open Home", href: "/lightning/page/home" }]
+      },
       userId: user.id
     }
   });

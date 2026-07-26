@@ -18,20 +18,23 @@ export type OrganizationInvitationDelivery = {
   lastReason: null;
 };
 
-export async function sendOrganizationInvitation(input: {
-  organizationId: string;
-  organizationName: string;
-  membershipId: string;
-  recipientName: string;
-  recipientEmail: string;
-  role: OrganizationRole;
-  initiatedByUserId: string;
-  newIdentity: boolean;
-}, dependencies: {
-  send?: InvitationSender;
-  markSent?: (membershipId: string, sentAt: Date) => Promise<void>;
-  appUrl?: string;
-} = {}) {
+export async function sendOrganizationInvitation(
+  input: {
+    organizationId: string;
+    organizationName: string;
+    membershipId: string;
+    recipientName: string;
+    recipientEmail: string;
+    role: OrganizationRole;
+    initiatedByUserId: string;
+    newIdentity: boolean;
+  },
+  dependencies: {
+    send?: InvitationSender;
+    markSent?: (membershipId: string, sentAt: Date) => Promise<void>;
+    appUrl?: string;
+  } = {}
+) {
   const appUrl = resolvePublicAppUrl(dependencies.appUrl);
   const activationUrl = `${appUrl}/organizations/activate?organizationId=${encodeURIComponent(input.organizationId)}`;
   const message = organizationInvitationTemplate({
@@ -41,21 +44,27 @@ export async function sendOrganizationInvitation(input: {
     activationUrl,
     newIdentity: input.newIdentity
   });
-  const result: TrackedEmailResult = await (dependencies.send ?? sendTrackedEmail)({
-    fromName: input.organizationName,
-    to: [{ email: input.recipientEmail, name: input.recipientName }],
-    subject: message.subject,
-    text: message.text,
-    html: message.html
-  }, {
-    organizationId: input.organizationId,
-    userId: input.initiatedByUserId,
-    sourceType: ORGANIZATION_INVITATION_SOURCE,
-    sourceId: input.membershipId
-  });
-  await (dependencies.markSent ?? (async (membershipId, sentAt) => {
-    await prisma.organizationMembership.update({ where: { id: membershipId }, data: { inviteSentAt: sentAt } });
-  }))(input.membershipId, result.acceptedAt);
+  const result: TrackedEmailResult = await (dependencies.send ?? sendTrackedEmail)(
+    {
+      fromName: input.organizationName,
+      to: [{ email: input.recipientEmail, name: input.recipientName }],
+      subject: message.subject,
+      text: message.text,
+      html: message.html
+    },
+    {
+      organizationId: input.organizationId,
+      userId: input.initiatedByUserId,
+      sourceType: ORGANIZATION_INVITATION_SOURCE,
+      sourceId: input.membershipId
+    }
+  );
+  await (
+    dependencies.markSent ??
+    (async (membershipId, sentAt) => {
+      await prisma.organizationMembership.update({ where: { id: membershipId }, data: { inviteSentAt: sentAt } });
+    })
+  )(input.membershipId, result.acceptedAt);
   return {
     result,
     invitationDelivery: {

@@ -10,7 +10,10 @@ function escapeIcs(value: string) {
 }
 
 function utcStamp(value: Date) {
-  return value.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  return value
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
 }
 
 function dateStamp(value: Date) {
@@ -41,19 +44,39 @@ export async function GET() {
     // Resolve attendee ids to addresses so ATTENDEE lines carry something usable.
     const attendeeIds = [...new Set(events.flatMap((event) => event.attendeeIds))];
     const [users, contacts] = await Promise.all([
-      attendeeIds.length ? prisma.user.findMany({ where: { id: { in: attendeeIds } }, select: { id: true, name: true, email: true } }) : Promise.resolve([]),
       attendeeIds.length
-        ? prisma.contact.findMany({ where: { organizationId: context.organizationId, id: { in: attendeeIds } }, select: { id: true, firstName: true, lastName: true, email: true } })
+        ? prisma.user.findMany({ where: { id: { in: attendeeIds } }, select: { id: true, name: true, email: true } })
+        : Promise.resolve([]),
+      attendeeIds.length
+        ? prisma.contact.findMany({
+            where: { organizationId: context.organizationId, id: { in: attendeeIds } },
+            select: { id: true, firstName: true, lastName: true, email: true }
+          })
         : Promise.resolve([])
     ]);
     const attendeesById = new Map<string, { name: string; email: string | null }>();
-    for (const user of users) attendeesById.set(user.id, { name: user.name || user.email || user.id, email: user.email });
-    for (const contact of contacts) attendeesById.set(contact.id, { name: [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.id, email: contact.email });
+    for (const user of users)
+      attendeesById.set(user.id, { name: user.name || user.email || user.id, email: user.email });
+    for (const contact of contacts)
+      attendeesById.set(contact.id, {
+        name: [contact.firstName, contact.lastName].filter(Boolean).join(" ") || contact.id,
+        email: contact.email
+      });
 
-    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Reloriq//Calendar//EN", "CALSCALE:GREGORIAN", `X-WR-CALNAME:${escapeIcs(context.organization.name)} · Reloriq`];
+    const lines = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Reloriq//Calendar//EN",
+      "CALSCALE:GREGORIAN",
+      `X-WR-CALNAME:${escapeIcs(context.organization.name)} · Reloriq`
+    ];
 
     for (const event of events) {
-      lines.push("BEGIN:VEVENT", `UID:${escapeIcs(`${event.id}@${context.organization.slug}`)}`, `DTSTAMP:${utcStamp(event.updatedAt)}`);
+      lines.push(
+        "BEGIN:VEVENT",
+        `UID:${escapeIcs(`${event.id}@${context.organization.slug}`)}`,
+        `DTSTAMP:${utcStamp(event.updatedAt)}`
+      );
       if (event.allDay) {
         lines.push(`DTSTART;VALUE=DATE:${dateStamp(event.startAt)}`, `DTEND;VALUE=DATE:${dateStamp(event.endAt)}`);
       } else {
@@ -66,9 +89,11 @@ export async function GET() {
         // recurrenceEndAt is a CRM-side stop date; express it as UNTIL when the rule has no terminator of its own.
         const needsUntil = !recurrence.count && !recurrence.until && event.recurrenceEndAt;
         lines.push(`RRULE:${needsUntil ? `${rule};UNTIL=${utcStamp(event.recurrenceEndAt!)}` : rule}`);
-        if (event.recurrenceExceptionDates.length > 0) lines.push(`EXDATE:${event.recurrenceExceptionDates.map(utcStamp).join(",")}`);
+        if (event.recurrenceExceptionDates.length > 0)
+          lines.push(`EXDATE:${event.recurrenceExceptionDates.map(utcStamp).join(",")}`);
       }
-      if (event.recurrenceParentId && event.recurrenceOriginalStart) lines.push(`RECURRENCE-ID:${utcStamp(event.recurrenceOriginalStart)}`);
+      if (event.recurrenceParentId && event.recurrenceOriginalStart)
+        lines.push(`RECURRENCE-ID:${utcStamp(event.recurrenceOriginalStart)}`);
 
       lines.push(`SUMMARY:${escapeIcs(event.subject)}`);
       if (event.description) lines.push(`DESCRIPTION:${escapeIcs(event.description)}`);
@@ -80,10 +105,19 @@ export async function GET() {
         lines.push(`ATTENDEE;CN=${escapeIcs(attendee.name)}:mailto:${escapeIcs(attendee.email)}`);
       }
 
-      lines.push(`TRANSP:${event.showTimeAs === "Free" ? "TRANSPARENT" : "OPAQUE"}`, `CLASS:${event.private ? "PRIVATE" : "PUBLIC"}`);
+      lines.push(
+        `TRANSP:${event.showTimeAs === "Free" ? "TRANSPARENT" : "OPAQUE"}`,
+        `CLASS:${event.private ? "PRIVATE" : "PUBLIC"}`
+      );
 
       if (event.reminderMinutes !== null && event.reminderMinutes >= 0) {
-        lines.push("BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${escapeIcs(event.subject)}`, `TRIGGER:-PT${event.reminderMinutes}M`, "END:VALARM");
+        lines.push(
+          "BEGIN:VALARM",
+          "ACTION:DISPLAY",
+          `DESCRIPTION:${escapeIcs(event.subject)}`,
+          `TRIGGER:-PT${event.reminderMinutes}M`,
+          "END:VALARM"
+        );
       }
 
       lines.push("END:VEVENT");
@@ -98,6 +132,8 @@ export async function GET() {
       }
     });
   } catch (error) {
-    return authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to export calendar." }, { status: 500 });
+    return (
+      authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to export calendar." }, { status: 500 })
+    );
   }
 }

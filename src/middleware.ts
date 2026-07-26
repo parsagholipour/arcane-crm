@@ -22,7 +22,9 @@ export default auth((request) => {
 });
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|ttf|otf|woff|woff2|eot)$).*)"]
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|ttf|otf|woff|woff2|eot)$).*)"
+  ]
 };
 
 export const runtime = "nodejs";

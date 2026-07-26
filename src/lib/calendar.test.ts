@@ -36,7 +36,11 @@ test("zonedTimeToUtc resolves wall time on both sides of a DST transition", () =
 
 test("zonedTimeToUtc round-trips through utcToZonedFormValues", () => {
   for (const timeZone of ["Asia/Dubai", "America/New_York", "Europe/Berlin", "Asia/Kolkata", "UTC"]) {
-    for (const [date, time] of [["2026-01-15", "09:15"], ["2026-06-30", "23:45"], ["2026-11-02", "00:00"]]) {
+    for (const [date, time] of [
+      ["2026-01-15", "09:15"],
+      ["2026-06-30", "23:45"],
+      ["2026-11-02", "00:00"]
+    ]) {
       const instant = zonedTimeToUtc(date, time, timeZone);
       const back = utcToZonedFormValues(instant, timeZone);
       assert.deepEqual(back, { date, time }, `${timeZone} ${date} ${time}`);
@@ -51,7 +55,10 @@ test("zonedTimeToUtc keeps a half-hour-offset zone accurate", () => {
 
 test("utcToZonedParts reports midnight as hour zero", () => {
   const parts = utcToZonedParts("2026-05-01T20:00:00.000Z", "Asia/Dubai");
-  assert.deepEqual({ year: parts.year, month: parts.month, day: parts.day, hour: parts.hour }, { year: 2026, month: 5, day: 2, hour: 0 });
+  assert.deepEqual(
+    { year: parts.year, month: parts.month, day: parts.day, hour: parts.hour },
+    { year: 2026, month: 5, day: 2, hour: 0 }
+  );
 });
 
 test("minutesFromMidnight uses minute precision, not just the hour", () => {
@@ -94,7 +101,11 @@ test("addCalendarMonths clamps instead of overflowing into the next month", () =
 
 test("layoutDayItems positions items proportionally to their start and duration", () => {
   const day = new Date(2026, 4, 1, 12);
-  const [positioned] = layoutDayItems([item("2026-05-01T05:15:00.000Z", "2026-05-01T06:15:00.000Z")], day, "Asia/Dubai");
+  const [positioned] = layoutDayItems(
+    [item("2026-05-01T05:15:00.000Z", "2026-05-01T06:15:00.000Z")],
+    day,
+    "Asia/Dubai"
+  );
   assert.equal(positioned.startMinutes, 9 * 60 + 15);
   assert.equal(positioned.endMinutes, 10 * 60 + 15);
   assert.ok(Math.abs(positioned.topPct - ((9 * 60 + 15) / 1440) * 100) < 1e-9);
@@ -104,24 +115,42 @@ test("layoutDayItems positions items proportionally to their start and duration"
 test("layoutDayItems keeps disjoint items in a single column", () => {
   const day = new Date(2026, 4, 1, 12);
   const positioned = layoutDayItems(
-    [item("2026-05-01T05:00:00.000Z", "2026-05-01T06:00:00.000Z"), item("2026-05-01T07:00:00.000Z", "2026-05-01T08:00:00.000Z")],
+    [
+      item("2026-05-01T05:00:00.000Z", "2026-05-01T06:00:00.000Z"),
+      item("2026-05-01T07:00:00.000Z", "2026-05-01T08:00:00.000Z")
+    ],
     day,
     "Asia/Dubai"
   );
   assert.equal(positioned.length, 2);
-  assert.deepEqual(positioned.map((entry) => entry.columnCount), [1, 1]);
-  assert.deepEqual(positioned.map((entry) => entry.columnIndex), [0, 0]);
+  assert.deepEqual(
+    positioned.map((entry) => entry.columnCount),
+    [1, 1]
+  );
+  assert.deepEqual(
+    positioned.map((entry) => entry.columnIndex),
+    [0, 0]
+  );
 });
 
 test("layoutDayItems splits two overlapping items into side-by-side lanes", () => {
   const day = new Date(2026, 4, 1, 12);
   const positioned = layoutDayItems(
-    [item("2026-05-01T05:00:00.000Z", "2026-05-01T07:00:00.000Z"), item("2026-05-01T06:00:00.000Z", "2026-05-01T08:00:00.000Z")],
+    [
+      item("2026-05-01T05:00:00.000Z", "2026-05-01T07:00:00.000Z"),
+      item("2026-05-01T06:00:00.000Z", "2026-05-01T08:00:00.000Z")
+    ],
     day,
     "Asia/Dubai"
   );
-  assert.deepEqual(positioned.map((entry) => entry.columnIndex), [0, 1]);
-  assert.deepEqual(positioned.map((entry) => entry.columnCount), [2, 2]);
+  assert.deepEqual(
+    positioned.map((entry) => entry.columnIndex),
+    [0, 1]
+  );
+  assert.deepEqual(
+    positioned.map((entry) => entry.columnCount),
+    [2, 2]
+  );
 });
 
 test("layoutDayItems gives three mutually overlapping items three lanes", () => {
@@ -135,8 +164,14 @@ test("layoutDayItems gives three mutually overlapping items three lanes", () => 
     day,
     "Asia/Dubai"
   );
-  assert.deepEqual(positioned.map((entry) => entry.columnIndex), [0, 1, 2]);
-  assert.deepEqual(positioned.map((entry) => entry.columnCount), [3, 3, 3]);
+  assert.deepEqual(
+    positioned.map((entry) => entry.columnIndex),
+    [0, 1, 2]
+  );
+  assert.deepEqual(
+    positioned.map((entry) => entry.columnCount),
+    [3, 3, 3]
+  );
 });
 
 test("layoutDayItems reuses a lane once its occupant has ended", () => {
@@ -151,25 +186,41 @@ test("layoutDayItems reuses a lane once its occupant has ended", () => {
     "Asia/Dubai"
   );
   // The third item starts after the second ends, so it takes lane 1 again.
-  assert.deepEqual(positioned.map((entry) => entry.columnIndex), [0, 1, 1]);
-  assert.deepEqual(positioned.map((entry) => entry.columnCount), [2, 2, 2]);
+  assert.deepEqual(
+    positioned.map((entry) => entry.columnIndex),
+    [0, 1, 1]
+  );
+  assert.deepEqual(
+    positioned.map((entry) => entry.columnCount),
+    [2, 2, 2]
+  );
 });
 
 test("layoutDayItems keeps back-to-back short items stacked in one lane", () => {
   const day = new Date(2026, 4, 1, 12);
   const positioned = layoutDayItems(
-    [item("2026-05-01T05:00:00.000Z", "2026-05-01T05:15:00.000Z"), item("2026-05-01T05:15:00.000Z", "2026-05-01T05:30:00.000Z")],
+    [
+      item("2026-05-01T05:00:00.000Z", "2026-05-01T05:15:00.000Z"),
+      item("2026-05-01T05:15:00.000Z", "2026-05-01T05:30:00.000Z")
+    ],
     day,
     "Asia/Dubai"
   );
-  assert.deepEqual(positioned.map((entry) => entry.columnCount), [1, 1]);
+  assert.deepEqual(
+    positioned.map((entry) => entry.columnCount),
+    [1, 1]
+  );
   // Each still renders at the minimum readable height.
   assert.ok(positioned.every((entry) => entry.heightPct >= (20 / 1440) * 100));
 });
 
 test("layoutDayItems clips a multi-day item to the day column", () => {
   const day = new Date(2026, 4, 2, 12);
-  const [positioned] = layoutDayItems([item("2026-05-01T05:00:00.000Z", "2026-05-02T05:00:00.000Z")], day, "Asia/Dubai");
+  const [positioned] = layoutDayItems(
+    [item("2026-05-01T05:00:00.000Z", "2026-05-02T05:00:00.000Z")],
+    day,
+    "Asia/Dubai"
+  );
   assert.equal(positioned.startMinutes, 0);
   assert.equal(positioned.endMinutes, 9 * 60);
 });
@@ -177,7 +228,10 @@ test("layoutDayItems clips a multi-day item to the day column", () => {
 test("layoutDayItems excludes all-day items and other days", () => {
   const day = new Date(2026, 4, 1, 12);
   const positioned = layoutDayItems(
-    [item("2026-05-01T05:00:00.000Z", "2026-05-01T06:00:00.000Z", true), item("2026-05-05T05:00:00.000Z", "2026-05-05T06:00:00.000Z")],
+    [
+      item("2026-05-01T05:00:00.000Z", "2026-05-01T06:00:00.000Z", true),
+      item("2026-05-05T05:00:00.000Z", "2026-05-05T06:00:00.000Z")
+    ],
     day,
     "Asia/Dubai"
   );

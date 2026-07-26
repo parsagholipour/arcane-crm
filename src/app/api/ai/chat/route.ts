@@ -19,7 +19,11 @@ export async function POST(request: NextRequest) {
   try {
     const context = await requireOrganizationContext();
     const parsed = requestSchema.safeParse(await request.json());
-    if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid AI request.", code: "invalid_request", retryable: false }, { status: 400 });
+    if (!parsed.success)
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid AI request.", code: "invalid_request", retryable: false },
+        { status: 400 }
+      );
 
     const recentRequestCount = await prisma.agentforceMessage.count({
       where: {
@@ -30,14 +34,23 @@ export async function POST(request: NextRequest) {
       }
     });
     if (!aiChatAttemptLimiter.reserve(`${context.organizationId}:${context.userId}`, recentRequestCount)) {
-      return NextResponse.json({ error: `${BRAND.assistant} allows 10 requests per minute. Please wait a moment.`, code: "rate_limit", retryable: true }, { status: 429 });
+      return NextResponse.json(
+        {
+          error: `${BRAND.assistant} allows 10 requests per minute. Please wait a moment.`,
+          code: "rate_limit",
+          retryable: true
+        },
+        { status: 429 }
+      );
     }
 
-    const history = (await prisma.agentforceMessage.findMany({
-      where: { organizationId: context.organizationId, userId: context.userId },
-      orderBy: { createdAt: "desc" },
-      take: 12
-    })).reverse();
+    const history = (
+      await prisma.agentforceMessage.findMany({
+        where: { organizationId: context.organizationId, userId: context.userId },
+        orderBy: { createdAt: "desc" },
+        take: 12
+      })
+    ).reverse();
     const result = await runAgentforce({
       organizationId: context.organizationId,
       userId: context.userId,
@@ -54,29 +67,52 @@ export async function POST(request: NextRequest) {
     } as Prisma.InputJsonObject;
     const [userMessage, assistantMessage] = await prisma.$transaction([
       prisma.agentforceMessage.create({
-        data: { organizationId: context.organizationId, userId: context.userId, role: "user", text: parsed.data.message }
+        data: {
+          organizationId: context.organizationId,
+          userId: context.userId,
+          role: "user",
+          text: parsed.data.message
+        }
       }),
       prisma.agentforceMessage.create({
-        data: { organizationId: context.organizationId, userId: context.userId, role: "assistant", text: result.text, metadata }
+        data: {
+          organizationId: context.organizationId,
+          userId: context.userId,
+          role: "assistant",
+          text: result.text,
+          metadata
+        }
       })
     ]);
     await pruneConversation(context.organizationId, context.userId);
-    return NextResponse.json({ ok: true, messages: JSON.parse(JSON.stringify([userMessage, assistantMessage])), model: DEEPSEEK_MODEL });
+    return NextResponse.json({
+      ok: true,
+      messages: JSON.parse(JSON.stringify([userMessage, assistantMessage])),
+      model: DEEPSEEK_MODEL
+    });
   } catch (error) {
     const authResponse = authorizationErrorResponse(error);
     if (authResponse) return authResponse;
     if (error instanceof DeepSeekError) {
-      return NextResponse.json({ error: error.message, code: error.code, retryable: error.retryable }, { status: error.status });
+      return NextResponse.json(
+        { error: error.message, code: error.code, retryable: error.retryable },
+        { status: error.status }
+      );
     }
     console.error("Agentforce request failed", error instanceof Error ? error.message : "Unknown error");
-    return NextResponse.json({ error: `${BRAND.assistant} couldn't answer that request.`, code: "internal_error", retryable: true }, { status: 500 });
+    return NextResponse.json(
+      { error: `${BRAND.assistant} couldn't answer that request.`, code: "internal_error", retryable: true },
+      { status: 500 }
+    );
   }
 }
 
 export async function DELETE() {
   try {
     const context = await requireOrganizationContext();
-    await prisma.agentforceMessage.deleteMany({ where: { organizationId: context.organizationId, userId: context.userId } });
+    await prisma.agentforceMessage.deleteMany({
+      where: { organizationId: context.organizationId, userId: context.userId }
+    });
     const welcome = await prisma.agentforceMessage.create({
       data: {
         organizationId: context.organizationId,
@@ -113,5 +149,8 @@ async function pruneConversation(organizationId: string, userId: string) {
     orderBy: { createdAt: "desc" },
     skip: 100
   });
-  if (oldMessages.length) await prisma.agentforceMessage.deleteMany({ where: { id: { in: oldMessages.map((item) => item.id) }, organizationId, userId } });
+  if (oldMessages.length)
+    await prisma.agentforceMessage.deleteMany({
+      where: { id: { in: oldMessages.map((item) => item.id) }, organizationId, userId }
+    });
 }

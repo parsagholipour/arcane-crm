@@ -20,7 +20,8 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const response = authorizationErrorResponse(error);
     if (response) return response;
-    if (error instanceof ReportExportValidationError) return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof ReportExportValidationError)
+      return NextResponse.json({ error: error.message }, { status: error.status });
     return NextResponse.json({ error: "Unable to export report." }, { status: 500 });
   }
 }

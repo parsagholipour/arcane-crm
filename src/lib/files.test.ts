@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { contentDisposition, FileValidationError, isPreviewableContentType, normalizeFileName, validateFileMetadata } from "@/lib/files";
+import {
+  contentDisposition,
+  FileValidationError,
+  isPreviewableContentType,
+  normalizeFileName,
+  validateFileMetadata
+} from "@/lib/files";
 
 test("file metadata normalizes paths and accepts safe content", () => {
   assert.equal(normalizeFileName("../../Quarterly Report.pdf"), "Quarterly Report.pdf");
@@ -14,7 +20,10 @@ test("file metadata rejects empty, oversized, and executable uploads", () => {
   assert.throws(() => validateFileMetadata("empty.txt", 0, "text/plain"), FileValidationError);
   assert.throws(() => validateFileMetadata("payload.exe", 12, "application/octet-stream"), FileValidationError);
   assert.throws(() => validateFileMetadata("vector.svg", 12, "image/svg+xml"), FileValidationError);
-  assert.throws(() => validateFileMetadata("large.pdf", 26 * 1024 * 1024, "application/pdf"), (error) => error instanceof FileValidationError && error.status === 413);
+  assert.throws(
+    () => validateFileMetadata("large.pdf", 26 * 1024 * 1024, "application/pdf"),
+    (error) => error instanceof FileValidationError && error.status === 413
+  );
 });
 
 test("preview and content-disposition helpers constrain browser rendering", () => {

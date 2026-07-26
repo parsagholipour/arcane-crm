@@ -208,7 +208,10 @@ test("matchAccountsForLead is case-insensitive and ranks exact matches first", (
     { id: "a3", name: "Unrelated Inc" }
   ];
   const matches = matchAccountsForLead(accounts, lead);
-  assert.deepEqual(matches.map((account) => account.id), ["a2", "a1"]);
+  assert.deepEqual(
+    matches.map((account) => account.id),
+    ["a2", "a1"]
+  );
   assert.deepEqual(matchAccountsForLead(accounts, { ...lead, company: null }), []);
 });
 
@@ -227,7 +230,10 @@ test("matchContactsForLead matches on email, phone or full name", () => {
     { id: "c-none", firstName: "Someone", lastName: "Else", email: "else@example.com", phone: "999" }
   ];
   const matches = matchContactsForLead(contacts, lead);
-  assert.deepEqual(matches.map((contact) => contact.id), ["c-email", "c-phone", "c-name"]);
+  assert.deepEqual(
+    matches.map((contact) => contact.id),
+    ["c-email", "c-phone", "c-name"]
+  );
 });
 
 test("normalizeName and normalizePhone strip formatting differences", () => {

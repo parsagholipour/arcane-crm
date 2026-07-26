@@ -25,7 +25,15 @@ export type RecurrenceOccurrence = {
   index: number;
 };
 
-const DAY_LABELS: Record<RecurrenceDay, string> = { SU: "Sun", MO: "Mon", TU: "Tue", WE: "Wed", TH: "Thu", FR: "Fri", SA: "Sat" };
+const DAY_LABELS: Record<RecurrenceDay, string> = {
+  SU: "Sun",
+  MO: "Mon",
+  TU: "Tue",
+  WE: "Wed",
+  TH: "Thu",
+  FR: "Fri",
+  SA: "Sat"
+};
 
 function isFrequency(value: string): value is RecurrenceFrequency {
   return (RECURRENCE_FREQUENCIES as readonly string[]).includes(value);
@@ -37,7 +45,9 @@ function isDay(value: string): value is RecurrenceDay {
 
 /** Parse the RFC 5545 RRULE subset this calendar supports. Returns null for anything else. */
 export function parseRecurrenceRule(rule: unknown): RecurrenceParts | null {
-  const text = String(rule ?? "").trim().replace(/^RRULE:/i, "");
+  const text = String(rule ?? "")
+    .trim()
+    .replace(/^RRULE:/i, "");
   if (!text) return null;
 
   const pairs = new Map<string, string>();
@@ -84,7 +94,9 @@ function parseUntil(value: string) {
   const withTime = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/.exec(compact);
   if (withTime) {
     const [, year, month, day, hour, minute, second] = withTime;
-    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)));
+    return new Date(
+      Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second))
+    );
   }
   const dateOnly = /^(\d{4})(\d{2})(\d{2})$/.exec(compact);
   if (dateOnly) {
@@ -109,7 +121,13 @@ export function formatRecurrenceRule(parts: {
   if (parts.count) segments.push(`COUNT=${parts.count}`);
   else if (parts.until) {
     const until = parts.until instanceof Date ? parts.until : new Date(String(parts.until));
-    if (!Number.isNaN(until.getTime())) segments.push(`UNTIL=${until.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`);
+    if (!Number.isNaN(until.getTime()))
+      segments.push(
+        `UNTIL=${until
+          .toISOString()
+          .replace(/[-:]/g, "")
+          .replace(/\.\d{3}Z$/, "Z")}`
+      );
   }
   return segments.join(";");
 }
@@ -148,7 +166,12 @@ type RecurrenceSource = {
  * weekly meeting stays at 09:00 across a DST transition rather than drifting.
  * A non-recurring event yields its single occurrence when it lands in range.
  */
-export function expandRecurrence(event: RecurrenceSource, rangeStart: Date, rangeEnd: Date, timeZone: string): RecurrenceOccurrence[] {
+export function expandRecurrence(
+  event: RecurrenceSource,
+  rangeStart: Date,
+  rangeEnd: Date,
+  timeZone: string
+): RecurrenceOccurrence[] {
   const seriesStart = event.startAt instanceof Date ? event.startAt : new Date(String(event.startAt));
   const seriesEnd = event.endAt instanceof Date ? event.endAt : new Date(String(event.endAt));
   if (Number.isNaN(seriesStart.getTime()) || Number.isNaN(seriesEnd.getTime())) return [];
@@ -162,14 +185,24 @@ export function expandRecurrence(event: RecurrenceSource, rangeStart: Date, rang
   }
 
   const exceptions = new Set(
-    (event.recurrenceExceptionDates ?? []).map((value) => (value instanceof Date ? value : new Date(String(value))).getTime())
+    (event.recurrenceExceptionDates ?? []).map((value) =>
+      (value instanceof Date ? value : new Date(String(value))).getTime()
+    )
   );
-  const recurrenceEndAt = event.recurrenceEndAt ? (event.recurrenceEndAt instanceof Date ? event.recurrenceEndAt : new Date(String(event.recurrenceEndAt))) : null;
-  const hardEnd = [parts.until, recurrenceEndAt].filter((value): value is Date => Boolean(value) && !Number.isNaN(value!.getTime())).sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
+  const recurrenceEndAt = event.recurrenceEndAt
+    ? event.recurrenceEndAt instanceof Date
+      ? event.recurrenceEndAt
+      : new Date(String(event.recurrenceEndAt))
+    : null;
+  const hardEnd =
+    [parts.until, recurrenceEndAt]
+      .filter((value): value is Date => Boolean(value) && !Number.isNaN(value!.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
 
   const anchor = utcToZonedParts(seriesStart, timeZone);
   const timeText = `${String(anchor.hour).padStart(2, "0")}:${String(anchor.minute).padStart(2, "0")}`;
-  const weeklyDays = parts.freq === "WEEKLY" && parts.byDay.length > 0 ? parts.byDay : [toDayCode(seriesStart, timeZone)];
+  const weeklyDays =
+    parts.freq === "WEEKLY" && parts.byDay.length > 0 ? parts.byDay : [toDayCode(seriesStart, timeZone)];
 
   const occurrences: RecurrenceOccurrence[] = [];
   let emitted = 0;
@@ -267,10 +300,19 @@ function toDayCodeFromParts(anchor: { year: number; month: number; day: number }
   return RECURRENCE_DAYS[new Date(Date.UTC(anchor.year, anchor.month - 1, anchor.day)).getUTCDay()];
 }
 
-function dateAtOffset(anchor: { year: number; month: number; day: number }, offset: { days: number }, timeText: string, timeZone: string) {
+function dateAtOffset(
+  anchor: { year: number; month: number; day: number },
+  offset: { days: number },
+  timeText: string,
+  timeZone: string
+) {
   const shifted = new Date(Date.UTC(anchor.year, anchor.month - 1, anchor.day));
   shifted.setUTCDate(shifted.getUTCDate() + offset.days);
-  return zonedTimeToUtc(dateText(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, shifted.getUTCDate()), timeText, timeZone);
+  return zonedTimeToUtc(
+    dateText(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, shifted.getUTCDate()),
+    timeText,
+    timeZone
+  );
 }
 
 function dateText(year: number, month: number, day: number) {

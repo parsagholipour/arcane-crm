@@ -19,8 +19,14 @@ test("record app landing views show populated All lists by default", () => {
   for (const [object, expectedDefault] of Object.entries(expectedDefaults) as [CrmObject, string][]) {
     const definition = OBJECT_DEFINITIONS[object];
     assert.equal(definition.defaultList, expectedDefault);
-    assert.ok(definition.listViews.includes(expectedDefault), `${object} should expose its default list in the selector`);
-    assert.ok(definition.listViews.some((view) => view.includes("Recently Viewed")), `${object} should keep Recently Viewed available`);
+    assert.ok(
+      definition.listViews.includes(expectedDefault),
+      `${object} should expose its default list in the selector`
+    );
+    assert.ok(
+      definition.listViews.some((view) => view.includes("Recently Viewed")),
+      `${object} should keep Recently Viewed available`
+    );
   }
 });
 

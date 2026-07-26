@@ -4,7 +4,7 @@ import { reportExportFilename, ReportExportValidationError, validateReportExport
 
 test("report export filenames are constrained to safe CSV attachments", () => {
   assert.equal(reportExportFilename("Pipeline by Stage.csv"), "pipeline-by-stage.csv");
-  assert.equal(reportExportFilename("../../Quarterly \"Forecast\""), "quarterly-forecast.csv");
+  assert.equal(reportExportFilename('../../Quarterly "Forecast"'), "quarterly-forecast.csv");
   assert.equal(reportExportFilename(""), "report.csv");
 });
 

@@ -10,13 +10,20 @@ export async function GET(request: NextRequest) {
     const sourceType = request.nextUrl.searchParams.get("sourceType")?.trim();
     const sourceId = request.nextUrl.searchParams.get("sourceId")?.trim();
     const deliveries = await prisma.emailDelivery.findMany({
-      where: { organizationId: context.organizationId, ...(sourceType ? { sourceType } : {}), ...(sourceId ? { sourceId } : {}) },
+      where: {
+        organizationId: context.organizationId,
+        ...(sourceType ? { sourceType } : {}),
+        ...(sourceId ? { sourceId } : {})
+      },
       include: { events: { orderBy: { occurredAt: "desc" }, take: 100 } },
       orderBy: { acceptedAt: "desc" },
       take: 500
     });
     return NextResponse.json({ deliveries: JSON.parse(JSON.stringify(deliveries)) });
   } catch (error) {
-    return authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to load email deliveries." }, { status: 500 });
+    return (
+      authorizationErrorResponse(error) ??
+      NextResponse.json({ error: "Unable to load email deliveries." }, { status: 500 })
+    );
   }
 }

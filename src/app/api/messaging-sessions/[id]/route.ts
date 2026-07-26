@@ -1,6 +1,13 @@
 import { authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
 import { emailDeliveryConfigured } from "@/lib/email/service";
-import { buildMessagingParticipants, messagingErrorResponse, messagingSessionInclude, requireMessagingChannel, requireMessagingSession, validateMessagingReferences } from "@/lib/messaging";
+import {
+  buildMessagingParticipants,
+  messagingErrorResponse,
+  messagingSessionInclude,
+  requireMessagingChannel,
+  requireMessagingSession,
+  validateMessagingReferences
+} from "@/lib/messaging";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -12,7 +19,10 @@ export async function GET(_request: NextRequest, context: { params: Params }) {
     const authContext = await requireOrganizationContext();
     const { id } = await context.params;
     const session = await requireMessagingSession(authContext.organizationId, id);
-    return NextResponse.json({ session: JSON.parse(JSON.stringify(session)), capabilities: { emailDelivery: emailDeliveryConfigured() } });
+    return NextResponse.json({
+      session: JSON.parse(JSON.stringify(session)),
+      capabilities: { emailDelivery: emailDeliveryConfigured() }
+    });
   } catch (error) {
     const response = authorizationErrorResponse(error);
     if (response) return response;
@@ -25,16 +35,29 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     const authContext = await requireOrganizationContext();
     const { id } = await context.params;
     const existing = await requireMessagingSession(authContext.organizationId, id);
-    if (existing.status === "Closed") return NextResponse.json({ error: "Closed messaging sessions must be reopened before editing." }, { status: 409 });
+    if (existing.status === "Closed")
+      return NextResponse.json(
+        { error: "Closed messaging sessions must be reopened before editing." },
+        { status: 409 }
+      );
     const payload = await request.json();
-    if (payload.status !== undefined) return NextResponse.json({ error: "Use a lifecycle action to change messaging status." }, { status: 400 });
+    if (payload.status !== undefined)
+      return NextResponse.json({ error: "Use a lifecycle action to change messaging status." }, { status: 400 });
     const name = payload.name === undefined ? existing.name : String(payload.name).trim();
     if (!name) return NextResponse.json({ error: "Messaging session name is required." }, { status: 400 });
-    const ownerId = await validateMessagingReferences(authContext.organizationId, authContext.userId, { ...payload, ownerId: payload.ownerId ?? existing.ownerId });
-    const participants = payload.participants === undefined ? null : await buildMessagingParticipants(authContext.organizationId, payload.participants);
+    const ownerId = await validateMessagingReferences(authContext.organizationId, authContext.userId, {
+      ...payload,
+      ownerId: payload.ownerId ?? existing.ownerId
+    });
+    const participants =
+      payload.participants === undefined
+        ? null
+        : await buildMessagingParticipants(authContext.organizationId, payload.participants);
     const session = await prisma.$transaction(async (tx) => {
       if (participants) {
-        await tx.messagingSessionParticipant.deleteMany({ where: { sessionId: id, organizationId: authContext.organizationId } });
+        await tx.messagingSessionParticipant.deleteMany({
+          where: { sessionId: id, organizationId: authContext.organizationId }
+        });
       }
       return tx.messagingSession.update({
         where: { id },
@@ -68,7 +91,12 @@ export async function DELETE(_request: NextRequest, context: { params: Params })
     const { id } = await context.params;
     const existing = await requireMessagingSession(authContext.organizationId, id);
     if (existing.status !== "Open" || existing.messages.length > 0) {
-      return NextResponse.json({ error: "Only empty Open messaging sessions can be deleted. Close sessions with conversation history instead." }, { status: 409 });
+      return NextResponse.json(
+        {
+          error: "Only empty Open messaging sessions can be deleted. Close sessions with conversation history instead."
+        },
+        { status: 409 }
+      );
     }
     await prisma.messagingSession.deleteMany({ where: { id, organizationId: authContext.organizationId } });
     return NextResponse.json({ ok: true });

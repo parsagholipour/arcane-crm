@@ -29,7 +29,8 @@ export async function GET(request: NextRequest) {
     const response = authorizationErrorResponse(error);
     if (response) return response;
     const validation = calendarErrorResponse(error);
-    if (validation) return NextResponse.json({ error: validation.error, field: validation.field }, { status: validation.status });
+    if (validation)
+      return NextResponse.json({ error: validation.error, field: validation.field }, { status: validation.status });
     console.error("[calendar] unable to load events", error);
     return NextResponse.json({ error: "Unable to load calendar events." }, { status: 500 });
   }

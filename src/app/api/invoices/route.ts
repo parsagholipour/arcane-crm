@@ -19,7 +19,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const context = await requireOrganizationContext();
-    const payload = await request.json() as RecordData;
+    const payload = (await request.json()) as RecordData;
     const result = await createInvoice(context.organizationId, context.userId, payload);
     return invoiceJson(result, { status: 201 });
   } catch (error) {

@@ -18,6 +18,9 @@ dist/
 
 # testing
 coverage/
+playwright-report/
+test-results/
+.playwright/
 
 # env files (keep .env.example)
 .env

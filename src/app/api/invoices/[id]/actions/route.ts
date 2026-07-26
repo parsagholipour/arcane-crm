@@ -12,16 +12,18 @@ export async function POST(request: NextRequest, route: { params: Params }) {
   try {
     const context = await requireOrganizationContext();
     const { id } = await route.params;
-    const payload = await request.json() as { action?: unknown; recipientEmail?: unknown };
+    const payload = (await request.json()) as { action?: unknown; recipientEmail?: unknown };
     const action = String(payload.action ?? "");
     if (action === "send") {
-      return invoiceJson(await deliverInvoiceEmail({
-        organizationId: context.organizationId,
-        organizationName: context.organization.name,
-        userId: context.userId,
-        invoiceId: id,
-        recipientEmail: payload.recipientEmail
-      }));
+      return invoiceJson(
+        await deliverInvoiceEmail({
+          organizationId: context.organizationId,
+          organizationName: context.organization.name,
+          userId: context.userId,
+          invoiceId: id,
+          recipientEmail: payload.recipientEmail
+        })
+      );
     }
     return invoiceJson(await performInvoiceAction(context.organizationId, context.userId, id, action));
   } catch (error) {

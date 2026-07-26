@@ -6,14 +6,15 @@ import { activateOrganizationForUser } from "@/lib/organization-activation";
 test("organization activation rejects unavailable memberships without changing state", async () => {
   let touched = false;
   await assert.rejects(
-    () => activateOrganizationForUser("user-1", "org-1", 403, {
-      async findMembership() {
-        return null;
-      },
-      async touchMembership() {
-        touched = true;
-      }
-    }),
+    () =>
+      activateOrganizationForUser("user-1", "org-1", 403, {
+        async findMembership() {
+          return null;
+        },
+        async touchMembership() {
+          touched = true;
+        }
+      }),
     (error: unknown) => error instanceof AppAuthorizationError && error.status === 403
   );
   assert.equal(touched, false);
@@ -21,11 +22,12 @@ test("organization activation rejects unavailable memberships without changing s
 
 test("organization switching preserves its existing 404 contract", async () => {
   await assert.rejects(
-    () => activateOrganizationForUser("user-1", "org-1", 404, {
-      async findMembership() {
-        return null;
-      }
-    }),
+    () =>
+      activateOrganizationForUser("user-1", "org-1", 404, {
+        async findMembership() {
+          return null;
+        }
+      }),
     (error: unknown) => error instanceof AppAuthorizationError && error.status === 404
   );
 });

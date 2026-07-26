@@ -1,0 +1,9 @@
+.next
+node_modules
+package-lock.json
+public
+prisma/migrations
+app-analysis
+coverage
+playwright-report
+test-results

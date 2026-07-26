@@ -1,5 +1,10 @@
 import { authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
-import { createMarketingPageNotification, marketingLandingPageInclude, marketingPageErrorResponse, requireLandingPage } from "@/lib/marketing-pages";
+import {
+  createMarketingPageNotification,
+  marketingLandingPageInclude,
+  marketingPageErrorResponse,
+  requireLandingPage
+} from "@/lib/marketing-pages";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -11,17 +16,31 @@ export async function POST(request: NextRequest, context: { params: Params }) {
     const { id } = await context.params;
     const existing = await requireLandingPage(auth.organizationId, id);
     const action = String((await request.json()).action ?? "").toLowerCase();
-    const transition = existing.status === "Draft" && action === "publish"
-      ? { status: "Published", publishedAt: new Date(), archivedAt: null }
-      : existing.status === "Published" && action === "archive"
-        ? { status: "Archived", archivedAt: new Date() }
-        : existing.status === "Archived" && action === "restore"
-          ? { status: "Draft", archivedAt: null }
-          : null;
-    if (!transition) return NextResponse.json({ error: `Cannot ${action || "perform that action"} while the landing page is ${existing.status}.` }, { status: 409 });
+    const transition =
+      existing.status === "Draft" && action === "publish"
+        ? { status: "Published", publishedAt: new Date(), archivedAt: null }
+        : existing.status === "Published" && action === "archive"
+          ? { status: "Archived", archivedAt: new Date() }
+          : existing.status === "Archived" && action === "restore"
+            ? { status: "Draft", archivedAt: null }
+            : null;
+    if (!transition)
+      return NextResponse.json(
+        { error: `Cannot ${action || "perform that action"} while the landing page is ${existing.status}.` },
+        { status: 409 }
+      );
     const result = await prisma.$transaction(async (tx) => {
-      const page = await tx.marketingLandingPage.update({ where: { id }, data: transition, include: marketingLandingPageInclude });
-      const notification = await createMarketingPageNotification(tx, { organizationId: auth.organizationId, userId: auth.userId, title: `Landing page ${page.status.toLowerCase()}`, body: `${page.name} is now ${page.status}.` });
+      const page = await tx.marketingLandingPage.update({
+        where: { id },
+        data: transition,
+        include: marketingLandingPageInclude
+      });
+      const notification = await createMarketingPageNotification(tx, {
+        organizationId: auth.organizationId,
+        userId: auth.userId,
+        title: `Landing page ${page.status.toLowerCase()}`,
+        body: `${page.name} is now ${page.status}.`
+      });
       return { page, notifications: [notification] };
     });
     return NextResponse.json(JSON.parse(JSON.stringify(result)));

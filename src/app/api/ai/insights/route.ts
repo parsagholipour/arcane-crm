@@ -20,28 +20,43 @@ export async function POST(request: NextRequest) {
   try {
     const context = await requireOrganizationContext();
     const parsed = requestSchema.safeParse(await request.json());
-    if (!parsed.success) return NextResponse.json({ error: "Invalid insight request.", code: "invalid_request", retryable: false }, { status: 400 });
-    const response = parsed.data.surface === "home"
-      ? await getHomeInsights(context.organizationId, context.userId, parsed.data.force)
-      : await getActivityInsights({
-          organizationId: context.organizationId,
-          userId: context.userId,
-          object: parsed.data.object,
-          recordId: parsed.data.recordId,
-          force: parsed.data.force
-        });
+    if (!parsed.success)
+      return NextResponse.json(
+        { error: "Invalid insight request.", code: "invalid_request", retryable: false },
+        { status: 400 }
+      );
+    const response =
+      parsed.data.surface === "home"
+        ? await getHomeInsights(context.organizationId, context.userId, parsed.data.force)
+        : await getActivityInsights({
+            organizationId: context.organizationId,
+            userId: context.userId,
+            object: parsed.data.object,
+            recordId: parsed.data.recordId,
+            force: parsed.data.force
+          });
     return NextResponse.json(response);
   } catch (error) {
     const authResponse = authorizationErrorResponse(error);
     if (authResponse) return authResponse;
     if (error instanceof DeepSeekError || error instanceof AiRefreshCooldownError || isTypedInsightError(error)) {
-      return NextResponse.json({ error: error.message, code: error.code, retryable: error.retryable }, { status: error.status });
+      return NextResponse.json(
+        { error: error.message, code: error.code, retryable: error.retryable },
+        { status: error.status }
+      );
     }
     console.error("AI insight request failed", error instanceof Error ? error.message : "Unknown error");
-    return NextResponse.json({ error: "AI insights are temporarily unavailable.", code: "internal_error", retryable: true }, { status: 500 });
+    return NextResponse.json(
+      { error: "AI insights are temporarily unavailable.", code: "internal_error", retryable: true },
+      { status: 500 }
+    );
   }
 }
 
 function isTypedInsightError(error: unknown): error is Error & { status: number; code: string; retryable: boolean } {
-  return error instanceof Error && typeof (error as { status?: unknown }).status === "number" && typeof (error as { code?: unknown }).code === "string";
+  return (
+    error instanceof Error &&
+    typeof (error as { status?: unknown }).status === "number" &&
+    typeof (error as { code?: unknown }).code === "string"
+  );
 }

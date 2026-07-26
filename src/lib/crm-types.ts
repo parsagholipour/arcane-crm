@@ -35,7 +35,7 @@ export type OrganizationSummary = {
   role?: "ADMIN" | "MEMBER";
 };
 
-export type BootstrapData = {
+export type ScopedCrmData = {
   user: UserRecord;
   users: UserRecord[];
   organization: OrganizationSummary;
@@ -106,7 +106,7 @@ export type ObjectDefinition = {
   label: string;
   plural: string;
   icon: string;
-  dataKey: keyof BootstrapData;
+  dataKey: keyof ScopedCrmData;
   defaultList: string;
   listViews: string[];
   actions: string[];
@@ -155,15 +155,7 @@ export type FormDefinition = {
   saveLabel?: string;
 };
 
-export type AppKey =
-  | "home"
-  | "contacts"
-  | "accounts"
-  | "sales"
-  | "service"
-  | "marketing"
-  | "commerce"
-  | "your-account";
+export type AppKey = "home" | "contacts" | "accounts" | "sales" | "service" | "marketing" | "commerce" | "your-account";
 
 export type AppNavItem = {
   label: string;

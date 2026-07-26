@@ -30,7 +30,9 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), "Source Sans 3", system-ui, sans-serif;
   font-size: 15px;
-  font-feature-settings: "kern" 1, "liga" 1;
+  font-feature-settings:
+    "kern" 1,
+    "liga" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

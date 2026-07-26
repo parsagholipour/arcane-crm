@@ -1,14 +1,70 @@
 import { authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
-import { CAMPAIGN_MEMBER_STATUSES, CampaignValidationError, campaignErrorResponse, hydrateCampaign, requireCampaign } from "@/lib/campaigns";
+import {
+  CAMPAIGN_MEMBER_STATUSES,
+  CampaignValidationError,
+  campaignErrorResponse,
+  hydrateCampaign,
+  requireCampaign
+} from "@/lib/campaigns";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
 type Params = Promise<{ id: string; memberId: string }>;
 
 export async function PATCH(request: NextRequest, context: { params: Params }) {
-  try { const authContext = await requireOrganizationContext(); const { id, memberId } = await context.params; await requireCampaign(authContext.organizationId, id); const payload = await request.json(); const status = String(payload.status ?? ""); if (!(CAMPAIGN_MEMBER_STATUSES as readonly string[]).includes(status)) throw new CampaignValidationError("Choose a valid member status."); const responded = payload.responded === undefined ? ["Responded", "Attended", "Converted"].includes(status) : Boolean(payload.responded); const result = await prisma.campaignMember.updateMany({ where: { id: memberId, campaignId: id, organizationId: authContext.organizationId }, data: { status, responded, firstRespondedAt: responded ? new Date() : null, notes: payload.notes === undefined ? undefined : String(payload.notes ?? "").trim() || null } }); if (!result.count) return NextResponse.json({ error: "Campaign member not found." }, { status: 404 }); const campaign = await requireCampaign(authContext.organizationId, id); return NextResponse.json({ campaign: JSON.parse(JSON.stringify(await hydrateCampaign(authContext.organizationId, campaign))) }); } catch (error) { const response = authorizationErrorResponse(error); if (response) return response; const validation = campaignErrorResponse(error); if (validation) return NextResponse.json({ error: validation.error }, { status: validation.status }); return NextResponse.json({ error: "Unable to update campaign member." }, { status: 500 }); }
+  try {
+    const authContext = await requireOrganizationContext();
+    const { id, memberId } = await context.params;
+    await requireCampaign(authContext.organizationId, id);
+    const payload = await request.json();
+    const status = String(payload.status ?? "");
+    if (!(CAMPAIGN_MEMBER_STATUSES as readonly string[]).includes(status))
+      throw new CampaignValidationError("Choose a valid member status.");
+    const responded =
+      payload.responded === undefined
+        ? ["Responded", "Attended", "Converted"].includes(status)
+        : Boolean(payload.responded);
+    const result = await prisma.campaignMember.updateMany({
+      where: { id: memberId, campaignId: id, organizationId: authContext.organizationId },
+      data: {
+        status,
+        responded,
+        firstRespondedAt: responded ? new Date() : null,
+        notes: payload.notes === undefined ? undefined : String(payload.notes ?? "").trim() || null
+      }
+    });
+    if (!result.count) return NextResponse.json({ error: "Campaign member not found." }, { status: 404 });
+    const campaign = await requireCampaign(authContext.organizationId, id);
+    return NextResponse.json({
+      campaign: JSON.parse(JSON.stringify(await hydrateCampaign(authContext.organizationId, campaign)))
+    });
+  } catch (error) {
+    const response = authorizationErrorResponse(error);
+    if (response) return response;
+    const validation = campaignErrorResponse(error);
+    if (validation) return NextResponse.json({ error: validation.error }, { status: validation.status });
+    return NextResponse.json({ error: "Unable to update campaign member." }, { status: 500 });
+  }
 }
 
 export async function DELETE(_request: NextRequest, context: { params: Params }) {
-  try { const authContext = await requireOrganizationContext(); const { id, memberId } = await context.params; const campaign = await requireCampaign(authContext.organizationId, id); if (campaign.status === "Archived") return NextResponse.json({ error: "Archived campaign members cannot be removed." }, { status: 409 }); const result = await prisma.campaignMember.deleteMany({ where: { id: memberId, campaignId: id, organizationId: authContext.organizationId } }); if (!result.count) return NextResponse.json({ error: "Campaign member not found." }, { status: 404 }); const refreshed = await requireCampaign(authContext.organizationId, id); return NextResponse.json({ campaign: JSON.parse(JSON.stringify(await hydrateCampaign(authContext.organizationId, refreshed))) }); } catch (error) { const response = authorizationErrorResponse(error); if (response) return response; return NextResponse.json({ error: "Unable to remove campaign member." }, { status: 500 }); }
+  try {
+    const authContext = await requireOrganizationContext();
+    const { id, memberId } = await context.params;
+    const campaign = await requireCampaign(authContext.organizationId, id);
+    if (campaign.status === "Archived")
+      return NextResponse.json({ error: "Archived campaign members cannot be removed." }, { status: 409 });
+    const result = await prisma.campaignMember.deleteMany({
+      where: { id: memberId, campaignId: id, organizationId: authContext.organizationId }
+    });
+    if (!result.count) return NextResponse.json({ error: "Campaign member not found." }, { status: 404 });
+    const refreshed = await requireCampaign(authContext.organizationId, id);
+    return NextResponse.json({
+      campaign: JSON.parse(JSON.stringify(await hydrateCampaign(authContext.organizationId, refreshed)))
+    });
+  } catch (error) {
+    const response = authorizationErrorResponse(error);
+    if (response) return response;
+    return NextResponse.json({ error: "Unable to remove campaign member." }, { status: 500 });
+  }
 }

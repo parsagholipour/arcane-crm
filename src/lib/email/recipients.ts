@@ -10,7 +10,11 @@ export type RecipientKind = "lead" | "contact" | "account";
 export type RecipientRecordSet = {
   leads: Array<{ id: string; firstName?: string | null; lastName: string; email?: string | null }>;
   contacts: Array<{ id: string; firstName?: string | null; lastName: string; email?: string | null }>;
-  accounts: Array<{ id: string; name: string; contacts: Array<{ id: string; firstName?: string | null; lastName: string; email?: string | null }> }>;
+  accounts: Array<{
+    id: string;
+    name: string;
+    contacts: Array<{ id: string; firstName?: string | null; lastName: string; email?: string | null }>;
+  }>;
 };
 
 export type ResolvedListEmailRecipients = {
@@ -31,7 +35,10 @@ function personName(person: { firstName?: string | null; lastName: string }) {
   return [person.firstName, person.lastName].filter(Boolean).join(" ");
 }
 
-export function resolveRecipientRecords(references: string[], records: RecipientRecordSet): ResolvedListEmailRecipients {
+export function resolveRecipientRecords(
+  references: string[],
+  records: RecipientRecordSet
+): ResolvedListEmailRecipients {
   const addresses = new Map<string, EmailAddress>();
   const skipped: ResolvedListEmailRecipients["skipped"] = [];
   const unknown: string[] = [];
@@ -49,8 +56,12 @@ export function resolveRecipientRecords(references: string[], records: Recipient
   for (const reference of [...new Set(references.map(String))]) {
     const parsed = parseRecipientReference(reference);
     const leads = records.leads.filter((record) => record.id === parsed.id && (!parsed.kind || parsed.kind === "lead"));
-    const contacts = records.contacts.filter((record) => record.id === parsed.id && (!parsed.kind || parsed.kind === "contact"));
-    const accounts = records.accounts.filter((record) => record.id === parsed.id && (!parsed.kind || parsed.kind === "account"));
+    const contacts = records.contacts.filter(
+      (record) => record.id === parsed.id && (!parsed.kind || parsed.kind === "contact")
+    );
+    const accounts = records.accounts.filter(
+      (record) => record.id === parsed.id && (!parsed.kind || parsed.kind === "account")
+    );
     if (!leads.length && !contacts.length && !accounts.length) {
       unknown.push(reference);
       continue;
@@ -59,12 +70,20 @@ export function resolveRecipientRecords(references: string[], records: Recipient
     contacts.forEach((contact) => addPerson(reference, contact, `Contact: ${personName(contact)}`));
     accounts.forEach((account) => {
       const validContacts = account.contacts.filter((contact) => isValidEmail(contact.email));
-      validContacts.forEach((contact) => addPerson(reference, contact, `Contact: ${personName(contact)} (${account.name})`));
-      if (!validContacts.length) skipped.push({ reference, label: `Account: ${account.name}`, reason: "No contacts with valid email addresses" });
+      validContacts.forEach((contact) =>
+        addPerson(reference, contact, `Contact: ${personName(contact)} (${account.name})`)
+      );
+      if (!validContacts.length)
+        skipped.push({
+          reference,
+          label: `Account: ${account.name}`,
+          reason: "No contacts with valid email addresses"
+        });
     });
   }
 
-  if (unknown.length) throw new EmailValidationError("One or more selected email recipients were not found in this organization.");
+  if (unknown.length)
+    throw new EmailValidationError("One or more selected email recipients were not found in this organization.");
   if (!addresses.size) throw new EmailValidationError("None of the selected records has a deliverable email address.");
   return { addresses: [...addresses.values()], skipped };
 }
@@ -77,8 +96,14 @@ export async function resolveListEmailRecipients(organizationId: string, referen
   const contactIds = [...rawIds, ...parsed.filter((item) => item.kind === "contact").map((item) => item.id)];
   const accountIds = [...rawIds, ...parsed.filter((item) => item.kind === "account").map((item) => item.id)];
   const [leads, contacts, accounts] = await Promise.all([
-    prisma.lead.findMany({ where: { organizationId, id: { in: leadIds } }, select: { id: true, firstName: true, lastName: true, email: true } }),
-    prisma.contact.findMany({ where: { organizationId, id: { in: contactIds } }, select: { id: true, firstName: true, lastName: true, email: true } }),
+    prisma.lead.findMany({
+      where: { organizationId, id: { in: leadIds } },
+      select: { id: true, firstName: true, lastName: true, email: true }
+    }),
+    prisma.contact.findMany({
+      where: { organizationId, id: { in: contactIds } },
+      select: { id: true, firstName: true, lastName: true, email: true }
+    }),
     prisma.account.findMany({
       where: { organizationId, id: { in: accountIds } },
       select: { id: true, name: true, contacts: { select: { id: true, firstName: true, lastName: true, email: true } } }

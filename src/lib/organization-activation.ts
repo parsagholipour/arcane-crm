@@ -14,20 +14,24 @@ export async function activateOrganizationForUser(
     now?: () => Date;
   } = {}
 ) {
-  const membership = await (dependencies.findMembership?.() ?? prisma.organizationMembership.findFirst({
-    where: {
-      organizationId,
-      userId,
-      status: "ACTIVE",
-      user: { status: "ACTIVE" },
-      organization: { status: "ACTIVE" }
-    },
-    include: { organization: true }
-  }));
+  const membership = await (dependencies.findMembership?.() ??
+    prisma.organizationMembership.findFirst({
+      where: {
+        organizationId,
+        userId,
+        status: "ACTIVE",
+        user: { status: "ACTIVE" },
+        organization: { status: "ACTIVE" }
+      },
+      include: { organization: true }
+    }));
   if (!membership) throw new AppAuthorizationError("Active organization membership not found.", missingStatus);
   const accessedAt = dependencies.now?.() ?? new Date();
-  await (dependencies.touchMembership ?? (async (membershipId, timestamp) => {
-    await prisma.organizationMembership.update({ where: { id: membershipId }, data: { lastAccessedAt: timestamp } });
-  }))(membership.id, accessedAt);
+  await (
+    dependencies.touchMembership ??
+    (async (membershipId, timestamp) => {
+      await prisma.organizationMembership.update({ where: { id: membershipId }, data: { lastAccessedAt: timestamp } });
+    })
+  )(membership.id, accessedAt);
   return membership;
 }

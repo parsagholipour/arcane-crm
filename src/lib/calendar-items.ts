@@ -67,7 +67,12 @@ export function expandEventsToItems<T extends EventLike>(
         color,
         recurring,
         occurrenceStart: recurring ? occurrence.originalStart.toISOString() : null,
-        record: { ...record, calendarColor: color, occurrenceStartAt: occurrence.startAt.toISOString(), occurrenceEndAt: occurrence.endAt.toISOString() }
+        record: {
+          ...record,
+          calendarColor: color,
+          occurrenceStartAt: occurrence.startAt.toISOString(),
+          occurrenceEndAt: occurrence.endAt.toISOString()
+        }
       });
     }
   }

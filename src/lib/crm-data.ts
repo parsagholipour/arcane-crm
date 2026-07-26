@@ -1,7 +1,7 @@
 import { describeRecurrence } from "@/lib/calendar-recurrence";
-import type { BootstrapData, CrmObject, RecordData } from "@/lib/crm-types";
+import type { ScopedCrmData, CrmObject, RecordData } from "@/lib/crm-types";
 
-export function decorateBootstrap(data: BootstrapData): BootstrapData {
+export function decorateScopedData(data: ScopedCrmData): ScopedCrmData {
   const accountsById = new Map(data.accounts.map((account) => [String(account.id), account]));
   const contactsById = new Map(data.contacts.map((contact) => [String(contact.id), contact]));
   const opportunitiesById = new Map(data.opportunities.map((opportunity) => [String(opportunity.id), opportunity]));
@@ -15,8 +15,10 @@ export function decorateBootstrap(data: BootstrapData): BootstrapData {
     priceBookEntriesByProductId.set(productId, [...(priceBookEntriesByProductId.get(productId) ?? []), entry]);
   });
 
-  const ownerAlias = (ownerId?: unknown) => usersById.get(String(ownerId || data.user.id))?.alias ?? String(ownerId || data.user.alias);
-  const ownerName = (ownerId?: unknown) => usersById.get(String(ownerId || data.user.id))?.name ?? String(ownerId || data.user.name);
+  const ownerAlias = (ownerId?: unknown) =>
+    usersById.get(String(ownerId || data.user.id))?.alias ?? String(ownerId || data.user.alias);
+  const ownerName = (ownerId?: unknown) =>
+    usersById.get(String(ownerId || data.user.id))?.name ?? String(ownerId || data.user.name);
 
   const leadsById = new Map(data.leads.map((lead) => [String(lead.id), lead]));
   const casesById = new Map(data.cases.map((record) => [String(record.id), record]));
@@ -80,20 +82,32 @@ export function decorateBootstrap(data: BootstrapData): BootstrapData {
     })),
     opportunities: data.opportunities.map((opportunity) => ({
       ...opportunity,
-      accountName: accountsById.get(String(opportunity.accountId))?.name ?? (opportunity.account as RecordData | undefined)?.name ?? "",
-      contactName: contactsById.get(String(opportunity.contactId)) ? contactName(contactsById.get(String(opportunity.contactId))!) : "",
+      accountName:
+        accountsById.get(String(opportunity.accountId))?.name ??
+        (opportunity.account as RecordData | undefined)?.name ??
+        "",
+      contactName: contactsById.get(String(opportunity.contactId))
+        ? contactName(contactsById.get(String(opportunity.contactId))!)
+        : "",
       ownerAlias: ownerAlias(opportunity.ownerId)
     })),
     cases: data.cases.map((caseRecord) => ({
       ...caseRecord,
-      accountName: accountsById.get(String(caseRecord.accountId))?.name ?? (caseRecord.account as RecordData | undefined)?.name ?? "",
-      contactName: contactsById.get(String(caseRecord.contactId)) ? contactName(contactsById.get(String(caseRecord.contactId))!) : "",
+      accountName:
+        accountsById.get(String(caseRecord.accountId))?.name ??
+        (caseRecord.account as RecordData | undefined)?.name ??
+        "",
+      contactName: contactsById.get(String(caseRecord.contactId))
+        ? contactName(contactsById.get(String(caseRecord.contactId))!)
+        : "",
       ownerAlias: ownerAlias(caseRecord.ownerId)
     })),
     products: data.products.map((product) => {
       const entries = priceBookEntriesByProductId.get(String(product.id)) ?? [];
       const primaryEntry = entries[0];
-      const priceBook = primaryEntry ? priceBooksById.get(String(primaryEntry.priceBookId)) ?? (primaryEntry.priceBook as RecordData | undefined) : undefined;
+      const priceBook = primaryEntry
+        ? (priceBooksById.get(String(primaryEntry.priceBookId)) ?? (primaryEntry.priceBook as RecordData | undefined))
+        : undefined;
 
       return {
         ...product,
@@ -107,25 +121,36 @@ export function decorateBootstrap(data: BootstrapData): BootstrapData {
     }),
     messagingSessions: data.messagingSessions.map((record) => ({
       ...record,
-      accountName: accountsById.get(String(record.accountId))?.name ?? (record.account as RecordData | undefined)?.name ?? "",
-      contactName: contactsById.get(String(record.contactId)) ? contactName(contactsById.get(String(record.contactId))!) : "",
+      accountName:
+        accountsById.get(String(record.accountId))?.name ?? (record.account as RecordData | undefined)?.name ?? "",
+      contactName: contactsById.get(String(record.contactId))
+        ? contactName(contactsById.get(String(record.contactId))!)
+        : "",
       ownerAlias: ownerAlias(record.ownerId),
       ownerName: ownerName(record.ownerId)
     })),
     videoCalls: data.videoCalls.map((record) => ({
       ...record,
-      accountName: accountsById.get(String(record.accountId))?.name ?? (record.account as RecordData | undefined)?.name ?? "",
-      contactName: contactsById.get(String(record.contactId)) ? contactName(contactsById.get(String(record.contactId))!) : "",
-      opportunityName: opportunitiesById.get(String(record.opportunityId))?.name ?? (record.opportunity as RecordData | undefined)?.name ?? "",
+      accountName:
+        accountsById.get(String(record.accountId))?.name ?? (record.account as RecordData | undefined)?.name ?? "",
+      contactName: contactsById.get(String(record.contactId))
+        ? contactName(contactsById.get(String(record.contactId))!)
+        : "",
+      opportunityName:
+        opportunitiesById.get(String(record.opportunityId))?.name ??
+        (record.opportunity as RecordData | undefined)?.name ??
+        "",
       organizerName: ownerName(record.organizerId)
     })),
     campaigns: data.campaigns.map((record) => {
-      const members = Array.isArray(record.members) ? record.members as RecordData[] : [];
+      const members = Array.isArray(record.members) ? (record.members as RecordData[]) : [];
       const respondedCount = members.filter((member) => member.responded).length;
       return {
         ...record,
         memberCount: (record.metrics as RecordData | undefined)?.memberCount ?? members.length,
-        responseRate: (record.metrics as RecordData | undefined)?.responseRate ?? (members.length ? Math.round((respondedCount / members.length) * 1000) / 10 : 0),
+        responseRate:
+          (record.metrics as RecordData | undefined)?.responseRate ??
+          (members.length ? Math.round((respondedCount / members.length) * 1000) / 10 : 0),
         ownerAlias: ownerAlias(record.ownerId),
         ownerName: ownerName(record.ownerId)
       };
@@ -133,8 +158,12 @@ export function decorateBootstrap(data: BootstrapData): BootstrapData {
     invoices: data.invoices.map((invoice) => ({
       ...invoice,
       name: invoice.invoiceNumber,
-      accountName: accountsById.get(String(invoice.accountId))?.name ?? (invoice.account as RecordData | undefined)?.name ?? "",
-      opportunityName: opportunitiesById.get(String(invoice.opportunityId))?.name ?? (invoice.opportunity as RecordData | undefined)?.name ?? ""
+      accountName:
+        accountsById.get(String(invoice.accountId))?.name ?? (invoice.account as RecordData | undefined)?.name ?? "",
+      opportunityName:
+        opportunitiesById.get(String(invoice.opportunityId))?.name ??
+        (invoice.opportunity as RecordData | undefined)?.name ??
+        ""
     })),
     events: data.events.map((event) => {
       const attendeeIds = Array.isArray(event.attendeeIds) ? event.attendeeIds.map(String) : [];
@@ -154,10 +183,12 @@ export function decorateBootstrap(data: BootstrapData): BootstrapData {
 }
 
 export function contactName(record: RecordData) {
-  return [record.salutation, record.firstName, record.lastName].filter(Boolean).join(" ").trim() || String(record.name ?? "");
+  return (
+    [record.salutation, record.firstName, record.lastName].filter(Boolean).join(" ").trim() || String(record.name ?? "")
+  );
 }
 
-export function dataKeyForObject(object: CrmObject): keyof BootstrapData {
+export function dataKeyForObject(object: CrmObject): keyof ScopedCrmData {
   switch (object) {
     case "Account":
       return "accounts";

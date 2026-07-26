@@ -15,20 +15,27 @@ const toolCallSchema = z.object({
 });
 
 const completionSchema = z.object({
-  choices: z.array(z.object({
-    finish_reason: z.string().nullable().optional(),
-    message: z.object({
-      role: z.literal("assistant").optional(),
-      content: z.string().nullable().optional(),
-      reasoning_content: z.string().nullable().optional(),
-      tool_calls: z.array(toolCallSchema).nullable().optional()
+  choices: z
+    .array(
+      z.object({
+        finish_reason: z.string().nullable().optional(),
+        message: z.object({
+          role: z.literal("assistant").optional(),
+          content: z.string().nullable().optional(),
+          reasoning_content: z.string().nullable().optional(),
+          tool_calls: z.array(toolCallSchema).nullable().optional()
+        })
+      })
+    )
+    .min(1),
+  usage: z
+    .object({
+      prompt_tokens: z.number().optional(),
+      completion_tokens: z.number().optional(),
+      total_tokens: z.number().optional()
     })
-  })).min(1),
-  usage: z.object({
-    prompt_tokens: z.number().optional(),
-    completion_tokens: z.number().optional(),
-    total_tokens: z.number().optional()
-  }).passthrough().optional()
+    .passthrough()
+    .optional()
 });
 
 export type DeepSeekToolCall = z.infer<typeof toolCallSchema>;
@@ -123,7 +130,8 @@ export async function createDeepSeekCompletion({
         continue;
       }
       const parsed = completionSchema.safeParse(await response.json());
-      if (!parsed.success) throw new DeepSeekError("DeepSeek returned an invalid response.", "invalid_response", 502, true);
+      if (!parsed.success)
+        throw new DeepSeekError("DeepSeek returned an invalid response.", "invalid_response", 502, true);
       const choice = parsed.data.choices[0];
       return {
         message: {
@@ -147,7 +155,8 @@ export async function createDeepSeekCompletion({
 }
 
 function errorForStatus(status: number) {
-  if (status === 401 || status === 403) return new DeepSeekError("DeepSeek authentication failed.", "authentication", 503, false);
+  if (status === 401 || status === 403)
+    return new DeepSeekError("DeepSeek authentication failed.", "authentication", 503, false);
   if (status === 429) return new DeepSeekError("DeepSeek is receiving too many requests.", "rate_limit", 429, true);
   if (status >= 500) return new DeepSeekError("DeepSeek is temporarily unavailable.", "upstream", 502, true);
   return new DeepSeekError("DeepSeek rejected the request.", "upstream", 502, false);
@@ -155,13 +164,17 @@ function errorForStatus(status: number) {
 
 function normalizeDeepSeekError(error: unknown) {
   if (error instanceof DeepSeekError) return error;
-  if (error instanceof Error && error.name === "AbortError") return new DeepSeekError("DeepSeek took too long to respond.", "timeout", 504, true);
+  if (error instanceof Error && error.name === "AbortError")
+    return new DeepSeekError("DeepSeek took too long to respond.", "timeout", 504, true);
   return new DeepSeekError("DeepSeek is temporarily unavailable.", "upstream", 502, true);
 }
 
 async function waitForRetry(retryAfter: string | null, deadline: number) {
   const parsedSeconds = retryAfter ? Number(retryAfter) : Number.NaN;
-  const delay = Number.isFinite(parsedSeconds) ? Math.min(parsedSeconds * 1000, 3_000) : 350 + Math.floor(Math.random() * 250);
-  if (Date.now() + delay >= deadline) throw new DeepSeekError("DeepSeek took too long to respond.", "timeout", 504, true);
+  const delay = Number.isFinite(parsedSeconds)
+    ? Math.min(parsedSeconds * 1000, 3_000)
+    : 350 + Math.floor(Math.random() * 250);
+  if (Date.now() + delay >= deadline)
+    throw new DeepSeekError("DeepSeek took too long to respond.", "timeout", 504, true);
   await new Promise((resolve) => setTimeout(resolve, delay));
 }

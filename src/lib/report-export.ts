@@ -12,11 +12,12 @@ export function validateReportExportCsv(value: unknown) {
 }
 
 export function reportExportFilename(value: unknown) {
-  const base = String(value ?? "report")
-    .toLowerCase()
-    .replace(/\.csv$/i, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 120) || "report";
+  const base =
+    String(value ?? "report")
+      .toLowerCase()
+      .replace(/\.csv$/i, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 120) || "report";
   return `${base}.csv`;
 }

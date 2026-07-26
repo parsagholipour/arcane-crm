@@ -12,8 +12,10 @@ export async function POST(request: NextRequest, route: { params: Params }) {
   try {
     const context = await requireOrganizationContext();
     const { id } = await route.params;
-    const payload = await request.json() as RecordData;
-    return invoiceJson(await recordInvoicePayment(context.organizationId, context.userId, id, payload), { status: 201 });
+    const payload = (await request.json()) as RecordData;
+    return invoiceJson(await recordInvoicePayment(context.organizationId, context.userId, id, payload), {
+      status: 201
+    });
   } catch (error) {
     return invoiceErrorResponse(error);
   }

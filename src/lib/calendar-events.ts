@@ -2,7 +2,13 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { parseRecurrenceRule } from "@/lib/calendar-recurrence";
-import { DEFAULT_CALENDAR_COLOR, TASK_OVERLAY_COLOR, VIDEO_CALL_OVERLAY_COLOR, expandEventsToItems, occurrenceKey } from "@/lib/calendar-items";
+import {
+  DEFAULT_CALENDAR_COLOR,
+  TASK_OVERLAY_COLOR,
+  VIDEO_CALL_OVERLAY_COLOR,
+  expandEventsToItems,
+  occurrenceKey
+} from "@/lib/calendar-items";
 import { MAX_EVENT_REMINDER_MINUTES } from "@/lib/calendar-reminder-values";
 import type { CalendarItem } from "@/lib/calendar";
 import type { RecordData } from "@/lib/crm-types";
@@ -29,7 +35,8 @@ export class CalendarValidationError extends Error {
 }
 
 export function calendarErrorResponse(error: unknown) {
-  if (error instanceof CalendarValidationError) return { error: error.message, status: error.status, field: error.field };
+  if (error instanceof CalendarValidationError)
+    return { error: error.message, status: error.status, field: error.field };
   return null;
 }
 
@@ -63,7 +70,11 @@ export function parseWindow(startText: unknown, endText: unknown) {
   if (Number.isNaN(end.getTime())) throw new CalendarValidationError("Provide a valid range end.", 400, "end");
   if (end <= start) throw new CalendarValidationError("The range end must be after the range start.", 400, "end");
   if (end.getTime() - start.getTime() > MAX_WINDOW_DAYS * DAY_MS) {
-    throw new CalendarValidationError(`Request at most ${MAX_WINDOW_DAYS} days of calendar data at a time.`, 400, "end");
+    throw new CalendarValidationError(
+      `Request at most ${MAX_WINDOW_DAYS} days of calendar data at a time.`,
+      400,
+      "end"
+    );
   }
   return { start, end };
 }
@@ -171,7 +182,12 @@ export function eventUpdateData(payload: RecordData) {
     allDay: payload.allDay === undefined ? undefined : Boolean(payload.allDay),
     private: payload.private === undefined ? undefined : Boolean(payload.private),
     recurrenceRule: payload.recurrenceRule === undefined ? undefined : (payload.recurrenceRule as string | null),
-    recurrenceEndAt: payload.recurrenceEndAt === undefined ? undefined : payload.recurrenceEndAt ? new Date(String(payload.recurrenceEndAt)) : null,
+    recurrenceEndAt:
+      payload.recurrenceEndAt === undefined
+        ? undefined
+        : payload.recurrenceEndAt
+          ? new Date(String(payload.recurrenceEndAt))
+          : null,
     reminderMinutes: validateEventReminderMinutes(payload.reminderMinutes)
   };
 }
@@ -203,7 +219,8 @@ export async function detachOccurrence(
   overrides: Record<string, unknown>
 ) {
   const occurrenceStart = parseOccurrenceStart(occurrenceStartValue);
-  if (!occurrenceStart) throw new CalendarValidationError("Editing a single occurrence needs the occurrence date.", 400, "occurrenceStart");
+  if (!occurrenceStart)
+    throw new CalendarValidationError("Editing a single occurrence needs the occurrence date.", 400, "occurrenceStart");
 
   const master = await prisma.event.findFirst({ where: { id: eventId, organizationId } });
   if (!master) throw new CalendarValidationError("Record not found.", 404);
@@ -220,6 +237,12 @@ export async function detachOccurrence(
     recurrenceExceptionDates: _exceptions,
     ...inherited
   } = master;
+  void _id;
+  void _createdAt;
+  void _updatedAt;
+  void _rule;
+  void _end;
+  void _exceptions;
 
   // The update payload marks untouched columns as `undefined`; spreading those
   // would blank out the values inherited from the series, so drop them first.
@@ -253,7 +276,12 @@ export async function detachOccurrence(
  */
 export async function excludeOccurrence(organizationId: string, eventId: string, occurrenceStartValue: unknown) {
   const occurrenceStart = parseOccurrenceStart(occurrenceStartValue);
-  if (!occurrenceStart) throw new CalendarValidationError("Deleting a single occurrence needs the occurrence date.", 400, "occurrenceStart");
+  if (!occurrenceStart)
+    throw new CalendarValidationError(
+      "Deleting a single occurrence needs the occurrence date.",
+      400,
+      "occurrenceStart"
+    );
 
   const master = await prisma.event.findFirst({ where: { id: eventId, organizationId } });
   if (!master) throw new CalendarValidationError("Record not found.", 404);
@@ -262,7 +290,9 @@ export async function excludeOccurrence(organizationId: string, eventId: string,
   await prisma.$transaction(async (tx) => {
     await tx.event.update({ where: { id: master.id }, data: { recurrenceExceptionDates: { push: occurrenceStart } } });
     // Drop any override that was carved out of this same slot.
-    await tx.event.deleteMany({ where: { organizationId, recurrenceParentId: master.id, recurrenceOriginalStart: occurrenceStart } });
+    await tx.event.deleteMany({
+      where: { organizationId, recurrenceParentId: master.id, recurrenceOriginalStart: occurrenceStart }
+    });
   });
   return true;
 }
@@ -280,7 +310,8 @@ export async function loadCalendarItems(
   ]);
 
   const colorById = new Map(sources.map((source) => [source.id, source.color]));
-  const colorForSource = (calendarSourceId: string | null) => (calendarSourceId ? colorById.get(calendarSourceId) ?? DEFAULT_CALENDAR_COLOR : DEFAULT_CALENDAR_COLOR);
+  const colorForSource = (calendarSourceId: string | null) =>
+    calendarSourceId ? (colorById.get(calendarSourceId) ?? DEFAULT_CALENDAR_COLOR) : DEFAULT_CALENDAR_COLOR;
 
   const items = expandEventsToItems(events, start, end, timeZone, { colorForSource, toRecord: serialize });
 

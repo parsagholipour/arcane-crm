@@ -11,11 +11,17 @@ export const videoCallInclude = {
   account: { select: { id: true, name: true } },
   contact: { select: { id: true, firstName: true, lastName: true, email: true } },
   opportunity: { select: { id: true, name: true } },
-  participants: { include: { contact: { select: { id: true, firstName: true, lastName: true, email: true } } }, orderBy: { createdAt: "asc" } }
+  participants: {
+    include: { contact: { select: { id: true, firstName: true, lastName: true, email: true } } },
+    orderBy: { createdAt: "asc" }
+  }
 } satisfies Prisma.VideoCallInclude;
 
 export class VideoCallValidationError extends Error {
-  constructor(message: string, readonly status = 400) {
+  constructor(
+    message: string,
+    readonly status = 400
+  ) {
     super(message);
     this.name = "VideoCallValidationError";
   }
@@ -28,7 +34,8 @@ export function videoCallErrorResponse(error: unknown) {
 
 export function requireVideoProvider(value: unknown) {
   const provider = String(value ?? "External Link");
-  if (!(VIDEO_CALL_PROVIDERS as readonly string[]).includes(provider)) throw new VideoCallValidationError("Choose a valid video provider.");
+  if (!(VIDEO_CALL_PROVIDERS as readonly string[]).includes(provider))
+    throw new VideoCallValidationError("Choose a valid video provider.");
   return provider;
 }
 
@@ -47,8 +54,10 @@ export function validateWebUrl(value: unknown, label: string) {
 export function validateVideoDates(startValue: unknown, endValue: unknown) {
   const scheduledStartAt = new Date(String(startValue ?? ""));
   const scheduledEndAt = new Date(String(endValue ?? ""));
-  if (!Number.isFinite(scheduledStartAt.getTime()) || !Number.isFinite(scheduledEndAt.getTime())) throw new VideoCallValidationError("Choose valid start and end times.");
-  if (scheduledEndAt <= scheduledStartAt) throw new VideoCallValidationError("Video call end time must be after the start time.");
+  if (!Number.isFinite(scheduledStartAt.getTime()) || !Number.isFinite(scheduledEndAt.getTime()))
+    throw new VideoCallValidationError("Choose valid start and end times.");
+  if (scheduledEndAt <= scheduledStartAt)
+    throw new VideoCallValidationError("Video call end time must be after the start time.");
   return { scheduledStartAt, scheduledEndAt };
 }
 
@@ -63,14 +72,23 @@ export async function validateVideoReferences(organizationId: string, userId: st
 
 export async function buildVideoParticipants(organizationId: string, participants: unknown) {
   if (!Array.isArray(participants)) return [];
-  const values = participants.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+  const values = participants.filter((item): item is Record<string, unknown> =>
+    Boolean(item && typeof item === "object")
+  );
   const contactIds = [...new Set(values.map((item) => String(item.contactId ?? "")).filter(Boolean))];
   const userIds = [...new Set(values.map((item) => String(item.userId ?? "")).filter(Boolean))];
   const [contacts, memberships] = await Promise.all([
-    prisma.contact.findMany({ where: { organizationId, id: { in: contactIds } }, select: { id: true, firstName: true, lastName: true, email: true } }),
-    prisma.organizationMembership.findMany({ where: { organizationId, userId: { in: userIds }, status: "ACTIVE" }, include: { user: true } })
+    prisma.contact.findMany({
+      where: { organizationId, id: { in: contactIds } },
+      select: { id: true, firstName: true, lastName: true, email: true }
+    }),
+    prisma.organizationMembership.findMany({
+      where: { organizationId, userId: { in: userIds }, status: "ACTIVE" },
+      include: { user: true }
+    })
   ]);
-  if (contacts.length !== contactIds.length || memberships.length !== userIds.length) throw new AppAuthorizationError("One or more video-call participants were not found.", 404);
+  if (contacts.length !== contactIds.length || memberships.length !== userIds.length)
+    throw new AppAuthorizationError("One or more video-call participants were not found.", 404);
   const contactsById = new Map(contacts.map((contact) => [contact.id, contact]));
   const usersById = new Map(memberships.map((membership) => [membership.userId, membership.user]));
   return values.map((participant, index) => {
@@ -103,7 +121,13 @@ export async function requireVideoCall(organizationId: string, id: string) {
   return videoCall;
 }
 
-export async function createVideoCallNotification(organizationId: string, userId: string, title: string, body: string, id: string) {
+export async function createVideoCallNotification(
+  organizationId: string,
+  userId: string,
+  title: string,
+  body: string,
+  id: string
+) {
   return prisma.notification.create({
     data: { organizationId, userId, title, body, href: `/lightning/r/VideoCall/${id}/view`, category: "Activity" }
   });

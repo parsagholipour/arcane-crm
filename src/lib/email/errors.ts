@@ -29,4 +29,3 @@ export class EmailDeliveryError extends EmailError {
     this.name = "EmailDeliveryError";
   }
 }
-

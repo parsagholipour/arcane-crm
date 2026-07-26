@@ -27,29 +27,36 @@ export async function sendTrackedEmail(
   dependencies: { adapter?: EmailAdapter; senderEmail?: string } = {}
 ): Promise<TrackedEmailResult> {
   const trackingKey = randomUUID();
-  const delivery = await sendConfiguredEmail({
-    ...message,
-    customArgs: { ...message.customArgs, [SENDGRID_TRACKING_ARGUMENT]: trackingKey }
-  }, dependencies);
+  const delivery = await sendConfiguredEmail(
+    {
+      ...message,
+      customArgs: { ...message.customArgs, [SENDGRID_TRACKING_ARGUMENT]: trackingKey }
+    },
+    dependencies
+  );
   const sender = normalizeEmailAddress(dependencies.senderEmail ?? process.env.SENDGRID_EMAIL ?? "");
   const status = message.scheduledAt ? "Scheduled" : "Accepted";
-  const rows = await prisma.$transaction(message.to.map((recipient) => prisma.emailDelivery.create({
-    data: {
-      organizationId: tracking.organizationId,
-      trackingKey,
-      provider: delivery.provider,
-      providerMessageId: delivery.messageId ?? null,
-      sourceType: tracking.sourceType,
-      sourceId: tracking.sourceId ?? null,
-      recipient: normalizeEmailAddress(recipient.email),
-      sender,
-      subject: message.subject.trim(),
-      status,
-      recordedById: tracking.userId,
-      scheduledAt: message.scheduledAt ?? null,
-      acceptedAt: delivery.acceptedAt
-    }
-  })));
+  const rows = await prisma.$transaction(
+    message.to.map((recipient) =>
+      prisma.emailDelivery.create({
+        data: {
+          organizationId: tracking.organizationId,
+          trackingKey,
+          provider: delivery.provider,
+          providerMessageId: delivery.messageId ?? null,
+          sourceType: tracking.sourceType,
+          sourceId: tracking.sourceId ?? null,
+          recipient: normalizeEmailAddress(recipient.email),
+          sender,
+          subject: message.subject.trim(),
+          status,
+          recordedById: tracking.userId,
+          scheduledAt: message.scheduledAt ?? null,
+          acceptedAt: delivery.acceptedAt
+        }
+      })
+    )
+  );
   return { ...delivery, trackingKey, deliveryIds: rows.map((row) => row.id) };
 }
 
@@ -74,7 +81,9 @@ const STATUS_RANK: Record<string, number> = {
 };
 
 export function sendGridDeliveryState(eventType: unknown) {
-  const event = String(eventType ?? "").trim().toLowerCase();
+  const event = String(eventType ?? "")
+    .trim()
+    .toLowerCase();
   if (event === "processed") return { status: "Processing", failed: false };
   if (event === "deferred") return { status: "Deferred", failed: false };
   if (event === "delivered") return { status: "Delivered", failed: false };
@@ -98,16 +107,31 @@ function eventDate(value: unknown) {
 export async function ingestSendGridEvents(events: unknown[]) {
   const results = { accepted: 0, duplicate: 0, unmatched: 0, invalid: 0 };
   for (const value of events.slice(0, 1000)) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) { results.invalid += 1; continue; }
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      results.invalid += 1;
+      continue;
+    }
     const event = value as Record<string, unknown>;
     const trackingKey = webhookString(event, SENDGRID_TRACKING_ARGUMENT);
     const recipient = normalizeEmailAddress(webhookString(event, "email"));
     const eventType = webhookString(event, "event").toLowerCase();
-    if (!trackingKey || !recipient || !eventType) { results.invalid += 1; continue; }
+    if (!trackingKey || !recipient || !eventType) {
+      results.invalid += 1;
+      continue;
+    }
     const delivery = await prisma.emailDelivery.findFirst({ where: { trackingKey, recipient } });
-    if (!delivery) { results.unmatched += 1; continue; }
+    if (!delivery) {
+      results.unmatched += 1;
+      continue;
+    }
     const providerEventId = webhookString(event, "sg_event_id") || null;
-    if (providerEventId && await prisma.emailDeliveryEvent.findUnique({ where: { providerEventId }, select: { id: true } })) { results.duplicate += 1; continue; }
+    if (
+      providerEventId &&
+      (await prisma.emailDeliveryEvent.findUnique({ where: { providerEventId }, select: { id: true } }))
+    ) {
+      results.duplicate += 1;
+      continue;
+    }
     const occurredAt = eventDate(event.timestamp);
     const reason = webhookString(event, "reason") || webhookString(event, "type") || null;
     const response = webhookString(event, "response") || null;
@@ -135,15 +159,20 @@ export async function ingestSendGridEvents(events: unknown[]) {
             providerMessageId: providerMessageId ?? delivery.providerMessageId,
             lastEventAt: occurredAt,
             lastReason: reason,
-            ...(shouldAdvance ? {
-              status: state.status,
-              deliveredAt: state.status === "Delivered" ? occurredAt : delivery.deliveredAt,
-              failedAt: state.failed ? occurredAt : delivery.failedAt
-            } : {})
+            ...(shouldAdvance
+              ? {
+                  status: state.status,
+                  deliveredAt: state.status === "Delivered" ? occurredAt : delivery.deliveredAt,
+                  failedAt: state.failed ? occurredAt : delivery.failedAt
+                }
+              : {})
           }
         });
         if (delivery.sourceType === "MessagingMessage" && delivery.sourceId && state) {
-          await tx.messagingMessage.updateMany({ where: { id: delivery.sourceId, organizationId: delivery.organizationId }, data: { status: state.status } });
+          await tx.messagingMessage.updateMany({
+            where: { id: delivery.sourceId, organizationId: delivery.organizationId },
+            data: { status: state.status }
+          });
         }
         if (state?.failed) {
           await tx.notification.create({
@@ -152,7 +181,9 @@ export async function ingestSendGridEvents(events: unknown[]) {
               userId: delivery.recordedById,
               title: `Email ${state.status.toLowerCase()}`,
               body: `${delivery.subject} to ${delivery.recipient}${reason ? `: ${reason}` : "."}`,
-              href: delivery.sourceId ? emailSourceHref(delivery.sourceType, delivery.sourceId) : "/lightning/page/home",
+              href: delivery.sourceId
+                ? emailSourceHref(delivery.sourceType, delivery.sourceId)
+                : "/lightning/page/home",
               category: "Email Delivery"
             }
           });
@@ -170,9 +201,13 @@ export async function ingestSendGridEvents(events: unknown[]) {
 function emailSourceHref(sourceType: string, sourceId: string) {
   if (sourceType === "Event") return `/lightning/o/Event/home?eventId=${encodeURIComponent(sourceId)}`;
   const object =
-    sourceType === "ListEmail" ? "ListEmail" :
-    sourceType === "Invoice" ? "Invoice" :
-    sourceType === "VideoCall" ? "VideoCall" : "";
+    sourceType === "ListEmail"
+      ? "ListEmail"
+      : sourceType === "Invoice"
+        ? "Invoice"
+        : sourceType === "VideoCall"
+          ? "VideoCall"
+          : "";
   return object ? `/lightning/r/${object}/${sourceId}/view` : "/lightning/page/home";
 }
 

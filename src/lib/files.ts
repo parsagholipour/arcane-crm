@@ -2,7 +2,26 @@ const DEFAULT_MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ABSOLUTE_MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 const blockedExtensions = new Set([
-  "app", "bat", "cmd", "com", "cpl", "dll", "dmg", "exe", "hta", "jar", "js", "jse", "msi", "msp", "pif", "ps1", "scr", "vbe", "vbs", "wsf"
+  "app",
+  "bat",
+  "cmd",
+  "com",
+  "cpl",
+  "dll",
+  "dmg",
+  "exe",
+  "hta",
+  "jar",
+  "js",
+  "jse",
+  "msi",
+  "msp",
+  "pif",
+  "ps1",
+  "scr",
+  "vbe",
+  "vbs",
+  "wsf"
 ]);
 
 const previewableTypes = new Set([
@@ -17,7 +36,10 @@ const previewableTypes = new Set([
 ]);
 
 export class FileValidationError extends Error {
-  constructor(message: string, readonly status = 400) {
+  constructor(
+    message: string,
+    readonly status = 400
+  ) {
     super(message);
     this.name = "FileValidationError";
   }
@@ -31,14 +53,18 @@ export function configuredMaxFileBytes() {
 
 export function normalizeFileName(value: string) {
   const leaf = value.replace(/\\/g, "/").split("/").pop() ?? "file";
-  const normalized = leaf.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 255);
+  const normalized = leaf
+    .replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim()
+    .slice(0, 255);
   return normalized || "file";
 }
 
 export function validateFileMetadata(name: string, size: number, contentType: string) {
   if (!Number.isInteger(size) || size <= 0) throw new FileValidationError("Choose a non-empty file.");
   const maxBytes = configuredMaxFileBytes();
-  if (size > maxBytes) throw new FileValidationError(`File size cannot exceed ${Math.floor(maxBytes / 1024 / 1024)} MB.`, 413);
+  if (size > maxBytes)
+    throw new FileValidationError(`File size cannot exceed ${Math.floor(maxBytes / 1024 / 1024)} MB.`, 413);
   const normalizedName = normalizeFileName(name);
   const extension = normalizedName.includes(".") ? normalizedName.split(".").pop()!.toLowerCase() : "";
   const normalizedType = contentType.trim().toLowerCase() || "application/octet-stream";

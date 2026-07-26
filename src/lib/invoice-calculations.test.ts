@@ -18,7 +18,9 @@ test("calculates multiple invoice lines with discounts and tax using decimal ari
 });
 
 test("rounds monetary values half-up at the line boundary", () => {
-  const result = calculateInvoiceTotals([{ description: "Rounded", quantity: "1", unitPrice: "0.10", discountAmount: "0", taxRate: "5" }]);
+  const result = calculateInvoiceTotals([
+    { description: "Rounded", quantity: "1", unitPrice: "0.10", discountAmount: "0", taxRate: "5" }
+  ]);
   assert.equal(result.lineItems[0].taxAmount.toFixed(2), "0.01");
   assert.equal(result.total.toFixed(2), "0.11");
 });

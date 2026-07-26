@@ -83,7 +83,12 @@ export async function assertOrganizationRecord(
   model: "account" | "contact" | "lead" | "opportunity" | "caseRecord" | "product" | "priceBook",
   id: string
 ) {
-  const delegate = prisma[model] as unknown as { findFirst(args: { where: { id: string; organizationId: string }; select: { id: true } }): Promise<{ id: string } | null> };
+  const delegate = prisma[model] as unknown as {
+    findFirst(args: {
+      where: { id: string; organizationId: string };
+      select: { id: true };
+    }): Promise<{ id: string } | null>;
+  };
   const row = await delegate.findFirst({ where: { id, organizationId }, select: { id: true } });
   if (!row) throw new AppAuthorizationError("Record not found.", 404);
   return row;
@@ -93,12 +98,20 @@ export async function assertRelatedOrganizationRecord(organizationId: string, ob
   if (!recordId) return;
   const normalized = String(objectType ?? "").toLowerCase();
   const model =
-    normalized === "account" || normalized === "accounts" ? "account" :
-    normalized === "contact" || normalized === "contacts" ? "contact" :
-    normalized === "lead" || normalized === "leads" ? "lead" :
-    normalized === "opportunity" || normalized === "opportunities" ? "opportunity" :
-    normalized === "case" || normalized === "cases" ? "caseRecord" :
-    normalized === "product2" || normalized === "product" || normalized === "products" ? "product" :
-    normalized === "pricebook2" || normalized === "price book" || normalized === "price books" ? "priceBook" : null;
+    normalized === "account" || normalized === "accounts"
+      ? "account"
+      : normalized === "contact" || normalized === "contacts"
+        ? "contact"
+        : normalized === "lead" || normalized === "leads"
+          ? "lead"
+          : normalized === "opportunity" || normalized === "opportunities"
+            ? "opportunity"
+            : normalized === "case" || normalized === "cases"
+              ? "caseRecord"
+              : normalized === "product2" || normalized === "product" || normalized === "products"
+                ? "product"
+                : normalized === "pricebook2" || normalized === "price book" || normalized === "price books"
+                  ? "priceBook"
+                  : null;
   if (model) await assertOrganizationRecord(organizationId, model, String(recordId));
 }

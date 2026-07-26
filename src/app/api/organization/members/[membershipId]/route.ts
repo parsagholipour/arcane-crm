@@ -17,8 +17,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Params }
     });
     return NextResponse.json({ membership });
   } catch (error) {
-    if (error instanceof UserManagementError) return NextResponse.json({ error: error.message }, { status: error.status });
-    return authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to update organization user." }, { status: 500 });
+    if (error instanceof UserManagementError)
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    return (
+      authorizationErrorResponse(error) ??
+      NextResponse.json({ error: "Unable to update organization user." }, { status: 500 })
+    );
   }
 }
 
@@ -29,7 +33,11 @@ export async function DELETE(_request: NextRequest, { params }: { params: Params
     await removeOrganizationMembership(context.organizationId, membershipId);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    if (error instanceof UserManagementError) return NextResponse.json({ error: error.message }, { status: error.status });
-    return authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to remove organization user." }, { status: 500 });
+    if (error instanceof UserManagementError)
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    return (
+      authorizationErrorResponse(error) ??
+      NextResponse.json({ error: "Unable to remove organization user." }, { status: 500 })
+    );
   }
 }

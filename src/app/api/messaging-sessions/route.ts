@@ -1,5 +1,12 @@
 import { authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
-import { buildMessagingParticipants, createMessagingNotification, messagingErrorResponse, messagingSessionInclude, requireMessagingChannel, validateMessagingReferences } from "@/lib/messaging";
+import {
+  buildMessagingParticipants,
+  createMessagingNotification,
+  messagingErrorResponse,
+  messagingSessionInclude,
+  requireMessagingChannel,
+  validateMessagingReferences
+} from "@/lib/messaging";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -14,7 +21,14 @@ export async function GET(request: NextRequest) {
       where: {
         organizationId: context.organizationId,
         ...(status ? { status } : {}),
-        ...(query ? { OR: [{ name: { contains: query, mode: "insensitive" } }, { subject: { contains: query, mode: "insensitive" } }] } : {})
+        ...(query
+          ? {
+              OR: [
+                { name: { contains: query, mode: "insensitive" } },
+                { subject: { contains: query, mode: "insensitive" } }
+              ]
+            }
+          : {})
       },
       include: messagingSessionInclude,
       orderBy: [{ lastMessageAt: "desc" }, { updatedAt: "desc" }]
@@ -36,9 +50,12 @@ export async function POST(request: NextRequest) {
     if (!name) return NextResponse.json({ error: "Messaging session name is required." }, { status: 400 });
     const channel = requireMessagingChannel(payload.channel);
     const ownerId = await validateMessagingReferences(context.organizationId, context.userId, payload);
-    const participantInput = Array.isArray(payload.participants) && payload.participants.length
-      ? payload.participants
-      : payload.contactId ? [{ contactId: payload.contactId, role: "Customer" }] : [];
+    const participantInput =
+      Array.isArray(payload.participants) && payload.participants.length
+        ? payload.participants
+        : payload.contactId
+          ? [{ contactId: payload.contactId, role: "Customer" }]
+          : [];
     const participants = await buildMessagingParticipants(context.organizationId, participantInput);
     const session = await prisma.messagingSession.create({
       data: {
@@ -56,8 +73,17 @@ export async function POST(request: NextRequest) {
       },
       include: messagingSessionInclude
     });
-    const notification = await createMessagingNotification(context.organizationId, context.userId, "Messaging session created", `${name} is ready for conversation tracking.`, session.id);
-    return NextResponse.json({ session: JSON.parse(JSON.stringify(session)), notifications: [notification] }, { status: 201 });
+    const notification = await createMessagingNotification(
+      context.organizationId,
+      context.userId,
+      "Messaging session created",
+      `${name} is ready for conversation tracking.`,
+      session.id
+    );
+    return NextResponse.json(
+      { session: JSON.parse(JSON.stringify(session)), notifications: [notification] },
+      { status: 201 }
+    );
   } catch (error) {
     console.error(error);
     const response = authorizationErrorResponse(error);

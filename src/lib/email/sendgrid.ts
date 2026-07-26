@@ -18,10 +18,15 @@ function messageIdFrom(response: SendGridResponse) {
 }
 
 export function toSendGridMailData(message: OutboundEmail): MailDataRequired {
-  const content = message.text ? { text: message.text, ...(message.html ? { html: message.html } : {}) } : { html: message.html ?? "" };
+  const content = message.text
+    ? { text: message.text, ...(message.html ? { html: message.html } : {}) }
+    : { html: message.html ?? "" };
   return {
     from: message.from,
-    personalizations: message.to.map((recipient) => ({ to: [recipient], ...(message.customArgs ? { customArgs: message.customArgs } : {}) })),
+    personalizations: message.to.map((recipient) => ({
+      to: [recipient],
+      ...(message.customArgs ? { customArgs: message.customArgs } : {})
+    })),
     subject: message.subject,
     ...content,
     ...(message.attachments?.length
@@ -61,7 +66,10 @@ export class SendGridEmailAdapter implements EmailAdapter {
         messageId: messageIdFrom(response)
       };
     } catch (error) {
-      console.error("SendGrid rejected an outbound CRM email", error instanceof Error ? error.name : "Unknown provider error");
+      console.error(
+        "SendGrid rejected an outbound CRM email",
+        error instanceof Error ? error.name : "Unknown provider error"
+      );
       throw new EmailDeliveryError();
     }
   }

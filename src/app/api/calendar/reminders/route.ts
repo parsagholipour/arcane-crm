@@ -8,7 +8,10 @@ export const dynamic = "force-dynamic";
 export async function POST() {
   try {
     const context = await requireOrganizationContext();
-    const summary = await dispatchDueCalendarReminders({ userId: context.userId, organizationId: context.organizationId });
+    const summary = await dispatchDueCalendarReminders({
+      userId: context.userId,
+      organizationId: context.organizationId
+    });
     const notifications = await prisma.notification.findMany({
       where: {
         organizationId: context.organizationId,

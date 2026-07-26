@@ -17,7 +17,9 @@ export async function GET() {
       keycloakSessions: keycloakSessions.map((row) => ({ ...row, current: row.id === session?.keycloakSessionId }))
     });
   } catch (error) {
-    return authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to list sessions." }, { status: 500 });
+    return (
+      authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to list sessions." }, { status: 500 })
+    );
   }
 }
 
@@ -29,16 +31,25 @@ export async function POST(request: NextRequest) {
     if (payload.action === "logout-others") {
       await revokeAllAppSessions(user.id, current?.appSessionId ?? undefined);
       const sessions = user.keycloakSub ? await listKeycloakSessions(user.keycloakSub).catch(() => []) : [];
-      await Promise.all(sessions.filter((row) => row.id !== current?.keycloakSessionId).map((row) => deleteKeycloakSession(row.id).catch(() => undefined)));
+      await Promise.all(
+        sessions
+          .filter((row) => row.id !== current?.keycloakSessionId)
+          .map((row) => deleteKeycloakSession(row.id).catch(() => undefined))
+      );
       return NextResponse.json({ ok: true });
     }
-    if (payload.action !== "revoke" || !payload.sessionId) return NextResponse.json({ error: "Invalid session action." }, { status: 400 });
+    if (payload.action !== "revoke" || !payload.sessionId)
+      return NextResponse.json({ error: "Invalid session action." }, { status: 400 });
     if (payload.source === "app") {
-      if (payload.sessionId === current?.appSessionId) return NextResponse.json({ error: "Use sign out for the current session." }, { status: 400 });
+      if (payload.sessionId === current?.appSessionId)
+        return NextResponse.json({ error: "Use sign out for the current session." }, { status: 400 });
       await revokeAppSession(payload.sessionId, user.id);
     } else if (payload.source === "keycloak") {
-      if (payload.sessionId === current?.keycloakSessionId) return NextResponse.json({ error: "Use sign out for the current session." }, { status: 400 });
-      const owned = user.keycloakSub ? (await listKeycloakSessions(user.keycloakSub)).some((row) => row.id === payload.sessionId) : false;
+      if (payload.sessionId === current?.keycloakSessionId)
+        return NextResponse.json({ error: "Use sign out for the current session." }, { status: 400 });
+      const owned = user.keycloakSub
+        ? (await listKeycloakSessions(user.keycloakSub)).some((row) => row.id === payload.sessionId)
+        : false;
       if (!owned) return NextResponse.json({ error: "Session not found." }, { status: 404 });
       await deleteKeycloakSession(payload.sessionId);
     } else {
@@ -46,6 +57,8 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to update sessions." }, { status: 500 });
+    return (
+      authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to update sessions." }, { status: 500 })
+    );
   }
 }

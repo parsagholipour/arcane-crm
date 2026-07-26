@@ -9,14 +9,26 @@ export type AsyncButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "on
 };
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
-  return value !== null && value !== undefined && (typeof value === "object" || typeof value === "function") && "then" in value;
+  return (
+    value !== null &&
+    value !== undefined &&
+    (typeof value === "object" || typeof value === "function") &&
+    "then" in value
+  );
 }
 
 /**
  * A button that owns the pending UI for promise-returning actions.
  * Callers only need to return their async work from onClick.
  */
-export function AsyncButton({ children, disabled = false, onClick, pendingContent, type = "button", ...props }: AsyncButtonProps) {
+export function AsyncButton({
+  children,
+  disabled = false,
+  onClick,
+  pendingContent,
+  type = "button",
+  ...props
+}: AsyncButtonProps) {
   const pendingRef = useRef(false);
   const [pending, setPending] = useState(false);
 

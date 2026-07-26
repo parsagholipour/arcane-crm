@@ -13,7 +13,10 @@ export async function GET() {
     });
     return NextResponse.json({ memberships });
   } catch (error) {
-    return authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to list organization users." }, { status: 500 });
+    return (
+      authorizationErrorResponse(error) ??
+      NextResponse.json({ error: "Unable to list organization users." }, { status: 500 })
+    );
   }
 }
 
@@ -30,7 +33,11 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json(result, { status: 201 });
   } catch (error) {
-    if (error instanceof UserManagementError) return NextResponse.json({ error: error.message }, { status: error.status });
-    return authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to invite organization user." }, { status: 500 });
+    if (error instanceof UserManagementError)
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    return (
+      authorizationErrorResponse(error) ??
+      NextResponse.json({ error: "Unable to invite organization user." }, { status: 500 })
+    );
   }
 }

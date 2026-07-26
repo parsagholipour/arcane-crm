@@ -28,30 +28,37 @@ function acceptedInvitation() {
 
 test("organization invitation uses a tenant activation link and records provider acceptance", async () => {
   let trackedMessage: { html?: string; text?: string } | undefined;
-  let trackedContext: { sourceType: string; sourceId?: string | null; organizationId: string; userId: string } | undefined;
+  let trackedContext:
+    { sourceType: string; sourceId?: string | null; organizationId: string; userId: string } | undefined;
   let marked: { membershipId: string; sentAt: Date } | undefined;
-  const delivery = await sendOrganizationInvitation({
-    organizationId: "org-1",
-    organizationName: "Example Organization",
-    membershipId: "membership-1",
-    recipientName: "Invited User",
-    recipientEmail: "invitee@example.com",
-    role: "MEMBER",
-    initiatedByUserId: "actor-1",
-    newIdentity: false
-  }, {
-    appUrl: "https://crm.example.com/",
-    async send(message, tracking) {
-      trackedMessage = message;
-      trackedContext = tracking;
-      return acceptedInvitation().result;
+  const delivery = await sendOrganizationInvitation(
+    {
+      organizationId: "org-1",
+      organizationName: "Example Organization",
+      membershipId: "membership-1",
+      recipientName: "Invited User",
+      recipientEmail: "invitee@example.com",
+      role: "MEMBER",
+      initiatedByUserId: "actor-1",
+      newIdentity: false
     },
-    async markSent(membershipId, sentAt) {
-      marked = { membershipId, sentAt };
+    {
+      appUrl: "https://crm.example.com/",
+      async send(message, tracking) {
+        trackedMessage = message;
+        trackedContext = tracking;
+        return acceptedInvitation().result;
+      },
+      async markSent(membershipId, sentAt) {
+        marked = { membershipId, sentAt };
+      }
     }
-  });
+  );
 
-  assert.match(trackedMessage?.text ?? "", /https:\/\/crm\.example\.com\/organizations\/activate\?organizationId=org-1/);
+  assert.match(
+    trackedMessage?.text ?? "",
+    /https:\/\/crm\.example\.com\/organizations\/activate\?organizationId=org-1/
+  );
   assert.match(trackedMessage?.html ?? "", /Open Reloriq/);
   assert.deepEqual(trackedContext, {
     organizationId: "org-1",
@@ -64,24 +71,34 @@ test("organization invitation uses a tenant activation link and records provider
 });
 
 test("public app URL prefers explicit configuration and Railway's public domain", () => {
-  assert.equal(resolvePublicAppUrl(undefined, {
-    NODE_ENV: "production",
-    PUBLIC_APP_URL: "https://configured.example.com/path",
-    RAILWAY_PUBLIC_DOMAIN: "railway.example.com",
-    AUTH_URL: "https://localhost:8080"
-  }), "https://configured.example.com");
-  assert.equal(resolvePublicAppUrl(undefined, {
-    NODE_ENV: "production",
-    RAILWAY_PUBLIC_DOMAIN: "af-crm.up.railway.app",
-    AUTH_URL: "https://localhost:8080"
-  }), "https://af-crm.up.railway.app");
+  assert.equal(
+    resolvePublicAppUrl(undefined, {
+      NODE_ENV: "production",
+      PUBLIC_APP_URL: "https://configured.example.com/path",
+      RAILWAY_PUBLIC_DOMAIN: "railway.example.com",
+      AUTH_URL: "https://localhost:8080"
+    }),
+    "https://configured.example.com"
+  );
+  assert.equal(
+    resolvePublicAppUrl(undefined, {
+      NODE_ENV: "production",
+      RAILWAY_PUBLIC_DOMAIN: "af-crm.up.railway.app",
+      AUTH_URL: "https://localhost:8080"
+    }),
+    "https://af-crm.up.railway.app"
+  );
 });
 
 test("public app URL refuses loopback links in production", () => {
-  assert.throws(() => resolvePublicAppUrl(undefined, {
-    NODE_ENV: "production",
-    AUTH_URL: "https://localhost:8080"
-  }), /must use a public host in production/);
+  assert.throws(
+    () =>
+      resolvePublicAppUrl(undefined, {
+        NODE_ENV: "production",
+        AUTH_URL: "https://localhost:8080"
+      }),
+    /must use a public host in production/
+  );
 });
 
 const onboardingInput = {
@@ -138,14 +155,17 @@ test("new identities preserve a successful invitation when Keycloak setup delive
 
 test("existing identities receive membership invitations without credential setup", async () => {
   let setupCalled = false;
-  const result = await deliverMembershipOnboarding({ ...onboardingInput, newIdentity: false }, {
-    async sendInvitation() {
-      return acceptedInvitation();
-    },
-    async sendSetup() {
-      setupCalled = true;
+  const result = await deliverMembershipOnboarding(
+    { ...onboardingInput, newIdentity: false },
+    {
+      async sendInvitation() {
+        return acceptedInvitation();
+      },
+      async sendSetup() {
+        setupCalled = true;
+      }
     }
-  });
+  );
 
   assert.equal(setupCalled, false);
   assert.equal(result.invitationEmailSent, true);

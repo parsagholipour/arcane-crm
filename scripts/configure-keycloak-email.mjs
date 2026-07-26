@@ -20,16 +20,16 @@ export function desiredSmtpConfig(environment) {
 }
 
 export function validateEmailEnvironment(environment) {
-  const required = [
-    "AUTH_KEYCLOAK_ISSUER",
-    "SENDGRID_API_KEY",
-    "SENDGRID_EMAIL"
-  ];
+  const required = ["AUTH_KEYCLOAK_ISSUER", "SENDGRID_API_KEY", "SENDGRID_EMAIL"];
   const missing = required.filter((key) => !String(environment[key] ?? "").trim());
   if (!String(environment.KEYCLOAK_REALM_ADMIN_CLIENT_ID || environment.AUTH_KEYCLOAK_ADMIN_CLIENT_ID || "").trim()) {
     missing.push("KEYCLOAK_REALM_ADMIN_CLIENT_ID or AUTH_KEYCLOAK_ADMIN_CLIENT_ID");
   }
-  if (!String(environment.KEYCLOAK_REALM_ADMIN_CLIENT_SECRET || environment.AUTH_KEYCLOAK_ADMIN_CLIENT_SECRET || "").trim()) {
+  if (
+    !String(
+      environment.KEYCLOAK_REALM_ADMIN_CLIENT_SECRET || environment.AUTH_KEYCLOAK_ADMIN_CLIENT_SECRET || ""
+    ).trim()
+  ) {
     missing.push("KEYCLOAK_REALM_ADMIN_CLIENT_SECRET or AUTH_KEYCLOAK_ADMIN_CLIENT_SECRET");
   }
   if (missing.length) throw new Error(`Missing required configuration: ${missing.join(", ")}`);
@@ -81,7 +81,9 @@ async function realmRequest(environment, method = "GET", body) {
   });
   if (!response.ok) {
     if (response.status === 403 && method === "PUT") {
-      throw new Error("Keycloak denied the SMTP update. The configuration service account must have the realm-management manage-realm role.");
+      throw new Error(
+        "Keycloak denied the SMTP update. The configuration service account must have the realm-management manage-realm role."
+      );
     }
     throw new Error(`Keycloak realm request failed (HTTP ${response.status}).`);
   }
@@ -89,9 +91,19 @@ async function realmRequest(environment, method = "GET", body) {
 }
 
 export function smtpConfigMatches(actual, desired) {
-  const expectedKeys = ["host", "port", "from", "fromDisplayName", "replyTo", "replyToDisplayName", "auth", "user", "starttls", "ssl"];
-  return expectedKeys.every((key) => String(actual?.[key] ?? "") === String(desired[key]))
-    && Boolean(actual?.password);
+  const expectedKeys = [
+    "host",
+    "port",
+    "from",
+    "fromDisplayName",
+    "replyTo",
+    "replyToDisplayName",
+    "auth",
+    "user",
+    "starttls",
+    "ssl"
+  ];
+  return expectedKeys.every((key) => String(actual?.[key] ?? "") === String(desired[key])) && Boolean(actual?.password);
 }
 
 async function verifiedSenderStatus(environment) {
@@ -102,7 +114,12 @@ async function verifiedSenderStatus(environment) {
   const payload = await response.json();
   const configured = environment.SENDGRID_EMAIL.trim().toLowerCase();
   const senders = Array.isArray(payload.results) ? payload.results : [];
-  const match = senders.find((sender) => String(sender.from_email ?? "").trim().toLowerCase() === configured);
+  const match = senders.find(
+    (sender) =>
+      String(sender.from_email ?? "")
+        .trim()
+        .toLowerCase() === configured
+  );
   return { apiStatus: response.status, configuredSenderVerified: Boolean(match?.verified) };
 }
 

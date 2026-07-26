@@ -6,10 +6,14 @@ import { NextRequest } from "next/server";
 async function logout() {
   const session = await auth();
   if (session?.appSessionId) {
-    await revokeAppSession(session.appSessionId, session.user?.id).catch((error) => console.warn("Unable to revoke app session", error));
+    await revokeAppSession(session.appSessionId, session.user?.id).catch((error) =>
+      console.warn("Unable to revoke app session", error)
+    );
   }
   if (session?.keycloakSessionId) {
-    await deleteKeycloakSession(session.keycloakSessionId).catch((error) => console.warn("Unable to revoke Keycloak session", error));
+    await deleteKeycloakSession(session.keycloakSessionId).catch((error) =>
+      console.warn("Unable to revoke Keycloak session", error)
+    );
   }
   await signOut({ redirectTo: "/auth/signed-out" });
 }

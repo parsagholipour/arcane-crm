@@ -44,7 +44,11 @@ function partsFormatter(timeZone: string) {
 /** Wall-clock fields of an instant as observed in `timeZone`. */
 export function utcToZonedParts(value: unknown, timeZone: string): ZonedParts {
   const date = value instanceof Date ? value : new Date(String(value));
-  const parts = Object.fromEntries(partsFormatter(timeZone).formatToParts(date).map((part) => [part.type, part.value]));
+  const parts = Object.fromEntries(
+    partsFormatter(timeZone)
+      .formatToParts(date)
+      .map((part) => [part.type, part.value])
+  );
   return {
     year: Number(parts.year),
     month: Number(parts.month),
@@ -72,7 +76,9 @@ export function timeZoneOffsetMs(instant: Date, timeZone: string) {
  */
 export function zonedTimeToUtc(dateText: string, timeText: string, timeZone: string): Date {
   const [year, month, day] = String(dateText).split("-").map(Number);
-  const [hour = 0, minute = 0] = String(timeText || "00:00").split(":").map(Number);
+  const [hour = 0, minute = 0] = String(timeText || "00:00")
+    .split(":")
+    .map(Number);
   if (!year || !month || !day) return new Date(NaN);
   const naive = Date.UTC(year, month - 1, day, hour, minute, 0);
   const firstPass = new Date(naive - timeZoneOffsetMs(new Date(naive), timeZone));
@@ -142,7 +148,11 @@ export function getMonthDays(date: Date, weekStartsOn = 0) {
 }
 
 export function sameDate(left: Date, right: Date) {
-  return left.getFullYear() === right.getFullYear() && left.getMonth() === right.getMonth() && left.getDate() === right.getDate();
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
 }
 
 export function sameMonth(left: Date, right: Date) {
@@ -162,7 +172,9 @@ export function minutesToTimeText(minutes: number) {
 }
 
 export function timeTextToMinutes(time: string) {
-  const [hour = 0, minute = 0] = String(time || "00:00").split(":").map(Number);
+  const [hour = 0, minute = 0] = String(time || "00:00")
+    .split(":")
+    .map(Number);
   return hour * 60 + minute;
 }
 
@@ -184,7 +196,9 @@ export function monthDayYearLabel(date: Date) {
 }
 
 export function fullDateLabel(date: Date) {
-  return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(date);
+  return new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(
+    date
+  );
 }
 
 export function shortDayLabel(date: Date) {
@@ -198,7 +212,12 @@ export function weekdayHeaderLabels(weekStartsOn = 0) {
 
 export function calendarTimeRange(item: { allDay?: unknown; startAt?: unknown; endAt?: unknown }, timeZone: string) {
   if (item.allDay) return "All day";
-  const formatter = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone });
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone
+  });
   return `${formatter.format(new Date(String(item.startAt)))}-${formatter.format(new Date(String(item.endAt)))}`;
 }
 
@@ -238,14 +257,22 @@ export function layoutDayItems<T extends { startAt: string; endAt: string; allDa
     const startsToday = sameDateInTimeZone(start, day, timeZone);
     const endsToday = sameDateInTimeZone(end, day, timeZone);
     // A span also covers this day when it straddles it entirely.
-    const covers = startsToday || endsToday || (start < dayBoundary(day, timeZone, 0) && end > dayBoundary(day, timeZone, MINUTES_PER_DAY));
+    const covers =
+      startsToday ||
+      endsToday ||
+      (start < dayBoundary(day, timeZone, 0) && end > dayBoundary(day, timeZone, MINUTES_PER_DAY));
     if (!covers) continue;
 
     const startMinutes = startsToday ? minutesFromMidnight(start, timeZone) : 0;
     const rawEnd = endsToday ? minutesFromMidnight(end, timeZone) : MINUTES_PER_DAY;
     // Overlap is computed from the real end; the minimum height is applied at render
     // time only, so back-to-back short events stay stacked rather than side by side.
-    spans.push({ item, startMinutes, endMinutes: Math.min(Math.max(rawEnd, startMinutes), MINUTES_PER_DAY), columnIndex: 0 });
+    spans.push({
+      item,
+      startMinutes,
+      endMinutes: Math.min(Math.max(rawEnd, startMinutes), MINUTES_PER_DAY),
+      columnIndex: 0
+    });
   }
 
   spans.sort((left, right) => left.startMinutes - right.startMinutes || right.endMinutes - left.endMinutes);
@@ -276,7 +303,8 @@ export function layoutDayItems<T extends { startAt: string; endAt: string; allDa
     if (cluster.length > 0 && span.startMinutes >= clusterEnd) flush();
     // Lowest lane whose latest occupant has already finished.
     const laneEnds = new Map<number, number>();
-    for (const existing of cluster) laneEnds.set(existing.columnIndex, Math.max(laneEnds.get(existing.columnIndex) ?? 0, existing.endMinutes));
+    for (const existing of cluster)
+      laneEnds.set(existing.columnIndex, Math.max(laneEnds.get(existing.columnIndex) ?? 0, existing.endMinutes));
     let lane = 0;
     while ((laneEnds.get(lane) ?? 0) > span.startMinutes) lane += 1;
     span.columnIndex = lane;
@@ -293,7 +321,11 @@ export function dayBoundary(day: Date, timeZone: string, minutes: number) {
   return zonedTimeToUtc(toDateInputValue(day), minutesToTimeText(Math.min(minutes, MINUTES_PER_DAY - 1)), timeZone);
 }
 
-export function allDayItemsForDay<T extends { startAt: string; endAt: string; allDay?: boolean }>(items: T[], day: Date, timeZone: string) {
+export function allDayItemsForDay<T extends { startAt: string; endAt: string; allDay?: boolean }>(
+  items: T[],
+  day: Date,
+  timeZone: string
+) {
   return items.filter((item) => {
     if (!item.allDay) return false;
     const start = new Date(String(item.startAt));

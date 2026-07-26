@@ -105,12 +105,14 @@ async function loadCandidateEvents(now: Date, userId?: string, organizationId?: 
       reminderMinutes: { not: null },
       ...(userId ? { assignedToId: userId } : {}),
       ...(organizationId ? { organizationId } : {}),
-      AND: [{
-        OR: [
-          { AND: [{ recurrenceRule: null }, { startAt: { gt: now, lte: horizon } }] },
-          { AND: [{ NOT: { recurrenceRule: null } }, { startAt: { lte: horizon } }] }
-        ]
-      }]
+      AND: [
+        {
+          OR: [
+            { AND: [{ recurrenceRule: null }, { startAt: { gt: now, lte: horizon } }] },
+            { AND: [{ NOT: { recurrenceRule: null } }, { startAt: { lte: horizon } }] }
+          ]
+        }
+      ]
     },
     orderBy: { startAt: "asc" },
     take: MAX_CANDIDATE_EVENTS
@@ -121,10 +123,17 @@ async function dueReminders(now: Date, userId?: string, organizationId?: string)
   const events = await loadCandidateEvents(now, userId, organizationId);
   if (!events.length) return [];
 
-  const pairs = [...new Map(events.map((event) => [pairKey(event.organizationId, event.assignedToId), {
-    organizationId: event.organizationId,
-    userId: event.assignedToId
-  }])).values()];
+  const pairs = [
+    ...new Map(
+      events.map((event) => [
+        pairKey(event.organizationId, event.assignedToId),
+        {
+          organizationId: event.organizationId,
+          userId: event.assignedToId
+        }
+      ])
+    ).values()
+  ];
   const organizationIds = [...new Set(events.map((event) => event.organizationId))];
   const [memberships, preferences, userPreferences, organizations] = await Promise.all([
     prisma.organizationMembership.findMany({
@@ -142,12 +151,21 @@ async function dueReminders(now: Date, userId?: string, organizationId?: string)
       }
     }),
     prisma.userPreference.findMany({ where: { OR: pairs } }),
-    prisma.organization.findMany({ where: { id: { in: organizationIds }, status: "ACTIVE" }, select: { id: true, name: true } })
+    prisma.organization.findMany({
+      where: { id: { in: organizationIds }, status: "ACTIVE" },
+      select: { id: true, name: true }
+    })
   ]);
 
-  const memberByPair = new Map(memberships.map((membership) => [pairKey(membership.organizationId, membership.userId), membership.user]));
-  const preferenceByPair = new Map(preferences.map((preference) => [pairKey(preference.organizationId, preference.userId), preference.enabled]));
-  const userPreferenceByPair = new Map(userPreferences.map((preference) => [pairKey(preference.organizationId, preference.userId), preference]));
+  const memberByPair = new Map(
+    memberships.map((membership) => [pairKey(membership.organizationId, membership.userId), membership.user])
+  );
+  const preferenceByPair = new Map(
+    preferences.map((preference) => [pairKey(preference.organizationId, preference.userId), preference.enabled])
+  );
+  const userPreferenceByPair = new Map(
+    userPreferences.map((preference) => [pairKey(preference.organizationId, preference.userId), preference])
+  );
   const organizationById = new Map(organizations.map((organization) => [organization.id, organization.name]));
   const horizon = new Date(now.getTime() + MAX_EVENT_REMINDER_MINUTES * 60 * 1000);
   const due: DueReminder[] = [];
@@ -178,9 +196,9 @@ async function dueReminders(now: Date, userId?: string, organizationId?: string)
     }
   }
 
-  return due.sort((left, right) =>
-    left.triggerAt.getTime() - right.triggerAt.getTime() ||
-    left.occurrenceAt.getTime() - right.occurrenceAt.getTime()
+  return due.sort(
+    (left, right) =>
+      left.triggerAt.getTime() - right.triggerAt.getTime() || left.occurrenceAt.getTime() - right.occurrenceAt.getTime()
   );
 }
 
@@ -306,16 +324,20 @@ async function deliverClaimedReminder(
       location: entry.event.location,
       eventUrl
     });
-    const delivery = await sendTrackedEmail({
-      fromName: entry.organizationName,
-      to: [{ email: entry.owner.email, name: entry.owner.name }],
-      ...template
-    }, {
-      organizationId: entry.event.organizationId,
-      userId: entry.owner.id,
-      sourceType: "Event",
-      sourceId: entry.event.id
-    }, dependencies);
+    const delivery = await sendTrackedEmail(
+      {
+        fromName: entry.organizationName,
+        to: [{ email: entry.owner.email, name: entry.owner.name }],
+        ...template
+      },
+      {
+        organizationId: entry.event.organizationId,
+        userId: entry.owner.id,
+        sourceType: "Event",
+        sourceId: entry.event.id
+      },
+      dependencies
+    );
     await prisma.eventReminderDispatch.update({
       where: { id: dispatch.id },
       data: {
@@ -341,13 +363,15 @@ async function deliverClaimedReminder(
   }
 }
 
-export async function dispatchDueCalendarReminders(options: {
-  now?: Date;
-  userId?: string;
-  organizationId?: string;
-  limit?: number;
-  dependencies?: ReminderDispatchDependencies;
-} = {}): Promise<CalendarReminderDispatchSummary> {
+export async function dispatchDueCalendarReminders(
+  options: {
+    now?: Date;
+    userId?: string;
+    organizationId?: string;
+    limit?: number;
+    dependencies?: ReminderDispatchDependencies;
+  } = {}
+): Promise<CalendarReminderDispatchSummary> {
   const now = options.now ?? new Date();
   const limit = Math.max(1, Math.min(options.limit ?? DEFAULT_BATCH_LIMIT, 500));
   const dependencies = options.dependencies ?? {};

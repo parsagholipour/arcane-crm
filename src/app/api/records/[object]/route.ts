@@ -1,4 +1,11 @@
-import { AppAuthorizationError, assertOrganizationRecord, assertOrganizationUser, assertRelatedOrganizationRecord, authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
+import {
+  AppAuthorizationError,
+  assertOrganizationRecord,
+  assertOrganizationUser,
+  assertRelatedOrganizationRecord,
+  authorizationErrorResponse,
+  requireOrganizationContext
+} from "@/lib/organization-context";
 import { EmailValidationError } from "@/lib/email/errors";
 import { emailErrorResponse } from "@/lib/email/http";
 import { deliverCaseNotification, deliverListEmail } from "@/lib/email/workflows";
@@ -10,10 +17,31 @@ import { RecordPayloadValidationError, validateRecordPayload } from "@/lib/recor
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { listQuerySchema } from "@/lib/api/contracts";
+import { apiErrorResponse, apiFailure, apiSuccess } from "@/lib/api/response";
+import { listRecords, RecordListQueryError } from "@/server/records/list-records";
+import { isCrmObject as isRouteCrmObject } from "@/features/routing/lightning-route";
 
 type Params = Promise<{ object: string }>;
 
 export const dynamic = "force-dynamic";
+
+export async function GET(request: NextRequest, context: { params: Params }) {
+  try {
+    const authContext = await requireOrganizationContext();
+    const { object } = await context.params;
+    if (!isRouteCrmObject(object)) {
+      return apiFailure({ code: "NOT_FOUND", message: "Unknown object." }, 404);
+    }
+    const query = listQuerySchema.parse(Object.fromEntries(request.nextUrl.searchParams));
+    return apiSuccess(await listRecords(authContext.organizationId, authContext.userId, object, query));
+  } catch (error) {
+    if (error instanceof RecordListQueryError) {
+      return apiFailure({ code: "INVALID_LIST_QUERY", message: error.message }, 400);
+    }
+    return apiErrorResponse(error, "Unable to load records.");
+  }
+}
 
 export async function POST(request: NextRequest, context: { params: Params }) {
   try {
@@ -22,16 +50,20 @@ export async function POST(request: NextRequest, context: { params: Params }) {
     if (!isCrmObject(object)) return NextResponse.json({ error: "Unknown object." }, { status: 404 });
     const payload = normalizePayload(await request.json());
     const missingFields = requiredFieldsForObject(object).filter((field) => isBlankRequiredValue(payload[field]));
-    if (missingFields.length > 0) return NextResponse.json({ error: "Complete this field.", fields: missingFields }, { status: 400 });
+    if (missingFields.length > 0)
+      return NextResponse.json({ error: "Complete this field.", fields: missingFields }, { status: 400 });
     validateRecordPayload(object, payload);
     if (object === "Event") {
       const startAt = new Date(String(payload.startAt));
       const endAt = new Date(String(payload.endAt));
-      if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime())) return NextResponse.json({ error: "Choose valid event start and end times." }, { status: 400 });
-      if (endAt <= startAt) return NextResponse.json({ error: "Event end time must be after its start time." }, { status: 400 });
-      payload.reminderMinutes = payload.reminderMinutes === undefined
-        ? DEFAULT_EVENT_REMINDER_MINUTES
-        : validateEventReminderMinutes(payload.reminderMinutes);
+      if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime()))
+        return NextResponse.json({ error: "Choose valid event start and end times." }, { status: 400 });
+      if (endAt <= startAt)
+        return NextResponse.json({ error: "Event end time must be after its start time." }, { status: 400 });
+      payload.reminderMinutes =
+        payload.reminderMinutes === undefined
+          ? DEFAULT_EVENT_REMINDER_MINUTES
+          : validateEventReminderMinutes(payload.reminderMinutes);
     }
     await validateReferences(object, payload, authContext.organizationId, authContext.userId);
     let delivery = null;
@@ -51,9 +83,11 @@ export async function POST(request: NextRequest, context: { params: Params }) {
     }
     if (object === "ListEmail") {
       const status = String(payload.status ?? "Draft");
-      if (!["Draft", "Sent", "Scheduled"].includes(status)) throw new EmailValidationError("Invalid list email status.");
+      if (!["Draft", "Sent", "Scheduled"].includes(status))
+        throw new EmailValidationError("Invalid list email status.");
       if (status === "Sent" || status === "Scheduled") {
-        if (status === "Scheduled" && !payload.scheduledAt) throw new EmailValidationError("Choose a schedule date and time.");
+        if (status === "Scheduled" && !payload.scheduledAt)
+          throw new EmailValidationError("Choose a schedule date and time.");
         delivery = await deliverListEmail({
           organizationId: authContext.organizationId,
           organizationName: authContext.organization.name,
@@ -67,23 +101,36 @@ export async function POST(request: NextRequest, context: { params: Params }) {
     }
     const record = await createRecord(object, payload, authContext.organizationId, authContext.userId);
     if (delivery?.deliveryIds?.length && (object === "Case" || object === "ListEmail")) {
-      await attachTrackedDeliveries(delivery.deliveryIds, { organizationId: authContext.organizationId, userId: authContext.userId, sourceType: object, sourceId: String(record.id) });
+      await attachTrackedDeliveries(delivery.deliveryIds, {
+        organizationId: authContext.organizationId,
+        userId: authContext.userId,
+        sourceType: object,
+        sourceId: String(record.id)
+      });
     }
     const recordStatus = "status" in record ? String(record.status) : "";
     const skipped = delivery && "skipped" in delivery && Array.isArray(delivery.skipped) ? delivery.skipped.length : 0;
-    const message = object === "ListEmail" && recordStatus === "Sent"
-      ? `List email accepted for ${delivery?.acceptedCount ?? 0} recipient${delivery?.acceptedCount === 1 ? "" : "s"}.`
-      : object === "ListEmail" && recordStatus === "Scheduled"
-        ? `List email scheduled for ${delivery?.acceptedCount ?? 0} recipient${delivery?.acceptedCount === 1 ? "" : "s"}.`
-        : object === "Case" && delivery
-          ? "Case saved and contact notification accepted."
-          : undefined;
-    return NextResponse.json({
-      record: JSON.parse(JSON.stringify(record)),
-      ...(delivery ? { delivery } : {}),
-      ...(message ? { message } : {}),
-      ...(skipped ? { warning: `${message ?? "Email accepted."} ${skipped} selected record${skipped === 1 ? " was" : "s were"} skipped because no deliverable address was available.` } : {})
-    }, { status: 201 });
+    const message =
+      object === "ListEmail" && recordStatus === "Sent"
+        ? `List email accepted for ${delivery?.acceptedCount ?? 0} recipient${delivery?.acceptedCount === 1 ? "" : "s"}.`
+        : object === "ListEmail" && recordStatus === "Scheduled"
+          ? `List email scheduled for ${delivery?.acceptedCount ?? 0} recipient${delivery?.acceptedCount === 1 ? "" : "s"}.`
+          : object === "Case" && delivery
+            ? "Case saved and contact notification accepted."
+            : undefined;
+    return NextResponse.json(
+      {
+        record: JSON.parse(JSON.stringify(record)),
+        ...(delivery ? { delivery } : {}),
+        ...(message ? { message } : {}),
+        ...(skipped
+          ? {
+              warning: `${message ?? "Email accepted."} ${skipped} selected record${skipped === 1 ? " was" : "s were"} skipped because no deliverable address was available.`
+            }
+          : {})
+      },
+      { status: 201 }
+    );
   } catch (error) {
     console.error(error);
     const response = authorizationErrorResponse(error);
@@ -91,15 +138,36 @@ export async function POST(request: NextRequest, context: { params: Params }) {
     const deliveryResponse = emailErrorResponse(error);
     if (deliveryResponse) return deliveryResponse;
     const calendarResponse = calendarErrorResponse(error);
-    if (calendarResponse) return NextResponse.json({ error: calendarResponse.error, field: calendarResponse.field }, { status: calendarResponse.status });
-    if (error instanceof RecordPayloadValidationError) return NextResponse.json({ error: error.message, fields: error.fields }, { status: 400 });
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return NextResponse.json({ error: "A record with that unique name or identifier already exists." }, { status: 409 });
+    if (calendarResponse)
+      return NextResponse.json(
+        { error: calendarResponse.error, field: calendarResponse.field },
+        { status: calendarResponse.status }
+      );
+    if (error instanceof RecordPayloadValidationError)
+      return NextResponse.json({ error: error.message, fields: error.fields }, { status: 400 });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
+      return NextResponse.json(
+        { error: "A record with that unique name or identifier already exists." },
+        { status: 409 }
+      );
     return NextResponse.json({ error: "Unable to create record." }, { status: 500 });
   }
 }
 
 function isCrmObject(value: string): value is CrmObject {
-  return ["Account", "Contact", "Lead", "Opportunity", "Product2", "Pricebook2", "Event", "Case", "QuickText", "Knowledge__kav", "ListEmail"].includes(value);
+  return [
+    "Account",
+    "Contact",
+    "Lead",
+    "Opportunity",
+    "Product2",
+    "Pricebook2",
+    "Event",
+    "Case",
+    "QuickText",
+    "Knowledge__kav",
+    "ListEmail"
+  ].includes(value);
 }
 
 function normalizePayload(payload: RecordData) {
@@ -144,21 +212,28 @@ function isBlankRequiredValue(value: unknown) {
 
 async function validateReferences(object: CrmObject, payload: RecordData, organizationId: string, userId: string) {
   const ownerId = typeof payload.ownerId === "string" ? payload.ownerId : userId;
-  if (["Account", "Contact", "Lead", "Opportunity", "Case"].includes(object)) await assertOrganizationUser(organizationId, ownerId);
+  if (["Account", "Contact", "Lead", "Opportunity", "Case"].includes(object))
+    await assertOrganizationUser(organizationId, ownerId);
   if (object === "Event") await assertOrganizationUser(organizationId, String(payload.assignedToId ?? userId));
   if (object === "Event") {
     await assertRelatedOrganizationRecord(organizationId, payload.nameObjectType, payload.nameRecordId);
     await assertRelatedOrganizationRecord(organizationId, payload.relatedObjectType, payload.relatedRecordId);
     if (payload.calendarSourceId) {
-      const source = await prisma.calendarSource.findFirst({ where: { id: String(payload.calendarSourceId), organizationId, userId }, select: { id: true } });
+      const source = await prisma.calendarSource.findFirst({
+        where: { id: String(payload.calendarSourceId), organizationId, userId },
+        select: { id: true }
+      });
       if (!source) throw new AppAuthorizationError("Calendar not found.", 404);
     }
   }
   if (payload.accountId) await assertOrganizationRecord(organizationId, "account", String(payload.accountId));
   if (payload.contactId) await assertOrganizationRecord(organizationId, "contact", String(payload.contactId));
-  if (payload.parentAccountId) await assertOrganizationRecord(organizationId, "account", String(payload.parentAccountId));
-  if (payload.reportsToContactId) await assertOrganizationRecord(organizationId, "contact", String(payload.reportsToContactId));
-  if (object === "Product2" && payload.priceBookId) await assertOrganizationRecord(organizationId, "priceBook", String(payload.priceBookId));
+  if (payload.parentAccountId)
+    await assertOrganizationRecord(organizationId, "account", String(payload.parentAccountId));
+  if (payload.reportsToContactId)
+    await assertOrganizationRecord(organizationId, "contact", String(payload.reportsToContactId));
+  if (object === "Product2" && payload.priceBookId)
+    await assertOrganizationRecord(organizationId, "priceBook", String(payload.priceBookId));
   if (object === "QuickText" && payload.folderId) {
     const folder = await prisma.quickTextFolder.findFirst({ where: { id: String(payload.folderId), organizationId } });
     if (!folder) throw new AppAuthorizationError("Folder not found.", 404);
@@ -304,10 +379,17 @@ async function createRecord(object: CrmObject, payload: RecordData, organization
         let priceBookEntry: RecordData | null = null;
         let priceBook: RecordData | null = null;
 
-        if (payload.createPriceBookEntry !== false && (payload.listPrice || payload.entryActive || payload.priceBookId || payload.priceBookName)) {
-          const requestedPriceBookId = payload.priceBookId ? String(payload.priceBookId) : `${organizationId}-standard-price-book`;
+        if (
+          payload.createPriceBookEntry !== false &&
+          (payload.listPrice || payload.entryActive || payload.priceBookId || payload.priceBookName)
+        ) {
+          const requestedPriceBookId = payload.priceBookId
+            ? String(payload.priceBookId)
+            : `${organizationId}-standard-price-book`;
           const requestedPriceBookName = String(payload.priceBookName ?? "Standard Price Book");
-          const existingPriceBook = await tx.priceBook.findFirst({ where: { id: requestedPriceBookId, organizationId } });
+          const existingPriceBook = await tx.priceBook.findFirst({
+            where: { id: requestedPriceBookId, organizationId }
+          });
           priceBook =
             existingPriceBook ??
             (await tx.priceBook.upsert({
@@ -380,9 +462,10 @@ async function createRecord(object: CrmObject, payload: RecordData, organization
           private: Boolean(payload.private),
           recurrenceRule: (payload.recurrenceRule as string | null) ?? null,
           recurrenceEndAt: payload.recurrenceEndAt ? new Date(String(payload.recurrenceEndAt)) : null,
-          reminderMinutes: payload.reminderMinutes === undefined
-            ? DEFAULT_EVENT_REMINDER_MINUTES
-            : validateEventReminderMinutes(payload.reminderMinutes)
+          reminderMinutes:
+            payload.reminderMinutes === undefined
+              ? DEFAULT_EVENT_REMINDER_MINUTES
+              : validateEventReminderMinutes(payload.reminderMinutes)
         }
       });
     case "QuickText":
@@ -427,7 +510,8 @@ async function createRecord(object: CrmObject, payload: RecordData, organization
           recipients: Array.isArray(payload.recipients) ? payload.recipients.map(String) : [],
           status: listEmailStatus,
           sentAt: listEmailStatus === "Sent" ? new Date() : null,
-          scheduledAt: listEmailStatus === "Scheduled" && payload.scheduledAt ? new Date(String(payload.scheduledAt)) : null,
+          scheduledAt:
+            listEmailStatus === "Scheduled" && payload.scheduledAt ? new Date(String(payload.scheduledAt)) : null,
           createdById: userId
         }
       });

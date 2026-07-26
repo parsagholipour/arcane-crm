@@ -15,6 +15,9 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(new URL("/lightning/page/home", request.url));
     return setActiveOrganizationCookie(response, organizationId);
   } catch (error) {
-    return authorizationErrorResponse(error) ?? NextResponse.json({ error: "Unable to open the organization." }, { status: 500 });
+    return (
+      authorizationErrorResponse(error) ??
+      NextResponse.json({ error: "Unable to open the organization." }, { status: 500 })
+    );
   }
 }

@@ -11,7 +11,9 @@ export function SignOutButton({
 }) {
   return (
     <form action="/auth/signout" method="post" className={formClassName}>
-      <button type="submit" className={className}>{children}</button>
+      <button type="submit" className={className}>
+        {children}
+      </button>
     </form>
   );
 }

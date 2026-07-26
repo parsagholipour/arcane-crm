@@ -22,7 +22,7 @@ export async function PATCH(request: NextRequest, route: { params: Params }) {
   try {
     const context = await requireOrganizationContext();
     const { id } = await route.params;
-    const payload = await request.json() as RecordData;
+    const payload = (await request.json()) as RecordData;
     return invoiceJson(await updateInvoice(context.organizationId, context.userId, id, payload));
   } catch (error) {
     return invoiceErrorResponse(error);

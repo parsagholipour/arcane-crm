@@ -18,13 +18,28 @@ export async function POST(request: NextRequest, context: { params: Params }) {
     const existing = await requireMessagingSession(authContext.organizationId, id);
     const action = String((await request.json()).action ?? "").toLowerCase();
     const nextStatus = transitions[existing.status]?.[action];
-    if (!nextStatus) return NextResponse.json({ error: `Cannot ${action || "perform that action"} while the session is ${existing.status}.` }, { status: 409 });
+    if (!nextStatus)
+      return NextResponse.json(
+        { error: `Cannot ${action || "perform that action"} while the session is ${existing.status}.` },
+        { status: 409 }
+      );
     const session = await prisma.messagingSession.update({
       where: { id },
       data: { status: nextStatus, endedAt: nextStatus === "Closed" ? new Date() : null },
-      include: { account: true, contact: true, participants: { include: { contact: true } }, messages: { orderBy: { sentAt: "asc" } } }
+      include: {
+        account: true,
+        contact: true,
+        participants: { include: { contact: true } },
+        messages: { orderBy: { sentAt: "asc" } }
+      }
     });
-    const notification = await createMessagingNotification(authContext.organizationId, authContext.userId, `Messaging session ${nextStatus.toLowerCase()}`, `${session.name} is now ${nextStatus}.`, id);
+    const notification = await createMessagingNotification(
+      authContext.organizationId,
+      authContext.userId,
+      `Messaging session ${nextStatus.toLowerCase()}`,
+      `${session.name} is now ${nextStatus}.`,
+      id
+    );
     return NextResponse.json({ session: JSON.parse(JSON.stringify(session)), notifications: [notification] });
   } catch (error) {
     const response = authorizationErrorResponse(error);

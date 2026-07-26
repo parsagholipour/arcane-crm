@@ -1,4 +1,8 @@
-import { assertRelatedOrganizationRecord, authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
+import {
+  assertRelatedOrganizationRecord,
+  authorizationErrorResponse,
+  requireOrganizationContext
+} from "@/lib/organization-context";
 import { emailErrorResponse } from "@/lib/email/http";
 import { sendTrackedEmail, attachTrackedDeliveries } from "@/lib/email/tracking";
 import { prisma } from "@/lib/prisma";
@@ -20,26 +24,38 @@ export async function POST(request: NextRequest) {
       const subject = String(payload.subject ?? (emailAction === "send" ? "Email" : "Logged Email"));
       const body = String(payload.body ?? "");
       const recipient = String(payload.to ?? "");
-      const delivery = emailAction === "send"
-        ? await sendTrackedEmail({
-            fromName: context.organization.name,
-            to: [{ email: recipient }],
-            subject,
-            text: body
-          }, { organizationId: context.organizationId, userId: context.userId, sourceType: "EmailActivity" })
-        : null;
+      const delivery =
+        emailAction === "send"
+          ? await sendTrackedEmail(
+              {
+                fromName: context.organization.name,
+                to: [{ email: recipient }],
+                subject,
+                text: body
+              },
+              { organizationId: context.organizationId, userId: context.userId, sourceType: "EmailActivity" }
+            )
+          : null;
       const record = await prisma.emailActivity.create({
         data: {
           organizationId: context.organizationId,
           to: recipient,
-          from: emailAction === "send" ? String(process.env.SENDGRID_EMAIL ?? "") : String(context.user.email ?? context.user.name),
+          from:
+            emailAction === "send"
+              ? String(process.env.SENDGRID_EMAIL ?? "")
+              : String(context.user.email ?? context.user.name),
           subject,
           body,
           relatedObjectType: payload.relatedObjectType,
           relatedRecordId: payload.relatedRecordId
         }
       });
-      await attachTrackedDeliveries(delivery?.deliveryIds, { organizationId: context.organizationId, userId: context.userId, sourceType: "EmailActivity", sourceId: record.id });
+      await attachTrackedDeliveries(delivery?.deliveryIds, {
+        organizationId: context.organizationId,
+        userId: context.userId,
+        sourceType: "EmailActivity",
+        sourceId: record.id
+      });
       return NextResponse.json({ record: JSON.parse(JSON.stringify(record)), emailAction, delivery }, { status: 201 });
     }
 
@@ -57,11 +73,14 @@ export async function POST(request: NextRequest) {
     }
 
     const dueDate = payload.dueDate ? new Date(String(payload.dueDate)) : null;
-    if (dueDate && !Number.isFinite(dueDate.getTime())) throw new ActivityValidationError("Choose a valid task due date.");
+    if (dueDate && !Number.isFinite(dueDate.getTime()))
+      throw new ActivityValidationError("Choose a valid task due date.");
     const status = String(payload.status ?? "Not Started");
-    if (!["Not Started", "In Progress", "Completed", "Deferred"].includes(status)) throw new ActivityValidationError("Choose a valid task status.");
+    if (!["Not Started", "In Progress", "Completed", "Deferred"].includes(status))
+      throw new ActivityValidationError("Choose a valid task status.");
     const priority = String(payload.priority ?? "Normal");
-    if (!["Low", "Normal", "High"].includes(priority)) throw new ActivityValidationError("Choose a valid task priority.");
+    if (!["Low", "Normal", "High"].includes(priority))
+      throw new ActivityValidationError("Choose a valid task priority.");
     const record = await prisma.task.create({
       data: {
         organizationId: context.organizationId,

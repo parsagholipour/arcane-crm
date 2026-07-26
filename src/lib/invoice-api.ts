@@ -16,10 +16,16 @@ export function invoiceErrorResponse(error: unknown) {
   const deliveryResponse = emailErrorResponse(error);
   if (deliveryResponse) return deliveryResponse;
   if (error instanceof InvoiceDomainError) {
-    return NextResponse.json({ error: error.message, ...(error.field ? { field: error.field } : {}) }, { status: error.status });
+    return NextResponse.json(
+      { error: error.message, ...(error.field ? { field: error.field } : {}) },
+      { status: error.status }
+    );
   }
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-    return NextResponse.json({ error: "An invoice with that number already exists. Retry the request." }, { status: 409 });
+    return NextResponse.json(
+      { error: "An invoice with that number already exists. Retry the request." },
+      { status: 409 }
+    );
   }
   console.error(error);
   return NextResponse.json({ error: "Unable to complete the invoice request." }, { status: 500 });

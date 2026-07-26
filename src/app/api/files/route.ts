@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { authorizationErrorResponse, assertRelatedOrganizationRecord, requireOrganizationContext } from "@/lib/organization-context";
+import {
+  authorizationErrorResponse,
+  assertRelatedOrganizationRecord,
+  requireOrganizationContext
+} from "@/lib/organization-context";
 import { FileValidationError, validateFileMetadata } from "@/lib/files";
 import { prisma } from "@/lib/prisma";
 import { NextRequest, NextResponse } from "next/server";
@@ -46,7 +50,8 @@ export async function POST(request: NextRequest) {
     console.error(error);
     const response = authorizationErrorResponse(error);
     if (response) return response;
-    if (error instanceof FileValidationError) return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof FileValidationError)
+      return NextResponse.json({ error: error.message }, { status: error.status });
     return NextResponse.json({ error: "Unable to upload file." }, { status: 500 });
   }
 }

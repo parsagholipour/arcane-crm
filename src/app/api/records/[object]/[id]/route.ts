@@ -1,17 +1,47 @@
-import { AppAuthorizationError, assertOrganizationRecord, assertOrganizationUser, assertRelatedOrganizationRecord, authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
+import {
+  AppAuthorizationError,
+  assertOrganizationRecord,
+  assertOrganizationUser,
+  assertRelatedOrganizationRecord,
+  authorizationErrorResponse,
+  requireOrganizationContext
+} from "@/lib/organization-context";
 import { EmailValidationError } from "@/lib/email/errors";
 import { emailErrorResponse } from "@/lib/email/http";
 import { deliverCaseNotification, deliverListEmail } from "@/lib/email/workflows";
 import { prisma } from "@/lib/prisma";
 import { RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
-import { calendarErrorResponse, detachOccurrence, eventUpdateData, excludeOccurrence, parseRecurrenceScope, validateEventReminderMinutes } from "@/lib/calendar-events";
+import {
+  calendarErrorResponse,
+  detachOccurrence,
+  eventUpdateData,
+  excludeOccurrence,
+  parseRecurrenceScope,
+  validateEventReminderMinutes
+} from "@/lib/calendar-events";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
+import { apiErrorResponse, apiFailure, apiSuccess } from "@/lib/api/response";
+import { isCrmObject as isRouteCrmObject } from "@/features/routing/lightning-route";
+import { getRecordDetail } from "@/server/records/get-record-detail";
 
 type Params = Promise<{ object: string; id: string }>;
 
 export const dynamic = "force-dynamic";
+
+export async function GET(_request: NextRequest, context: { params: Params }) {
+  try {
+    const authContext = await requireOrganizationContext();
+    const { object, id } = await context.params;
+    if (!isRouteCrmObject(object)) {
+      return apiFailure({ code: "NOT_FOUND", message: "Unknown object." }, 404);
+    }
+    return apiSuccess(await getRecordDetail(authContext.organizationId, object, id));
+  } catch (error) {
+    return apiErrorResponse(error, "Unable to load the record.");
+  }
+}
 
 export async function PATCH(request: NextRequest, context: { params: Params }) {
   try {
@@ -20,25 +50,47 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     if (!isCrmObject(object)) return NextResponse.json({ error: "Unknown object." }, { status: 404 });
     await assertScopedRecord(object, id, authContext.organizationId);
     if (object === "Lead") {
-      const lead = await prisma.lead.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { convertedAt: true } });
-      if (lead?.convertedAt) return NextResponse.json({ error: "Converted Leads are read-only. Open the converted Account, Contact, or Opportunity instead." }, { status: 409 });
+      const lead = await prisma.lead.findFirst({
+        where: { id, organizationId: authContext.organizationId },
+        select: { convertedAt: true }
+      });
+      if (lead?.convertedAt)
+        return NextResponse.json(
+          { error: "Converted Leads are read-only. Open the converted Account, Contact, or Opportunity instead." },
+          { status: 409 }
+        );
     }
     const payload = normalizePayload(await request.json());
     validateRecordPayload(object, payload);
     await validateReferences(payload, authContext.organizationId, authContext.userId);
     if (object === "Event") {
-      if (payload.reminderMinutes !== undefined) payload.reminderMinutes = validateEventReminderMinutes(payload.reminderMinutes);
-      const existingEvent = await prisma.event.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { startAt: true, endAt: true } });
+      if (payload.reminderMinutes !== undefined)
+        payload.reminderMinutes = validateEventReminderMinutes(payload.reminderMinutes);
+      const existingEvent = await prisma.event.findFirst({
+        where: { id, organizationId: authContext.organizationId },
+        select: { startAt: true, endAt: true }
+      });
       if (!existingEvent) return NextResponse.json({ error: "Record not found." }, { status: 404 });
       const startAt = payload.startAt ? new Date(String(payload.startAt)) : existingEvent.startAt;
       const endAt = payload.endAt ? new Date(String(payload.endAt)) : existingEvent.endAt;
-      if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime())) return NextResponse.json({ error: "Choose valid event start and end times." }, { status: 400 });
-      if (endAt <= startAt) return NextResponse.json({ error: "Event end time must be after its start time." }, { status: 400 });
+      if (!Number.isFinite(startAt.getTime()) || !Number.isFinite(endAt.getTime()))
+        return NextResponse.json({ error: "Choose valid event start and end times." }, { status: 400 });
+      if (endAt <= startAt)
+        return NextResponse.json({ error: "Event end time must be after its start time." }, { status: 400 });
 
       // "This occurrence only" carves the slot out of the series into its own row.
       if (parseRecurrenceScope(payload.recurrenceScope) === "single") {
-        const detached = await detachOccurrence(authContext.organizationId, id, payload.occurrenceStart, eventUpdateData(payload));
-        if (detached) return NextResponse.json({ record: JSON.parse(JSON.stringify(detached)), message: "This occurrence was updated." });
+        const detached = await detachOccurrence(
+          authContext.organizationId,
+          id,
+          payload.occurrenceStart,
+          eventUpdateData(payload)
+        );
+        if (detached)
+          return NextResponse.json({
+            record: JSON.parse(JSON.stringify(detached)),
+            message: "This occurrence was updated."
+          });
       }
     }
     let delivery = null;
@@ -54,20 +106,23 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
           contactId: payload.contactId === undefined ? existing.contactId : payload.contactId,
           caseNumber: existing.caseNumber,
           status: String(payload.status ?? existing.status),
-          subject: payload.subject === undefined ? existing.subject : payload.subject as string | null,
-          description: payload.description === undefined ? existing.description : payload.description as string | null
+          subject: payload.subject === undefined ? existing.subject : (payload.subject as string | null),
+          description: payload.description === undefined ? existing.description : (payload.description as string | null)
         });
       }
     }
     if (object === "ListEmail") {
       const existing = await prisma.listEmail.findFirst({ where: { id, organizationId: authContext.organizationId } });
       if (!existing) throw new AppAuthorizationError("Record not found.", 404);
-      if (existing.status !== "Draft") return NextResponse.json({ error: "Sent or scheduled list emails cannot be changed." }, { status: 409 });
+      if (existing.status !== "Draft")
+        return NextResponse.json({ error: "Sent or scheduled list emails cannot be changed." }, { status: 409 });
       if (payload.status) {
         const status = String(payload.status);
-        if (!["Draft", "Sent", "Scheduled"].includes(status)) throw new EmailValidationError("Invalid list email status.");
+        if (!["Draft", "Sent", "Scheduled"].includes(status))
+          throw new EmailValidationError("Invalid list email status.");
         if (status === "Sent" || status === "Scheduled") {
-          if (status === "Scheduled" && !(payload.scheduledAt ?? existing.scheduledAt)) throw new EmailValidationError("Choose a schedule date and time.");
+          if (status === "Scheduled" && !(payload.scheduledAt ?? existing.scheduledAt))
+            throw new EmailValidationError("Choose a schedule date and time.");
           delivery = await deliverListEmail({
             organizationId: authContext.organizationId,
             organizationName: authContext.organization.name,
@@ -82,24 +137,36 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
       }
     }
     if (object === "Knowledge__kav") {
-      const article = await prisma.knowledgeArticle.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { publicationStatus: true } });
-      if (article?.publicationStatus !== "Draft") return NextResponse.json({ error: "Only Draft Knowledge articles can be edited. Restore an archived article to Draft first." }, { status: 409 });
+      const article = await prisma.knowledgeArticle.findFirst({
+        where: { id, organizationId: authContext.organizationId },
+        select: { publicationStatus: true }
+      });
+      if (article?.publicationStatus !== "Draft")
+        return NextResponse.json(
+          { error: "Only Draft Knowledge articles can be edited. Restore an archived article to Draft first." },
+          { status: 409 }
+        );
     }
     const record = await updateRecord(object, id, payload, authContext.userId);
     const recordStatus = "status" in record ? String(record.status) : "";
     const skipped = delivery && "skipped" in delivery && Array.isArray(delivery.skipped) ? delivery.skipped.length : 0;
-    const message = object === "ListEmail" && recordStatus === "Sent"
-      ? `List email accepted for ${delivery?.acceptedCount ?? 0} recipient${delivery?.acceptedCount === 1 ? "" : "s"}.`
-      : object === "ListEmail" && recordStatus === "Scheduled"
-        ? `List email scheduled for ${delivery?.acceptedCount ?? 0} recipient${delivery?.acceptedCount === 1 ? "" : "s"}.`
-        : object === "Case" && delivery
-          ? "Case saved and contact notification accepted."
-          : undefined;
+    const message =
+      object === "ListEmail" && recordStatus === "Sent"
+        ? `List email accepted for ${delivery?.acceptedCount ?? 0} recipient${delivery?.acceptedCount === 1 ? "" : "s"}.`
+        : object === "ListEmail" && recordStatus === "Scheduled"
+          ? `List email scheduled for ${delivery?.acceptedCount ?? 0} recipient${delivery?.acceptedCount === 1 ? "" : "s"}.`
+          : object === "Case" && delivery
+            ? "Case saved and contact notification accepted."
+            : undefined;
     return NextResponse.json({
       record: JSON.parse(JSON.stringify(record)),
       ...(delivery ? { delivery } : {}),
       ...(message ? { message } : {}),
-      ...(skipped ? { warning: `${message ?? "Email accepted."} ${skipped} selected record${skipped === 1 ? " was" : "s were"} skipped because no deliverable address was available.` } : {})
+      ...(skipped
+        ? {
+            warning: `${message ?? "Email accepted."} ${skipped} selected record${skipped === 1 ? " was" : "s were"} skipped because no deliverable address was available.`
+          }
+        : {})
     });
   } catch (error) {
     console.error(error);
@@ -107,10 +174,19 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     if (response) return response;
     const deliveryResponse = emailErrorResponse(error);
     if (deliveryResponse) return deliveryResponse;
-    if (error instanceof RecordPayloadValidationError) return NextResponse.json({ error: error.message, fields: error.fields }, { status: 400 });
+    if (error instanceof RecordPayloadValidationError)
+      return NextResponse.json({ error: error.message, fields: error.fields }, { status: 400 });
     const calendarError = calendarErrorResponse(error);
-    if (calendarError) return NextResponse.json({ error: calendarError.error, field: calendarError.field }, { status: calendarError.status });
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return NextResponse.json({ error: "A record with that unique name or identifier already exists." }, { status: 409 });
+    if (calendarError)
+      return NextResponse.json(
+        { error: calendarError.error, field: calendarError.field },
+        { status: calendarError.status }
+      );
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
+      return NextResponse.json(
+        { error: "A record with that unique name or identifier already exists." },
+        { status: 409 }
+      );
     return NextResponse.json({ error: "Unable to update record." }, { status: 500 });
   }
 }
@@ -122,28 +198,64 @@ export async function DELETE(request: NextRequest, context: { params: Params }) 
     if (!isCrmObject(object)) return NextResponse.json({ error: "Unknown object." }, { status: 404 });
     await assertScopedRecord(object, id, authContext.organizationId);
     if (object === "Event" && parseRecurrenceScope(request.nextUrl.searchParams.get("scope")) === "single") {
-      const excluded = await excludeOccurrence(authContext.organizationId, id, request.nextUrl.searchParams.get("occurrenceStart"));
+      const excluded = await excludeOccurrence(
+        authContext.organizationId,
+        id,
+        request.nextUrl.searchParams.get("occurrenceStart")
+      );
       if (excluded) return NextResponse.json({ ok: true, message: "This occurrence was removed." });
     }
     if (object === "ListEmail") {
-      const listEmail = await prisma.listEmail.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { status: true } });
-      if (listEmail?.status !== "Draft") return NextResponse.json({ error: "Sent or scheduled list emails cannot be deleted." }, { status: 409 });
+      const listEmail = await prisma.listEmail.findFirst({
+        where: { id, organizationId: authContext.organizationId },
+        select: { status: true }
+      });
+      if (listEmail?.status !== "Draft")
+        return NextResponse.json({ error: "Sent or scheduled list emails cannot be deleted." }, { status: 409 });
     }
     if (object === "Lead") {
-      const lead = await prisma.lead.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { convertedAt: true } });
+      const lead = await prisma.lead.findFirst({
+        where: { id, organizationId: authContext.organizationId },
+        select: { convertedAt: true }
+      });
       if (lead?.convertedAt) return NextResponse.json({ error: "Converted Leads cannot be deleted." }, { status: 409 });
     }
     if (object === "Knowledge__kav") {
-      const article = await prisma.knowledgeArticle.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { publicationStatus: true } });
-      if (article?.publicationStatus !== "Draft") return NextResponse.json({ error: "Only Draft Knowledge articles can be deleted from the record page. Archive published articles instead." }, { status: 409 });
+      const article = await prisma.knowledgeArticle.findFirst({
+        where: { id, organizationId: authContext.organizationId },
+        select: { publicationStatus: true }
+      });
+      if (article?.publicationStatus !== "Draft")
+        return NextResponse.json(
+          {
+            error:
+              "Only Draft Knowledge articles can be deleted from the record page. Archive published articles instead."
+          },
+          { status: 409 }
+        );
     }
     if (object === "Product2") {
-      const usage = await prisma.product.findFirst({ where: { id, organizationId: authContext.organizationId }, select: { _count: { select: { invoiceLineItems: true, commerceOrderLines: true, inventoryItems: true } } } });
-      if (usage && (usage._count.invoiceLineItems || usage._count.commerceOrderLines || usage._count.inventoryItems)) return NextResponse.json({ error: "A Product used by an invoice, order, or inventory record cannot be deleted. Deactivate it instead." }, { status: 409 });
+      const usage = await prisma.product.findFirst({
+        where: { id, organizationId: authContext.organizationId },
+        select: { _count: { select: { invoiceLineItems: true, commerceOrderLines: true, inventoryItems: true } } }
+      });
+      if (usage && (usage._count.invoiceLineItems || usage._count.commerceOrderLines || usage._count.inventoryItems))
+        return NextResponse.json(
+          {
+            error: "A Product used by an invoice, order, or inventory record cannot be deleted. Deactivate it instead."
+          },
+          { status: 409 }
+        );
     }
     if (object === "Pricebook2") {
-      const connectedStores = await prisma.marketingStore.count({ where: { organizationId: authContext.organizationId, priceBookId: id } });
-      if (connectedStores) return NextResponse.json({ error: "A Price Book connected to a Store cannot be deleted. Disconnect or archive the Store first." }, { status: 409 });
+      const connectedStores = await prisma.marketingStore.count({
+        where: { organizationId: authContext.organizationId, priceBookId: id }
+      });
+      if (connectedStores)
+        return NextResponse.json(
+          { error: "A Price Book connected to a Store cannot be deleted. Disconnect or archive the Store first." },
+          { status: 409 }
+        );
     }
     await deleteRecord(object, id);
     return NextResponse.json({ ok: true });
@@ -152,16 +264,35 @@ export async function DELETE(request: NextRequest, context: { params: Params }) 
     const response = authorizationErrorResponse(error);
     if (response) return response;
     const calendarError = calendarErrorResponse(error);
-    if (calendarError) return NextResponse.json({ error: calendarError.error, field: calendarError.field }, { status: calendarError.status });
+    if (calendarError)
+      return NextResponse.json(
+        { error: calendarError.error, field: calendarError.field },
+        { status: calendarError.status }
+      );
     if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2003", "P2014"].includes(error.code)) {
-      return NextResponse.json({ error: "This record cannot be deleted because related CRM records still reference it." }, { status: 409 });
+      return NextResponse.json(
+        { error: "This record cannot be deleted because related CRM records still reference it." },
+        { status: 409 }
+      );
     }
     return NextResponse.json({ error: "Unable to delete record." }, { status: 500 });
   }
 }
 
 function isCrmObject(value: string): value is CrmObject {
-  return ["Account", "Contact", "Lead", "Opportunity", "Product2", "Pricebook2", "Event", "Case", "QuickText", "Knowledge__kav", "ListEmail"].includes(value);
+  return [
+    "Account",
+    "Contact",
+    "Lead",
+    "Opportunity",
+    "Product2",
+    "Pricebook2",
+    "Event",
+    "Case",
+    "QuickText",
+    "Knowledge__kav",
+    "ListEmail"
+  ].includes(value);
 }
 
 function normalizePayload(payload: RecordData) {
@@ -178,29 +309,49 @@ async function validateReferences(payload: RecordData, organizationId: string, u
   if (payload.assignedToId) await assertOrganizationUser(organizationId, String(payload.assignedToId));
   if (payload.accountId) await assertOrganizationRecord(organizationId, "account", String(payload.accountId));
   if (payload.contactId) await assertOrganizationRecord(organizationId, "contact", String(payload.contactId));
-  if (payload.parentAccountId) await assertOrganizationRecord(organizationId, "account", String(payload.parentAccountId));
-  if (payload.reportsToContactId) await assertOrganizationRecord(organizationId, "contact", String(payload.reportsToContactId));
+  if (payload.parentAccountId)
+    await assertOrganizationRecord(organizationId, "account", String(payload.parentAccountId));
+  if (payload.reportsToContactId)
+    await assertOrganizationRecord(organizationId, "contact", String(payload.reportsToContactId));
   await assertRelatedOrganizationRecord(organizationId, payload.nameObjectType, payload.nameRecordId);
   await assertRelatedOrganizationRecord(organizationId, payload.relatedObjectType, payload.relatedRecordId);
   if (payload.calendarSourceId) {
-    const source = await prisma.calendarSource.findFirst({ where: { id: String(payload.calendarSourceId), organizationId, userId }, select: { id: true } });
+    const source = await prisma.calendarSource.findFirst({
+      where: { id: String(payload.calendarSourceId), organizationId, userId },
+      select: { id: true }
+    });
     if (!source) throw new AppAuthorizationError("Calendar not found.", 404);
   }
 }
 
 async function assertScopedRecord(object: CrmObject, id: string, organizationId: string) {
   const row =
-    object === "Account" ? await prisma.account.findFirst({ where: { id, organizationId }, select: { id: true } }) :
-    object === "Contact" ? await prisma.contact.findFirst({ where: { id, organizationId }, select: { id: true } }) :
-    object === "Lead" ? await prisma.lead.findFirst({ where: { id, organizationId }, select: { id: true } }) :
-    object === "Opportunity" ? await prisma.opportunity.findFirst({ where: { id, organizationId }, select: { id: true } }) :
-    object === "Case" ? await prisma.caseRecord.findFirst({ where: { id, organizationId }, select: { id: true } }) :
-    object === "Product2" ? await prisma.product.findFirst({ where: { id, organizationId }, select: { id: true } }) :
-    object === "Pricebook2" ? await prisma.priceBook.findFirst({ where: { id, organizationId }, select: { id: true } }) :
-    object === "Event" ? await prisma.event.findFirst({ where: { id, organizationId }, select: { id: true } }) :
-    object === "QuickText" ? await prisma.quickText.findFirst({ where: { id, organizationId }, select: { id: true } }) :
-    object === "Knowledge__kav" ? await prisma.knowledgeArticle.findFirst({ where: { id, organizationId }, select: { id: true } }) :
-    object === "ListEmail" ? await prisma.listEmail.findFirst({ where: { id, organizationId }, select: { id: true } }) : null;
+    object === "Account"
+      ? await prisma.account.findFirst({ where: { id, organizationId }, select: { id: true } })
+      : object === "Contact"
+        ? await prisma.contact.findFirst({ where: { id, organizationId }, select: { id: true } })
+        : object === "Lead"
+          ? await prisma.lead.findFirst({ where: { id, organizationId }, select: { id: true } })
+          : object === "Opportunity"
+            ? await prisma.opportunity.findFirst({ where: { id, organizationId }, select: { id: true } })
+            : object === "Case"
+              ? await prisma.caseRecord.findFirst({ where: { id, organizationId }, select: { id: true } })
+              : object === "Product2"
+                ? await prisma.product.findFirst({ where: { id, organizationId }, select: { id: true } })
+                : object === "Pricebook2"
+                  ? await prisma.priceBook.findFirst({ where: { id, organizationId }, select: { id: true } })
+                  : object === "Event"
+                    ? await prisma.event.findFirst({ where: { id, organizationId }, select: { id: true } })
+                    : object === "QuickText"
+                      ? await prisma.quickText.findFirst({ where: { id, organizationId }, select: { id: true } })
+                      : object === "Knowledge__kav"
+                        ? await prisma.knowledgeArticle.findFirst({
+                            where: { id, organizationId },
+                            select: { id: true }
+                          })
+                        : object === "ListEmail"
+                          ? await prisma.listEmail.findFirst({ where: { id, organizationId }, select: { id: true } })
+                          : null;
   if (!row) throw new AppAuthorizationError("Record not found.", 404);
 }
 
@@ -217,8 +368,18 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           parentAccountId: payload.parentAccountId as string | null | undefined,
           phone: payload.phone as string | null | undefined,
           rating: payload.rating as string | null | undefined,
-          numberOfEmployees: payload.numberOfEmployees === undefined ? undefined : payload.numberOfEmployees === null ? null : Number(payload.numberOfEmployees),
-          annualRevenue: payload.annualRevenue === undefined ? undefined : payload.annualRevenue === null ? null : String(payload.annualRevenue),
+          numberOfEmployees:
+            payload.numberOfEmployees === undefined
+              ? undefined
+              : payload.numberOfEmployees === null
+                ? null
+                : Number(payload.numberOfEmployees),
+          annualRevenue:
+            payload.annualRevenue === undefined
+              ? undefined
+              : payload.annualRevenue === null
+                ? null
+                : String(payload.annualRevenue),
           industry: payload.industry as string | null | undefined,
           billingCountry: payload.billingCountry as string | null | undefined,
           billingStreet: payload.billingStreet as string | null | undefined,
@@ -246,7 +407,12 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           description: payload.description as string | null | undefined,
           phone: payload.phone as string | null | undefined,
           email: payload.email as string | null | undefined,
-          birthDate: payload.birthDate === undefined ? undefined : payload.birthDate === null ? null : new Date(String(payload.birthDate)),
+          birthDate:
+            payload.birthDate === undefined
+              ? undefined
+              : payload.birthDate === null
+                ? null
+                : new Date(String(payload.birthDate)),
           leadSource: payload.leadSource as string | null | undefined,
           mailingCountry: payload.mailingCountry as string | null | undefined,
           mailingStreet: payload.mailingStreet as string | null | undefined,
@@ -277,8 +443,18 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           postalCode: payload.postalCode as string | null | undefined,
           city: payload.city as string | null | undefined,
           state: payload.state as string | null | undefined,
-          numberOfEmployees: payload.numberOfEmployees === undefined ? undefined : payload.numberOfEmployees === null ? null : Number(payload.numberOfEmployees),
-          annualRevenue: payload.annualRevenue === undefined ? undefined : payload.annualRevenue === null ? null : String(payload.annualRevenue),
+          numberOfEmployees:
+            payload.numberOfEmployees === undefined
+              ? undefined
+              : payload.numberOfEmployees === null
+                ? null
+                : Number(payload.numberOfEmployees),
+          annualRevenue:
+            payload.annualRevenue === undefined
+              ? undefined
+              : payload.annualRevenue === null
+                ? null
+                : String(payload.annualRevenue),
           leadSource: payload.leadSource as string | null | undefined,
           industry: payload.industry as string | null | undefined,
           updatedById: userId
@@ -296,7 +472,12 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           description: payload.description as string | null | undefined,
           ownerId: payload.ownerId ? String(payload.ownerId) : undefined,
           stage: payload.stage ? String(payload.stage) : undefined,
-          probability: payload.probability === undefined ? undefined : payload.probability === null ? null : Number(payload.probability),
+          probability:
+            payload.probability === undefined
+              ? undefined
+              : payload.probability === null
+                ? null
+                : Number(payload.probability),
           forecastCategory: payload.forecastCategory ? String(payload.forecastCategory) : undefined,
           nextStep: payload.nextStep as string | null | undefined,
           leadSource: payload.leadSource as string | null | undefined,
@@ -315,7 +496,10 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           accountId: payload.accountId as string | null | undefined,
           subject: payload.subject as string | null | undefined,
           description: payload.description as string | null | undefined,
-          sendNotificationEmailToContact: payload.sendNotificationEmailToContact === undefined ? undefined : Boolean(payload.sendNotificationEmailToContact),
+          sendNotificationEmailToContact:
+            payload.sendNotificationEmailToContact === undefined
+              ? undefined
+              : Boolean(payload.sendNotificationEmailToContact),
           closedAt: payload.status === undefined ? undefined : payload.status === "Closed" ? new Date() : null,
           updatedById: userId
         }
@@ -377,7 +561,14 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           recipients: Array.isArray(payload.recipients) ? payload.recipients.map(String) : undefined,
           status: listEmailStatus,
           sentAt: listEmailStatus === "Sent" ? new Date() : undefined,
-          scheduledAt: listEmailStatus === "Sent" ? null : payload.scheduledAt ? new Date(String(payload.scheduledAt)) : payload.scheduledAt === null ? null : undefined
+          scheduledAt:
+            listEmailStatus === "Sent"
+              ? null
+              : payload.scheduledAt
+                ? new Date(String(payload.scheduledAt))
+                : payload.scheduledAt === null
+                  ? null
+                  : undefined
         }
       });
     }
@@ -389,7 +580,8 @@ async function updateRecord(object: CrmObject, id: string, payload: RecordData, 
           urlName: payload.urlName ? String(payload.urlName) : undefined,
           summary: payload.summary as string | null | undefined,
           bodyRichText: payload.bodyRichText as string | null | undefined,
-          visibleInInternalApp: payload.visibleInInternalApp === undefined ? undefined : Boolean(payload.visibleInInternalApp),
+          visibleInInternalApp:
+            payload.visibleInInternalApp === undefined ? undefined : Boolean(payload.visibleInInternalApp),
           visibleToCustomer: payload.visibleToCustomer === undefined ? undefined : Boolean(payload.visibleToCustomer),
           updatedById: userId
         }

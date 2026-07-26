@@ -10,12 +10,18 @@ export const MESSAGING_STATUSES = ["Open", "Waiting", "Closed"] as const;
 export const messagingSessionInclude = {
   account: { select: { id: true, name: true } },
   contact: { select: { id: true, firstName: true, lastName: true, email: true } },
-  participants: { include: { contact: { select: { id: true, firstName: true, lastName: true, email: true } } }, orderBy: { joinedAt: "asc" } },
+  participants: {
+    include: { contact: { select: { id: true, firstName: true, lastName: true, email: true } } },
+    orderBy: { joinedAt: "asc" }
+  },
   messages: { orderBy: { sentAt: "asc" } }
 } satisfies Prisma.MessagingSessionInclude;
 
 export class MessagingValidationError extends Error {
-  constructor(message: string, readonly status = 400) {
+  constructor(
+    message: string,
+    readonly status = 400
+  ) {
     super(message);
     this.name = "MessagingValidationError";
   }
@@ -28,35 +34,50 @@ export function messagingErrorResponse(error: unknown) {
 
 export function requireMessagingChannel(value: unknown) {
   const channel = String(value ?? "Web Chat");
-  if (!(MESSAGING_CHANNELS as readonly string[]).includes(channel)) throw new MessagingValidationError("Choose a valid messaging channel.");
+  if (!(MESSAGING_CHANNELS as readonly string[]).includes(channel))
+    throw new MessagingValidationError("Choose a valid messaging channel.");
   return channel;
 }
 
 export function requireMessagingStatus(value: unknown) {
   const status = String(value ?? "Open");
-  if (!(MESSAGING_STATUSES as readonly string[]).includes(status)) throw new MessagingValidationError("Choose a valid messaging status.");
+  if (!(MESSAGING_STATUSES as readonly string[]).includes(status))
+    throw new MessagingValidationError("Choose a valid messaging status.");
   return status;
 }
 
-export async function validateMessagingReferences(organizationId: string, userId: string, values: Record<string, unknown>) {
+export async function validateMessagingReferences(
+  organizationId: string,
+  userId: string,
+  values: Record<string, unknown>
+) {
   const ownerId = String(values.ownerId ?? userId);
   await assertOrganizationUser(organizationId, ownerId);
   if (values.accountId) await assertOrganizationRecord(organizationId, "account", String(values.accountId));
   if (values.contactId) await assertOrganizationRecord(organizationId, "contact", String(values.contactId));
   const contactIds = Array.isArray(values.participants)
-    ? values.participants.map((participant) => participant && typeof participant === "object" ? String((participant as Record<string, unknown>).contactId ?? "") : "").filter(Boolean)
+    ? values.participants
+        .map((participant) =>
+          participant && typeof participant === "object"
+            ? String((participant as Record<string, unknown>).contactId ?? "")
+            : ""
+        )
+        .filter(Boolean)
     : [];
   const uniqueIds = [...new Set(contactIds)];
   if (uniqueIds.length) {
     const count = await prisma.contact.count({ where: { organizationId, id: { in: uniqueIds } } });
-    if (count !== uniqueIds.length) throw new AppAuthorizationError("One or more messaging participants were not found.", 404);
+    if (count !== uniqueIds.length)
+      throw new AppAuthorizationError("One or more messaging participants were not found.", 404);
   }
   return ownerId;
 }
 
 export async function buildMessagingParticipants(organizationId: string, participants: unknown) {
   if (!Array.isArray(participants)) return [];
-  const values = participants.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+  const values = participants.filter((item): item is Record<string, unknown> =>
+    Boolean(item && typeof item === "object")
+  );
   const contactIds = [...new Set(values.map((item) => String(item.contactId ?? "")).filter(Boolean))];
   const contacts = await prisma.contact.findMany({
     where: { organizationId, id: { in: contactIds } },
@@ -88,8 +109,21 @@ export async function requireMessagingSession(organizationId: string, id: string
   return session;
 }
 
-export async function createMessagingNotification(organizationId: string, userId: string, title: string, body: string, id: string) {
+export async function createMessagingNotification(
+  organizationId: string,
+  userId: string,
+  title: string,
+  body: string,
+  id: string
+) {
   return prisma.notification.create({
-    data: { organizationId, userId, title, body, href: `/lightning/r/MessagingSession/${id}/view`, category: "Activity" }
+    data: {
+      organizationId,
+      userId,
+      title,
+      body,
+      href: `/lightning/r/MessagingSession/${id}/view`,
+      category: "Activity"
+    }
   });
 }

@@ -1,9 +1,69 @@
 "use client";
 
 import { useState } from "react";
+import { apiRequest, jsonBody } from "@/lib/api/client";
 
 export function KnowledgeFeedbackForm({ organization, slug }: { organization: string; slug: string }) {
-  const [helpful, setHelpful] = useState<boolean | null>(null); const [comment, setComment] = useState(""); const [message, setMessage] = useState(""); const [saving, setSaving] = useState(false);
-  async function submit() { if (helpful === null) { setMessage("Choose Yes or No first."); return; } setSaving(true); const response = await fetch(`/api/knowledge/public/${encodeURIComponent(organization)}/${encodeURIComponent(slug)}/feedback`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ helpful, comment }) }); const payload = await response.json().catch(() => ({})); setSaving(false); setMessage(response.ok ? String(payload.message ?? "Thank you for your feedback.") : String(payload.error ?? "Unable to save feedback.")); }
-  return <section className="mt-10 rounded-lg border border-[#d8dde6] bg-[#f8f9fb] p-5"><h2 className="font-semibold">Was this article helpful?</h2><div className="mt-3 flex gap-2"><button className={`rounded border px-4 py-2 text-sm ${helpful === true ? "border-[#0176d3] bg-[#eaf5fe] text-[#014486]" : "border-[#c9c9c9] bg-white"}`} onClick={() => setHelpful(true)}>Yes</button><button className={`rounded border px-4 py-2 text-sm ${helpful === false ? "border-[#0176d3] bg-[#eaf5fe] text-[#014486]" : "border-[#c9c9c9] bg-white"}`} onClick={() => setHelpful(false)}>No</button></div><label className="mt-4 block text-sm"><span className="mb-1 block font-medium">Optional comment</span><textarea className="min-h-24 w-full rounded border border-[#c9c9c9] bg-white p-3 outline-none focus:border-[#0176d3]" maxLength={1000} value={comment} onChange={(event) => setComment(event.target.value)} /></label><button className="mt-3 rounded bg-[#0176d3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={saving} onClick={() => void submit()}>{saving ? "Saving…" : "Submit feedback"}</button>{message && <p className="mt-2 text-sm text-[#514f4d]" role="status">{message}</p>}</section>;
+  const [helpful, setHelpful] = useState<boolean | null>(null);
+  const [comment, setComment] = useState("");
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  async function submit() {
+    if (helpful === null) {
+      setMessage("Choose Yes or No first.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = await apiRequest<{ message?: string }>(
+        `/api/knowledge/public/${encodeURIComponent(organization)}/${encodeURIComponent(slug)}/feedback`,
+        { method: "POST", body: jsonBody({ helpful, comment }) }
+      );
+      setMessage(payload.message ?? "Thank you for your feedback.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save feedback.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <section className="mt-10 rounded-lg border border-[#d8dde6] bg-[#f8f9fb] p-5">
+      <h2 className="font-semibold">Was this article helpful?</h2>
+      <div className="mt-3 flex gap-2">
+        <button
+          className={`rounded border px-4 py-2 text-sm ${helpful === true ? "border-[#0176d3] bg-[#eaf5fe] text-[#014486]" : "border-[#c9c9c9] bg-white"}`}
+          onClick={() => setHelpful(true)}
+        >
+          Yes
+        </button>
+        <button
+          className={`rounded border px-4 py-2 text-sm ${helpful === false ? "border-[#0176d3] bg-[#eaf5fe] text-[#014486]" : "border-[#c9c9c9] bg-white"}`}
+          onClick={() => setHelpful(false)}
+        >
+          No
+        </button>
+      </div>
+      <label className="mt-4 block text-sm">
+        <span className="mb-1 block font-medium">Optional comment</span>
+        <textarea
+          className="min-h-24 w-full rounded border border-[#c9c9c9] bg-white p-3 outline-none focus:border-[#0176d3]"
+          maxLength={1000}
+          value={comment}
+          onChange={(event) => setComment(event.target.value)}
+        />
+      </label>
+      <button
+        className="mt-3 rounded bg-[#0176d3] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        disabled={saving}
+        onClick={() => void submit()}
+      >
+        {saving ? "Saving…" : "Submit feedback"}
+      </button>
+      {message && (
+        <p className="mt-2 text-sm text-[#514f4d]" role="status">
+          {message}
+        </p>
+      )}
+    </section>
+  );
 }

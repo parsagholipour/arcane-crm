@@ -7,10 +7,7 @@ type PublicAppEnvironment = {
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
-export function resolvePublicAppUrl(
-  override?: string,
-  environment: PublicAppEnvironment = process.env
-) {
+export function resolvePublicAppUrl(override?: string, environment: PublicAppEnvironment = process.env) {
   const railwayUrl = environment.RAILWAY_PUBLIC_DOMAIN
     ? `https://${environment.RAILWAY_PUBLIC_DOMAIN.replace(/^https?:\/\//, "")}`
     : undefined;

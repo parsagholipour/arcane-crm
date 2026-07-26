@@ -1,0 +1,105 @@
+name: CRM CI
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+
+concurrency:
+  group: crm-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: crm
+          POSTGRES_PASSWORD: crm
+          POSTGRES_DB: crm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U crm -d crm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://crm:crm@127.0.0.1:5432/crm_test
+      AUTH_SECRET: ci-auth-secret-at-least-thirty-two-characters
+      AUTH_URL: http://127.0.0.1:3001
+      NEXTAUTH_URL: http://127.0.0.1:3001
+      CRM_BASE_URL: http://127.0.0.1:3001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:generate
+      - run: npm run prisma:migrate:deploy
+      - run: npm run prisma:seed
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run test:component
+      - run: npm run check:files
+      - run: npm run build
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: crm
+          POSTGRES_PASSWORD: crm
+          POSTGRES_DB: crm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U crm -d crm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://crm:crm@127.0.0.1:5432/crm_test
+      AUTH_SECRET: ci-auth-secret-at-least-thirty-two-characters
+      AUTH_URL: http://127.0.0.1:3001
+      NEXTAUTH_URL: http://127.0.0.1:3001
+      CRM_BASE_URL: http://127.0.0.1:3001
+      PLAYWRIGHT_EXTERNAL_SERVER: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run prisma:generate
+      - run: npm run prisma:migrate:deploy
+      - run: npm run prisma:seed
+      - run: npm run build
+      - run: npm run start -- --hostname 127.0.0.1 --port 3001 > /tmp/crm-next.log 2>&1 &
+      - name: Wait for CRM
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:3001 >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/crm-next.log
+          exit 1
+      - run: npm run test:usecases
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results

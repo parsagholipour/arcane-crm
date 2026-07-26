@@ -29,7 +29,10 @@ export type KeycloakSession = {
 };
 
 export class KeycloakAdminError extends Error {
-  constructor(message: string, readonly status?: number) {
+  constructor(
+    message: string,
+    readonly status?: number
+  ) {
     super(message);
     this.name = "KeycloakAdminError";
   }
@@ -54,8 +57,8 @@ function location(): KeycloakLocation {
 export function isKeycloakAdminConfigured() {
   return Boolean(
     process.env.AUTH_KEYCLOAK_ISSUER &&
-      process.env.AUTH_KEYCLOAK_ADMIN_CLIENT_ID &&
-      process.env.AUTH_KEYCLOAK_ADMIN_CLIENT_SECRET
+    process.env.AUTH_KEYCLOAK_ADMIN_CLIENT_ID &&
+    process.env.AUTH_KEYCLOAK_ADMIN_CLIENT_SECRET
   );
 }
 
@@ -70,7 +73,8 @@ async function adminToken(config: KeycloakLocation) {
     }),
     cache: "no-store"
   });
-  if (!response.ok) throw new KeycloakAdminError("Unable to authenticate the Keycloak Admin API client.", response.status);
+  if (!response.ok)
+    throw new KeycloakAdminError("Unable to authenticate the Keycloak Admin API client.", response.status);
   const payload = (await response.json()) as { access_token?: string };
   if (!payload.access_token) throw new KeycloakAdminError("Keycloak Admin API returned no access token.");
   return payload.access_token;
@@ -90,7 +94,10 @@ async function adminFetch(path: string, init: RequestInit = {}) {
   });
   if (!response.ok) {
     const details = await response.text().catch(() => "");
-    throw new KeycloakAdminError(`Keycloak Admin API request failed${details ? `: ${details.slice(0, 300)}` : "."}`, response.status);
+    throw new KeycloakAdminError(
+      `Keycloak Admin API request failed${details ? `: ${details.slice(0, 300)}` : "."}`,
+      response.status
+    );
   }
   return response;
 }

@@ -7,11 +7,16 @@ function text(value: unknown) {
 }
 
 function escapeHtml(value: unknown) {
-  return text(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] ?? character);
+  return text(value).replace(
+    /[&<>"']/g,
+    (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] ?? character
+  );
 }
 
 function formatDate(value: Date | string) {
-  return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(value));
+  return new Intl.DateTimeFormat("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }).format(
+    new Date(value)
+  );
 }
 
 function formatMoney(value: unknown, currency: string) {
@@ -48,7 +53,10 @@ export function calendarReminderTemplate(input: {
 }) {
   const subject = `Reminder: ${text(input.eventSubject)}`;
   const schedule = input.allDay
-    ? [`Date: ${text(input.startText)}`, ...(input.endText && input.endText !== input.startText ? [`Ends: ${text(input.endText)}`] : [])]
+    ? [
+        `Date: ${text(input.startText)}`,
+        ...(input.endText && input.endText !== input.startText ? [`Ends: ${text(input.endText)}`] : [])
+      ]
     : [`Starts: ${text(input.startText)}`, `Ends: ${text(input.endText)}`];
   const plainText = [
     `${input.organizationName} calendar reminder`,
@@ -127,7 +135,9 @@ export function invoiceEmailTemplate(invoice: InvoiceDocument, organizationName:
     text(invoice.terms),
     "",
     organizationName
-  ].filter((line, index, lines) => line || (index > 0 && lines[index - 1] !== "")).join("\n");
+  ]
+    .filter((line, index, lines) => line || (index > 0 && lines[index - 1] !== ""))
+    .join("\n");
   const html = `<p>Hello ${escapeHtml(invoice.billingName)},</p><p>Please find invoice <strong>${escapeHtml(invoice.invoiceNumber)}</strong> attached.</p><p><strong>Total:</strong> ${escapeHtml(total)}<br><strong>Due date:</strong> ${escapeHtml(dueDate)}</p>${invoice.terms ? `<p>${escapeHtml(invoice.terms).replace(/\n/g, "<br>")}</p>` : ""}<p>${escapeHtml(organizationName)}</p>`;
   return { subject, text: plainText, html };
 }

@@ -32,9 +32,17 @@ function destination(message: string, error = false) {
 }
 
 function actionError(error: unknown) {
-  if (error && typeof error === "object" && "digest" in error && String((error as { digest?: unknown }).digest).startsWith("NEXT_REDIRECT")) throw error;
+  if (
+    error &&
+    typeof error === "object" &&
+    "digest" in error &&
+    String((error as { digest?: unknown }).digest).startsWith("NEXT_REDIRECT")
+  )
+    throw error;
   console.error("[super-admin] action failed", error);
-  return error instanceof UserManagementError || error instanceof Error ? error.message : "The operation could not be completed.";
+  return error instanceof UserManagementError || error instanceof Error
+    ? error.message
+    : "The operation could not be completed.";
 }
 
 export async function createOrganizationAction(formData: FormData) {
@@ -62,7 +70,8 @@ export async function updateOrganizationAction(organizationId: string, formData:
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
     const status = value(formData, "status") === "SUSPENDED" ? "SUSPENDED" : "ACTIVE";
-    if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) throw new UserManagementError("A valid name and slug are required.");
+    if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug))
+      throw new UserManagementError("A valid name and slug are required.");
     await prisma.organization.update({ where: { id: organizationId }, data: { name, slug, status } });
     destination("Organization updated.");
   } catch (error) {
