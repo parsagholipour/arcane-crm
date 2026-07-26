@@ -8369,7 +8369,18 @@ function FieldInput({ field, values, data, error, onChange }: { field: FieldDefi
     );
   }
   if (field.type === "checkbox") return <RadixCheckbox checked={Boolean(value)} onCheckedChange={(checked) => onChange(field.name, Boolean(checked))} />;
-  if (field.type === "lookup") return <LookupField field={field} value={String(value ?? "")} data={data} error={Boolean(error)} onChange={(next) => onChange(field.name, next)} />;
+  if (field.type === "lookup") {
+    return (
+      <LookupField
+        field={field}
+        value={String(value ?? "")}
+        data={data}
+        error={Boolean(error)}
+        inlineSelection
+        onChange={(next) => onChange(field.name, next)}
+      />
+    );
+  }
   if (field.type === "readonly") return <input className={controlClass} readOnly value={String(value ?? "")} />;
   return <input className={controlClass} type={field.type === "currency" || field.type === "number" ? "number" : field.type} value={String(value ?? "")} onChange={(event) => onChange(field.name, event.target.value)} />;
 }
