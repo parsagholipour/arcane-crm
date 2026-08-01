@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { type ScopedCrmData } from "@/lib/crm-types";
+import { type FieldDefinition, type ScopedCrmData } from "@/lib/crm-types";
 import { AsyncButton } from "@/components/crm/AsyncButton";
+import { LookupField } from "@/features/crm/form-controls";
 import {
   type RecordData,
   type Mutation,
@@ -16,6 +17,14 @@ import {
   Field,
   input
 } from "@/components/crm/commerce/primitives";
+
+const productLookupField: FieldDefinition = {
+  name: "productId",
+  label: "Product",
+  section: "Inventory",
+  type: "lookup",
+  lookupObject: "Product2"
+};
 
 export function InventoryEditor({
   data,
@@ -81,19 +90,14 @@ export function InventoryEditor({
           </select>
         </Field>
         <Field label="Product" required>
-          <select
-            className={input}
+          <LookupField
+            field={productLookupField}
             disabled={Boolean(initial)}
             value={values.productId}
-            onChange={(event) => setValues({ ...values, productId: event.target.value })}
-          >
-            <option value="">Choose Product</option>
-            {data.products.map((product) => (
-              <option key={id(product)} value={id(product)}>
-                {text(product.name)}
-              </option>
-            ))}
-          </select>
+            data={data}
+            inlineSelection
+            onChange={(productId) => setValues({ ...values, productId })}
+          />
         </Field>
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Quantity on Hand">

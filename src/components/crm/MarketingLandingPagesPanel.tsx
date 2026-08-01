@@ -3,9 +3,10 @@
 import { Archive, ExternalLink, FileText, Plus, RotateCcw, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState, type ReactNode } from "react";
-import type { ScopedCrmData, RecordData } from "@/lib/crm-types";
+import type { FieldDefinition, ScopedCrmData, RecordData } from "@/lib/crm-types";
 import { cn, formatDateTime, slugify } from "@/lib/utils";
 import { AsyncButton } from "@/components/crm/AsyncButton";
+import { LookupField } from "@/features/crm/form-controls";
 import { apiRequest } from "@/lib/api/client";
 
 type Toast = { tone: "success" | "error" | "warning"; message: string } | null;
@@ -25,6 +26,13 @@ const primary =
   "inline-flex min-h-8 items-center justify-center gap-1 rounded border border-brand-700 bg-brand-600 px-3 py-1 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-50";
 const danger =
   "inline-flex min-h-8 items-center justify-center gap-1 rounded border border-[#ba0517] bg-white px-3 py-1 text-xs font-semibold text-[#ba0517] hover:bg-[#fff1f1] disabled:opacity-50";
+const campaignLookupField: FieldDefinition = {
+  name: "campaignId",
+  label: "Campaign",
+  section: "Landing Page",
+  type: "lookup",
+  lookupObject: "Campaign"
+};
 
 export function MarketingLandingPagesPanel({
   data,
@@ -361,20 +369,13 @@ function LandingPageEditor({
           </select>
         </Field>
         <Field label="Campaign">
-          <select
-            className={input}
+          <LookupField
+            field={campaignLookupField}
             value={values.campaignId}
-            onChange={(event) => setValues({ ...values, campaignId: event.target.value })}
-          >
-            <option value="">No Campaign</option>
-            {data.campaigns
-              .filter((campaign) => campaign.status !== "Archived")
-              .map((campaign) => (
-                <option key={String(campaign.id)} value={String(campaign.id)}>
-                  {String(campaign.name)}
-                </option>
-              ))}
-          </select>
+            data={{ ...data, campaigns: data.campaigns.filter((campaign) => campaign.status !== "Archived") }}
+            inlineSelection
+            onChange={(campaignId) => setValues({ ...values, campaignId })}
+          />
         </Field>
         <Field label="Submit Button">
           <input

@@ -3,6 +3,7 @@
 import * as Popover from "@radix-ui/react-popover";
 import { Minus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NativeSelect } from "@/features/crm/controls";
 import { HeaderUtilityContent } from "@/features/crm/header-utility-content";
 import { type HeaderUtilityProps, useHeaderUtility } from "@/features/crm/use-header-utility";
 
@@ -28,14 +29,61 @@ export function HeaderUtility(props: HeaderUtilityProps) {
       <Popover.Portal>
         <Popover.Content
           align="end"
+          sideOffset={8}
+          collisionPadding={8}
           className={cn(
-            "z-50 rounded border border-[#d8dde6] bg-white shadow-popover",
-            kind === "help" || kind === "settings" ? "w-[460px]" : kind === "agentforce" ? "w-[420px]" : "w-[360px]"
+            "z-50 max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-[#d8dde6] bg-white shadow-popover",
+            kind === "help" || kind === "settings"
+              ? "w-[460px]"
+              : kind === "agentforce"
+                ? "w-[420px]"
+                : kind === "notifications"
+                  ? "w-[400px]"
+                  : "w-[360px]"
           )}
         >
-          <div className="flex items-center justify-between border-b border-[#d8dde6] px-3 py-2">
-            <div className="font-semibold">{label}</div>
+          <div className="flex min-h-11 items-center justify-between gap-1 border-b border-[#e4e7ec] px-3 py-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <div className="shrink-0 text-sm font-semibold">{label}</div>
+              {kind === "notifications" && (
+                <div
+                  className="inline-flex rounded-md bg-[#f2f4f7] p-0.5 text-[11px] font-medium"
+                  role="tablist"
+                  aria-label="Filter notifications"
+                >
+                  {(["all", "unread"] as const).map((filter) => (
+                    <button
+                      key={filter}
+                      type="button"
+                      role="tab"
+                      aria-selected={model.notificationFilter === filter}
+                      className={cn(
+                        "min-h-6 rounded px-2 capitalize text-[#5f6368] transition-colors hover:text-[#181818]",
+                        model.notificationFilter === filter && "bg-white font-semibold text-brand-700 shadow-sm"
+                      )}
+                      onClick={() => model.setNotificationFilter(filter)}
+                    >
+                      {filter}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {kind === "notifications" && (
+                <NativeSelect
+                  aria-label="Notification category"
+                  className="h-7 min-h-7 w-[108px] px-2 py-0.5 text-[11px]"
+                  options={model.availableNotificationCategories}
+                  value={model.notificationCategory}
+                  onChange={model.setNotificationCategory}
+                />
+              )}
+            </div>
             <div className="flex items-center gap-1">
+              {kind === "notifications" && (
+                <span className="whitespace-nowrap text-[11px] font-medium text-[#706e6b]" aria-live="polite">
+                  {model.unreadCount} unread
+                </span>
+              )}
               {kind === "help" && (
                 <Popover.Close asChild>
                   <button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label={`Minimize ${label}`} title="Minimize">
@@ -44,8 +92,11 @@ export function HeaderUtility(props: HeaderUtilityProps) {
                 </Popover.Close>
               )}
               <Popover.Close asChild>
-                <button className="rounded p-1 hover:bg-[#f3f3f3]" aria-label={`Close ${label}`}>
-                  <X size={14} />
+                <button
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-[#706e6b] hover:bg-[#f3f3f3] hover:text-[#181818]"
+                  aria-label={`Close ${label}`}
+                >
+                  <X size={15} />
                 </button>
               </Popover.Close>
             </div>

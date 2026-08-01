@@ -471,6 +471,7 @@ export function useHeaderUtility({ kind, data, pathname, onNavigate, onDataChang
     sendAssistantMessage,
     clearAssistantMessages,
     copyAssistantDraft,
+    markNotificationRead,
     markAllNotificationsRead,
     openNotification,
     deleteNotification,

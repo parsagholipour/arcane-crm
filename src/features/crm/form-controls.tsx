@@ -117,6 +117,8 @@ export function LookupField({
   field,
   value,
   data,
+  options: suppliedOptions,
+  disabled = false,
   error,
   inlineSelection = false,
   onChange,
@@ -127,6 +129,8 @@ export function LookupField({
   field: FieldDefinition;
   value: string;
   data: ScopedCrmData;
+  options?: LookupOption[];
+  disabled?: boolean;
   error?: boolean;
   inlineSelection?: boolean;
   onChange: (value: string) => void;
@@ -140,7 +144,7 @@ export function LookupField({
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const listId = `${inputId}-lookup-results`;
-  const options = lookupOptionsForField(field, data);
+  const options = suppliedOptions ?? lookupOptionsForField(field, data);
   const selected = options.find((option) => option.id === value);
   const invalid = Boolean(error || ariaInvalid);
   const placeholder = lookupPlaceholder(field);
@@ -209,6 +213,7 @@ export function LookupField({
               aria-invalid={invalid || undefined}
               aria-describedby={ariaDescribedBy}
               aria-label={field.label}
+              disabled={disabled}
               value={inlineSelection && selected && !open ? selected.label : query}
               onFocus={() => setOpen(true)}
               onClick={() => setOpen(true)}
@@ -247,7 +252,7 @@ export function LookupField({
               )}
               placeholder={placeholder}
             />
-            {inlineSelection && selected && !open && (
+            {inlineSelection && selected && !open && !disabled && (
               <button
                 type="button"
                 aria-label={`Clear ${field.label}`}
@@ -269,7 +274,7 @@ export function LookupField({
           <Popover.Content
             align="start"
             sideOffset={4}
-            className="z-[70] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded border border-[#d8dde6] bg-white shadow-popover"
+            className="z-[110] w-[var(--radix-popover-trigger-width)] overflow-hidden rounded border border-[#d8dde6] bg-white shadow-popover"
             onOpenAutoFocus={(event) => event.preventDefault()}
             onCloseAutoFocus={(event) => event.preventDefault()}
             onFocusOutside={(event) => event.preventDefault()}
@@ -517,6 +522,11 @@ export function lookupOptionsForField(field: FieldDefinition, data: ScopedCrmDat
     return data.knowledgeArticles.map((article) => ({
       id: requiredId(article),
       label: String(article.title ?? "Article")
+    }));
+  if (field.lookupObject === "Campaign")
+    return data.campaigns.map((campaign) => ({
+      id: requiredId(campaign),
+      label: String(campaign.name ?? "Campaign")
     }));
   if (field.lookupObject === "User") return data.users.map((user) => ({ id: user.id, label: user.name }));
   if (field.lookupObject === "People") {

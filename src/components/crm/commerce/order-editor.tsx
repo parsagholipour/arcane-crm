@@ -2,9 +2,10 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { type ScopedCrmData } from "@/lib/crm-types";
+import { type FieldDefinition, type ScopedCrmData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { AsyncButton } from "@/components/crm/AsyncButton";
+import { LookupField } from "@/features/crm/form-controls";
 import {
   type RecordData,
   type Mutation,
@@ -18,7 +19,6 @@ import {
   ErrorBox,
   Field,
   input,
-  contactName,
   Panel,
   Empty,
   money
@@ -31,6 +31,27 @@ export type OrderLineDraft = {
   unitPrice: string;
   discountAmount: string;
   taxRate: string;
+};
+const accountLookupField: FieldDefinition = {
+  name: "accountId",
+  label: "Account",
+  section: "Order Details",
+  type: "lookup",
+  lookupObject: "Account"
+};
+const contactLookupField: FieldDefinition = {
+  name: "contactId",
+  label: "Contact",
+  section: "Order Details",
+  type: "lookup",
+  lookupObject: "Contact"
+};
+const productLookupField: FieldDefinition = {
+  name: "productId",
+  label: "Product",
+  section: "Line Items",
+  type: "lookup",
+  lookupObject: "Product2"
 };
 export function OrderEditor({
   data,
@@ -158,32 +179,22 @@ export function OrderEditor({
             </select>
           </Field>
           <Field label="Account" required>
-            <select
-              className={input}
+            <LookupField
+              field={accountLookupField}
               value={values.accountId}
-              onChange={(event) => setValues({ ...values, accountId: event.target.value, contactId: "" })}
-            >
-              <option value="">Choose Account</option>
-              {data.accounts.map((account) => (
-                <option key={id(account)} value={id(account)}>
-                  {text(account.name)}
-                </option>
-              ))}
-            </select>
+              data={data}
+              inlineSelection
+              onChange={(accountId) => setValues({ ...values, accountId, contactId: "" })}
+            />
           </Field>
           <Field label="Contact">
-            <select
-              className={input}
+            <LookupField
+              field={contactLookupField}
               value={values.contactId}
-              onChange={(event) => setValues({ ...values, contactId: event.target.value })}
-            >
-              <option value="">No Contact</option>
-              {contacts.map((contact) => (
-                <option key={id(contact)} value={id(contact)}>
-                  {contactName(contact)}
-                </option>
-              ))}
-            </select>
+              data={{ ...data, contacts }}
+              inlineSelection
+              onChange={(contactId) => setValues({ ...values, contactId })}
+            />
           </Field>
           <Field label="Purchase Order Number">
             <input
@@ -233,18 +244,13 @@ export function OrderEditor({
                 className="grid gap-2 rounded border border-[#d8dde6] p-3 md:grid-cols-[1.4fr_2fr_.7fr_.8fr_.8fr_.7fr_auto]"
               >
                 <Field label="Product">
-                  <select
-                    className={input}
+                  <LookupField
+                    field={{ ...productLookupField, label: `Line ${index + 1} Product` }}
                     value={line.productId}
-                    onChange={(event) => chooseProduct(index, event.target.value)}
-                  >
-                    <option value="">Choose Product</option>
-                    {data.products.map((product) => (
-                      <option key={id(product)} value={id(product)}>
-                        {text(product.name)}
-                      </option>
-                    ))}
-                  </select>
+                    data={data}
+                    inlineSelection
+                    onChange={(productId) => chooseProduct(index, productId)}
+                  />
                 </Field>
                 <Field label="Description">
                   <input

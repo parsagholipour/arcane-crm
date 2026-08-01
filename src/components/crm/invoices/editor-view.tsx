@@ -2,9 +2,10 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
+import { type FieldDefinition } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
+import { LookupField } from "@/features/crm/form-controls";
 import {
-  requiredId,
   text,
   InvoiceButton,
   SectionTitle,
@@ -20,6 +21,28 @@ import {
   emptyLine,
   type InvoiceEditorModalModel
 } from "@/components/crm/invoices/editor-controller";
+
+const accountLookupField: FieldDefinition = {
+  name: "accountId",
+  label: "Account",
+  section: "Invoice Information",
+  type: "lookup",
+  lookupObject: "Account"
+};
+const opportunityLookupField: FieldDefinition = {
+  name: "opportunityId",
+  label: "Opportunity",
+  section: "Invoice Information",
+  type: "lookup",
+  lookupObject: "Opportunity"
+};
+const productLookupField: FieldDefinition = {
+  name: "productId",
+  label: "Product",
+  section: "Line Items",
+  type: "lookup",
+  lookupObject: "Product2"
+};
 
 export function InvoiceEditorView({ model }: { model: InvoiceEditorModalModel }) {
   const {
@@ -44,6 +67,7 @@ export function InvoiceEditorView({ model }: { model: InvoiceEditorModalModel })
     moveLine,
     save
   } = model;
+  const activeProducts = data.products.filter((product) => product.active !== false);
 
   return (
     <Dialog.Root
@@ -92,34 +116,23 @@ export function InvoiceEditorView({ model }: { model: InvoiceEditorModalModel })
                   <SectionTitle>Invoice information</SectionTitle>
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <InvoiceField label="Account" required error={errors.accountId}>
-                      <select
-                        aria-label="Account"
-                        className={controlClass}
+                      <LookupField
+                        field={accountLookupField}
                         value={header.accountId}
-                        onChange={(event) => selectAccount(event.target.value)}
-                      >
-                        <option value="">Select an Account</option>
-                        {data.accounts.map((account) => (
-                          <option key={requiredId(account)} value={requiredId(account)}>
-                            {text(account.name)}
-                          </option>
-                        ))}
-                      </select>
+                        data={data}
+                        error={Boolean(errors.accountId)}
+                        inlineSelection
+                        onChange={selectAccount}
+                      />
                     </InvoiceField>
                     <InvoiceField label="Opportunity">
-                      <select
-                        aria-label="Opportunity"
-                        className={controlClass}
+                      <LookupField
+                        field={opportunityLookupField}
                         value={header.opportunityId}
-                        onChange={(event) => updateHeader("opportunityId", event.target.value)}
-                      >
-                        <option value="">No Opportunity</option>
-                        {opportunities.map((opportunity) => (
-                          <option key={requiredId(opportunity)} value={requiredId(opportunity)}>
-                            {text(opportunity.name)}
-                          </option>
-                        ))}
-                      </select>
+                        data={{ ...data, opportunities }}
+                        inlineSelection
+                        onChange={(opportunityId) => updateHeader("opportunityId", opportunityId)}
+                      />
                     </InvoiceField>
                     <InvoiceField label="Issue Date" required error={errors.issueDate}>
                       <input
@@ -258,21 +271,13 @@ export function InvoiceEditorView({ model }: { model: InvoiceEditorModalModel })
                               </div>
                             </td>
                             <td className="w-44 px-2 py-2">
-                              <select
-                                aria-label={`Line ${index + 1} Product`}
-                                className={controlClass}
+                              <LookupField
+                                field={{ ...productLookupField, label: `Line ${index + 1} Product` }}
                                 value={line.productId}
-                                onChange={(event) => selectProduct(line, event.target.value)}
-                              >
-                                <option value="">No Product</option>
-                                {data.products
-                                  .filter((product) => product.active !== false)
-                                  .map((product) => (
-                                    <option key={requiredId(product)} value={requiredId(product)}>
-                                      {text(product.name)}
-                                    </option>
-                                  ))}
-                              </select>
+                                data={{ ...data, products: activeProducts }}
+                                inlineSelection
+                                onChange={(productId) => selectProduct(line, productId)}
+                              />
                             </td>
                             <td className="min-w-64 px-2 py-2">
                               <textarea

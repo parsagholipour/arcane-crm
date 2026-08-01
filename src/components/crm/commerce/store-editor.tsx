@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { type ScopedCrmData } from "@/lib/crm-types";
+import { type FieldDefinition, type ScopedCrmData } from "@/lib/crm-types";
 import { cn, slugify } from "@/lib/utils";
 import { AsyncButton } from "@/components/crm/AsyncButton";
+import { LookupField } from "@/features/crm/form-controls";
 import {
   type RecordData,
   type Mutation,
@@ -17,6 +18,14 @@ import {
   Field,
   input
 } from "@/components/crm/commerce/primitives";
+
+const priceBookLookupField: FieldDefinition = {
+  name: "priceBookId",
+  label: "Price Book",
+  section: "Store Details",
+  type: "lookup",
+  lookupObject: "Pricebook2"
+};
 
 export function StoreEditor({
   data,
@@ -110,19 +119,17 @@ export function StoreEditor({
             </select>
           </Field>
           <Field label="Price Book">
-            <select
-              className={input}
+            <LookupField
+              field={priceBookLookupField}
               value={values.priceBookId}
-              onChange={(event) => setValues({ ...values, priceBookId: event.target.value })}
-            >
-              <option value="">Choose a Price Book</option>
-              {data.priceBooks.map((book) => (
-                <option key={id(book)} value={id(book)}>
-                  {text(book.name)}
-                  {book.active ? "" : " (Inactive)"}
-                </option>
-              ))}
-            </select>
+              data={data}
+              options={data.priceBooks.map((book) => ({
+                id: id(book),
+                label: `${text(book.name)}${book.active ? "" : " (Inactive)"}`
+              }))}
+              inlineSelection
+              onChange={(priceBookId) => setValues({ ...values, priceBookId })}
+            />
           </Field>
         </div>
         <Field label="Description">

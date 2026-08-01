@@ -2,9 +2,10 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { type ScopedCrmData, type RecordData } from "@/lib/crm-types";
+import { type FieldDefinition, type ScopedCrmData, type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { AsyncButton } from "@/components/crm/AsyncButton";
+import { LookupField } from "@/features/crm/form-controls";
 import {
   type ParticipantDraft,
   text,
@@ -20,6 +21,35 @@ import {
   Field,
   inputClass
 } from "@/components/crm/communications/primitives";
+
+const accountLookupField: FieldDefinition = {
+  name: "accountId",
+  label: "Account",
+  section: "Call Details",
+  type: "lookup",
+  lookupObject: "Account"
+};
+const contactLookupField: FieldDefinition = {
+  name: "contactId",
+  label: "Contact",
+  section: "Call Details",
+  type: "lookup",
+  lookupObject: "Contact"
+};
+const opportunityLookupField: FieldDefinition = {
+  name: "opportunityId",
+  label: "Opportunity",
+  section: "Call Details",
+  type: "lookup",
+  lookupObject: "Opportunity"
+};
+const participantLookupField: FieldDefinition = {
+  name: "participantId",
+  label: "Participant",
+  section: "Participants",
+  type: "lookup",
+  lookupObject: "People"
+};
 
 export function initialVideoParticipants(record: RecordData | undefined): ParticipantDraft[] {
   const participants = Array.isArray(record?.participants) ? (record.participants as RecordData[]) : [];
@@ -65,6 +95,17 @@ export function VideoCallEditorModal({
   const [error, setError] = useState("");
   const initialSnapshot = useMemo(() => JSON.stringify({ values, participants }), []); // eslint-disable-line react-hooks/exhaustive-deps
   const dirty = JSON.stringify({ values, participants }) !== initialSnapshot;
+  const contacts = data.contacts.filter((contact) => !values.accountId || contact.accountId === values.accountId);
+  const opportunities = data.opportunities.filter(
+    (opportunity) => !values.accountId || opportunity.accountId === values.accountId
+  );
+  const participantOptions = [
+    ...data.contacts.map((contact) => ({
+      id: `contact:${requiredId(contact)}`,
+      label: `Contact: ${contactLabel(contact)}`
+    })),
+    ...data.users.map((user) => ({ id: `user:${user.id}`, label: `User: ${user.name}` }))
+  ];
   function requestClose() {
     if (!dirty || window.confirm("Discard unsaved video-call changes?")) onClose();
   }
@@ -82,6 +123,25 @@ export function VideoCallEditorModal({
       name: source ? (key === "contactId" ? contactLabel(source as RecordData) : text(source.name)) : "",
       email: text(source?.email)
     });
+  }
+  function selectAccount(accountId: string) {
+    setValues((current) => ({
+      ...current,
+      accountId,
+      contactId: data.contacts.some(
+        (contact) =>
+          requiredId(contact) === current.contactId && (!accountId || String(contact.accountId ?? "") === accountId)
+      )
+        ? current.contactId
+        : "",
+      opportunityId: data.opportunities.some(
+        (opportunity) =>
+          requiredId(opportunity) === current.opportunityId &&
+          (!accountId || String(opportunity.accountId ?? "") === accountId)
+      )
+        ? current.opportunityId
+        : ""
+    }));
   }
   async function save() {
     if (!terminal && !values.name.trim()) {
@@ -247,50 +307,31 @@ export function VideoCallEditorModal({
             </select>
           </Field>
           <Field label="Account">
-            <select
-              className={inputClass}
+            <LookupField
+              field={accountLookupField}
               value={values.accountId}
-              onChange={(event) => setValues({ ...values, accountId: event.target.value })}
-            >
-              <option value="">No account</option>
-              {data.accounts.map((account) => (
-                <option key={requiredId(account)} value={requiredId(account)}>
-                  {text(account.name)}
-                </option>
-              ))}
-            </select>
+              data={data}
+              inlineSelection
+              onChange={selectAccount}
+            />
           </Field>
           <Field label="Contact">
-            <select
-              className={inputClass}
+            <LookupField
+              field={contactLookupField}
               value={values.contactId}
-              onChange={(event) => setValues({ ...values, contactId: event.target.value })}
-            >
-              <option value="">No contact</option>
-              {data.contacts
-                .filter((contact) => !values.accountId || contact.accountId === values.accountId)
-                .map((contact) => (
-                  <option key={requiredId(contact)} value={requiredId(contact)}>
-                    {contactLabel(contact)}
-                  </option>
-                ))}
-            </select>
+              data={{ ...data, contacts }}
+              inlineSelection
+              onChange={(contactId) => setValues({ ...values, contactId })}
+            />
           </Field>
           <Field label="Opportunity">
-            <select
-              className={inputClass}
+            <LookupField
+              field={opportunityLookupField}
               value={values.opportunityId}
-              onChange={(event) => setValues({ ...values, opportunityId: event.target.value })}
-            >
-              <option value="">No opportunity</option>
-              {data.opportunities
-                .filter((opportunity) => !values.accountId || opportunity.accountId === values.accountId)
-                .map((opportunity) => (
-                  <option key={requiredId(opportunity)} value={requiredId(opportunity)}>
-                    {text(opportunity.name)}
-                  </option>
-                ))}
-            </select>
+              data={{ ...data, opportunities }}
+              inlineSelection
+              onChange={(opportunityId) => setValues({ ...values, opportunityId })}
+            />
           </Field>
           <Field label="Recording URL">
             <input
@@ -341,8 +382,8 @@ export function VideoCallEditorModal({
                 key={index}
                 className="grid gap-2 rounded border border-[#d8dde6] p-3 md:grid-cols-[1fr_1fr_1fr_120px_auto]"
               >
-                <select
-                  className={inputClass}
+                <LookupField
+                  field={{ ...participantLookupField, label: `Participant ${index + 1}` }}
                   value={
                     participant.contactId
                       ? `contact:${participant.contactId}`
@@ -350,27 +391,14 @@ export function VideoCallEditorModal({
                         ? `user:${participant.userId}`
                         : ""
                   }
-                  onChange={(event) => {
-                    const [kind, id] = event.target.value.split(":");
+                  data={data}
+                  options={participantOptions}
+                  inlineSelection
+                  onChange={(value) => {
+                    const [kind, id] = value.split(":");
                     selectParticipant(index, kind === "user" ? "userId" : "contactId", id || "");
                   }}
-                >
-                  <option value="">Custom participant</option>
-                  <optgroup label="Contacts">
-                    {data.contacts.map((contact) => (
-                      <option key={requiredId(contact)} value={`contact:${requiredId(contact)}`}>
-                        {contactLabel(contact)}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Users">
-                    {data.users.map((user) => (
-                      <option key={user.id} value={`user:${user.id}`}>
-                        {user.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
+                />
                 <input
                   className={inputClass}
                   placeholder="Name"

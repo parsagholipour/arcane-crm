@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { type ScopedCrmData, type RecordData } from "@/lib/crm-types";
+import { type FieldDefinition, type ScopedCrmData, type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { AsyncButton } from "@/components/crm/AsyncButton";
+import { LookupField } from "@/features/crm/form-controls";
 import {
   type CampaignMutationResult,
   type Toast,
@@ -16,6 +17,14 @@ import {
   Field,
   inputClass
 } from "@/components/crm/campaigns/primitives";
+
+const parentCampaignLookupField: FieldDefinition = {
+  name: "parentCampaignId",
+  label: "Parent Campaign",
+  section: "Campaign Details",
+  type: "lookup",
+  lookupObject: "Campaign"
+};
 
 export function CampaignEditorModal({
   data,
@@ -122,20 +131,13 @@ export function CampaignEditorModal({
             </select>
           </Field>
           <Field label="Parent Campaign">
-            <select
-              className={inputClass}
+            <LookupField
+              field={parentCampaignLookupField}
               value={values.parentCampaignId}
-              onChange={(event) => setValues({ ...values, parentCampaignId: event.target.value })}
-            >
-              <option value="">No parent</option>
-              {data.campaigns
-                .filter((campaign) => campaign.id !== initial?.id)
-                .map((campaign) => (
-                  <option key={id(campaign)} value={id(campaign)}>
-                    {text(campaign.name)}
-                  </option>
-                ))}
-            </select>
+              data={{ ...data, campaigns: data.campaigns.filter((campaign) => campaign.id !== initial?.id) }}
+              inlineSelection
+              onChange={(parentCampaignId) => setValues({ ...values, parentCampaignId })}
+            />
           </Field>
           <Field label="Start Date">
             <input

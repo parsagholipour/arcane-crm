@@ -2,8 +2,9 @@
 
 import { Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { type ScopedCrmData, type RecordData } from "@/lib/crm-types";
+import { type FieldDefinition, type ScopedCrmData, type RecordData } from "@/lib/crm-types";
 import { AsyncButton } from "@/components/crm/AsyncButton";
+import { LookupField } from "@/features/crm/form-controls";
 import {
   type ParticipantDraft,
   text,
@@ -18,6 +19,28 @@ import {
   Field,
   inputClass
 } from "@/components/crm/communications/primitives";
+
+const accountLookupField: FieldDefinition = {
+  name: "accountId",
+  label: "Account",
+  section: "Session Details",
+  type: "lookup",
+  lookupObject: "Account"
+};
+const contactLookupField: FieldDefinition = {
+  name: "contactId",
+  label: "Primary Contact",
+  section: "Session Details",
+  type: "lookup",
+  lookupObject: "Contact"
+};
+const participantContactLookupField: FieldDefinition = {
+  name: "participantContactId",
+  label: "Participant Contact",
+  section: "Participants",
+  type: "lookup",
+  lookupObject: "Contact"
+};
 
 export function initialMessagingParticipants(record: RecordData | undefined): ParticipantDraft[] {
   const participants = Array.isArray(record?.participants) ? (record.participants as RecordData[]) : [];
@@ -55,6 +78,7 @@ export function MessagingSessionEditorModal({
   const [error, setError] = useState("");
   const initialSnapshot = useMemo(() => JSON.stringify({ values, participants }), []); // eslint-disable-line react-hooks/exhaustive-deps
   const dirty = JSON.stringify({ values, participants }) !== initialSnapshot;
+  const contacts = data.contacts.filter((contact) => !values.accountId || contact.accountId === values.accountId);
 
   function requestClose() {
     if (!dirty || window.confirm("Discard unsaved messaging-session changes?")) onClose();
@@ -67,6 +91,18 @@ export function MessagingSessionEditorModal({
   function selectContact(index: number, contactId: string) {
     const contact = data.contacts.find((item) => item.id === contactId);
     updateParticipant(index, { contactId, name: contact ? contactLabel(contact) : "", address: text(contact?.email) });
+  }
+  function selectAccount(accountId: string) {
+    setValues((current) => ({
+      ...current,
+      accountId,
+      contactId: data.contacts.some(
+        (contact) =>
+          requiredId(contact) === current.contactId && (!accountId || String(contact.accountId ?? "") === accountId)
+      )
+        ? current.contactId
+        : ""
+    }));
   }
   async function save() {
     if (!values.name.trim()) {
@@ -157,34 +193,22 @@ export function MessagingSessionEditorModal({
             </select>
           </Field>
           <Field label="Account">
-            <select
-              className={inputClass}
+            <LookupField
+              field={accountLookupField}
               value={values.accountId}
-              onChange={(event) => setValues({ ...values, accountId: event.target.value })}
-            >
-              <option value="">No account</option>
-              {data.accounts.map((account) => (
-                <option key={requiredId(account)} value={requiredId(account)}>
-                  {text(account.name)}
-                </option>
-              ))}
-            </select>
+              data={data}
+              inlineSelection
+              onChange={selectAccount}
+            />
           </Field>
           <Field label="Primary Contact">
-            <select
-              className={inputClass}
+            <LookupField
+              field={contactLookupField}
               value={values.contactId}
-              onChange={(event) => setValues({ ...values, contactId: event.target.value })}
-            >
-              <option value="">No contact</option>
-              {data.contacts
-                .filter((contact) => !values.accountId || contact.accountId === values.accountId)
-                .map((contact) => (
-                  <option key={requiredId(contact)} value={requiredId(contact)}>
-                    {contactLabel(contact)}
-                  </option>
-                ))}
-            </select>
+              data={{ ...data, contacts }}
+              inlineSelection
+              onChange={(contactId) => setValues({ ...values, contactId })}
+            />
           </Field>
           <Field label="External Conversation ID">
             <input
@@ -212,18 +236,13 @@ export function MessagingSessionEditorModal({
                 key={index}
                 className="grid gap-2 rounded border border-[#d8dde6] p-3 md:grid-cols-[1.2fr_1fr_1fr_130px_auto]"
               >
-                <select
-                  className={inputClass}
+                <LookupField
+                  field={{ ...participantContactLookupField, label: `Participant ${index + 1} Contact` }}
                   value={participant.contactId}
-                  onChange={(event) => selectContact(index, event.target.value)}
-                >
-                  <option value="">Custom participant</option>
-                  {data.contacts.map((contact) => (
-                    <option key={requiredId(contact)} value={requiredId(contact)}>
-                      {contactLabel(contact)}
-                    </option>
-                  ))}
-                </select>
+                  data={data}
+                  inlineSelection
+                  onChange={(contactId) => selectContact(index, contactId)}
+                />
                 <input
                   className={inputClass}
                   placeholder="Name"

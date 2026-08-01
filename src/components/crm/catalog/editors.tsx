@@ -1,10 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { type ScopedCrmData, type RecordData } from "@/lib/crm-types";
+import { type FieldDefinition, type ScopedCrmData, type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { AsyncButton } from "@/components/crm/AsyncButton";
 import { text, json, id, Modal, secondary, primary, Field, input } from "@/components/crm/catalog/primitives";
+import { LookupField } from "@/features/crm/form-controls";
+
+const productLookupField: FieldDefinition = {
+  name: "productId",
+  label: "Product",
+  section: "Price Book Entry",
+  type: "lookup",
+  lookupObject: "Product2"
+};
 
 export function ProductEditor({
   product,
@@ -261,19 +270,14 @@ export function EntryEditor({
           <div className="rounded border border-[#ea001e] bg-[#fff1f1] p-2 text-sm text-[#8e030f]">{error}</div>
         )}
         <Field label="Product">
-          <select
-            className={input}
+          <LookupField
+            field={productLookupField}
             disabled={Boolean(entry)}
             value={values.productId}
-            onChange={(event) => setValues({ ...values, productId: event.target.value })}
-          >
-            <option value="">Choose Product</option>
-            {data.products.map((product) => (
-              <option key={id(product)} value={id(product)}>
-                {text(product.name)}
-              </option>
-            ))}
-          </select>
+            data={data}
+            inlineSelection
+            onChange={(productId) => setValues({ ...values, productId })}
+          />
         </Field>
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="List Price">
