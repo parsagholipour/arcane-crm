@@ -7,6 +7,7 @@ import { type ReactNode } from "react";
 import { type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { AsyncButton } from "@/components/crm/AsyncButton";
+import { useDialogEnterAction } from "@/components/ui/crm-primitives";
 
 export type InvoiceMutationResult = { invoice: RecordData; delivery?: RecordData; notifications?: RecordData[] };
 export type InvoiceToast = { tone: "success" | "error" | "warning"; message: string } | null;
@@ -64,14 +65,17 @@ export function SimpleDialog({
   description,
   children,
   footer,
-  onClose
+  onClose,
+  onEnterAction
 }: {
   title: string;
   description?: string;
   children?: ReactNode;
   footer: ReactNode;
   onClose: () => void;
+  onEnterAction?: () => unknown;
 }) {
+  const handleEnterAction = useDialogEnterAction(onEnterAction);
   return (
     <Dialog.Root
       open
@@ -81,7 +85,10 @@ export function SimpleDialog({
     >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[100] bg-[#080707]/55" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[101] max-h-[90vh] w-[min(94vw,620px)] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl bg-white shadow-modal">
+        <Dialog.Content
+          onKeyDown={handleEnterAction}
+          className="fixed left-1/2 top-1/2 z-[101] max-h-[90vh] w-[min(94vw,620px)] -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-xl bg-white shadow-modal"
+        >
           <div className="flex items-start justify-between border-b border-[#d8dde6] p-4">
             <div>
               <Dialog.Title className="text-xl font-semibold">{title}</Dialog.Title>

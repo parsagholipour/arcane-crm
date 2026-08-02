@@ -72,6 +72,7 @@ export function StoreEditor({
     <Modal
       title={initial ? `Edit ${text(initial.name)}` : "New Store"}
       onClose={close}
+      onEnterAction={save}
       footer={
         <>
           <button className={secondary} onClick={close}>

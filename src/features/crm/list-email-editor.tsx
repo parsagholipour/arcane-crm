@@ -169,6 +169,7 @@ export function ListEmailWizard({
       open
       title={step === 1 ? "Select an Email Layout" : `Compose ${layout} Email`}
       onClose={requestClose}
+      onEnterAction={step === 1 ? continueToCompose : () => submit("Draft")}
       wide
       footer={
         step === 1 ? (

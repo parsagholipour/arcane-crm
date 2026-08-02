@@ -7,6 +7,7 @@ import { type ReactNode } from "react";
 import { type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/api/client";
+import { useDialogEnterAction } from "@/components/ui/crm-primitives";
 
 export type CommunicationsMutationResult = {
   session?: RecordData;
@@ -51,19 +52,23 @@ export function DialogShell({
   children,
   footer,
   onClose,
+  onEnterAction,
   wide = false
 }: {
   title: string;
   children: ReactNode;
   footer: ReactNode;
   onClose: () => void;
+  onEnterAction?: () => unknown;
   wide?: boolean;
 }) {
+  const handleEnterAction = useDialogEnterAction(onEnterAction);
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[90] bg-black/40" />
         <Dialog.Content
+          onKeyDown={handleEnterAction}
           className={cn(
             "fixed left-1/2 top-1/2 z-[100] max-h-[90vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg bg-white shadow-2xl",
             wide ? "max-w-5xl" : "max-w-2xl"

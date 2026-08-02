@@ -3,7 +3,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { AlertCircle, CheckCircle2, Cloud, Settings, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState, type ElementType, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ElementType, type KeyboardEvent, type ReactNode } from "react";
 import { AsyncButton } from "@/components/crm/AsyncButton";
 import { cn } from "@/lib/utils";
 
@@ -12,12 +12,67 @@ export type ToastState = {
   message: string;
 } | null;
 
+const ENTER_ACTION_INPUT_TYPES = new Set([
+  "date",
+  "datetime-local",
+  "email",
+  "month",
+  "number",
+  "password",
+  "search",
+  "tel",
+  "text",
+  "time",
+  "url",
+  "week"
+]);
+
+export function useDialogEnterAction(onEnterAction?: () => unknown) {
+  const pendingRef = useRef(false);
+
+  return (event: KeyboardEvent<HTMLElement>) => {
+    const target = event.target;
+    if (
+      !onEnterAction ||
+      event.defaultPrevented ||
+      event.key !== "Enter" ||
+      event.repeat ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.shiftKey ||
+      event.nativeEvent.isComposing ||
+      !(target instanceof HTMLInputElement) ||
+      !ENTER_ACTION_INPUT_TYPES.has(target.type) ||
+      pendingRef.current
+    )
+      return;
+
+    event.preventDefault();
+    pendingRef.current = true;
+    try {
+      const result = onEnterAction();
+      if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+        void Promise.resolve(result).finally(() => {
+          pendingRef.current = false;
+        });
+      } else {
+        pendingRef.current = false;
+      }
+    } catch (error) {
+      pendingRef.current = false;
+      throw error;
+    }
+  };
+}
+
 export function BaseDialog({
   open,
   title,
   children,
   footer,
   onClose,
+  onEnterAction,
   wide = false
 }: {
   open: boolean;
@@ -25,13 +80,16 @@ export function BaseDialog({
   children: ReactNode;
   footer?: ReactNode;
   onClose: () => void;
+  onEnterAction?: () => unknown;
   wide?: boolean;
 }) {
+  const handleEnterAction = useDialogEnterAction(onEnterAction);
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="crm-overlay fixed inset-0 z-50 bg-shell/45 backdrop-blur-[3px]" />
         <Dialog.Content
+          onKeyDown={handleEnterAction}
           className={cn(
             "crm-dialog fixed left-1/2 top-1/2 z-50 max-h-[86vh] w-[min(96vw,620px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-xl bg-white shadow-modal",
             wide && "w-[min(96vw,920px)]"

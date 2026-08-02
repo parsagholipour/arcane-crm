@@ -387,6 +387,9 @@ export function ListActionModal({
       open
       title={title}
       onClose={onClose}
+      onEnterAction={
+        targetCount === 0 ? undefined : () => onApply(modal.action, modal.object, effectiveSelectedIds, values)
+      }
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>

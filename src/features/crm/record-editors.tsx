@@ -98,6 +98,7 @@ export function GenericRecordModal({
       open
       title={title}
       onClose={requestClose}
+      onEnterAction={() => submit(false)}
       wide
       footer={
         <>
@@ -164,27 +165,26 @@ export function ProductWizardModal({
     const ok = await onSave(values);
     if (ok) onClose();
   }
+  function advance() {
+    if (!values.name) setError("Complete this field.");
+    else {
+      setError("");
+      setStep(2);
+    }
+  }
   if (discardDialog) return discardDialog;
   return (
     <BaseDialog
       open
       title="New Product"
       onClose={requestClose}
+      onEnterAction={step === 1 ? advance : finish}
       wide
       footer={
         step === 1 ? (
           <>
             <Button onClick={requestClose}>Cancel</Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                if (!values.name) setError("Complete this field.");
-                else {
-                  setError("");
-                  setStep(2);
-                }
-              }}
-            >
+            <Button variant="primary" onClick={advance}>
               Next
             </Button>
           </>

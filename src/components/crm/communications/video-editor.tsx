@@ -191,6 +191,7 @@ export function VideoCallEditorModal({
       <DialogShell
         title={`Update ${text(initial?.name)}`}
         onClose={requestClose}
+        onEnterAction={save}
         footer={
           <>
             <button className={secondaryButton} onClick={requestClose}>
@@ -233,6 +234,7 @@ export function VideoCallEditorModal({
     <DialogShell
       title={initial ? `Edit ${text(initial.name)}` : "New Video Call"}
       onClose={requestClose}
+      onEnterAction={save}
       wide
       footer={
         <>

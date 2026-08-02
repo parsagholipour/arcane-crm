@@ -49,6 +49,7 @@ export function NavEditModal({
       open
       title={`Edit ${appLabel} App Navigation Items`}
       onClose={onClose}
+      onEnterAction={() => onSave(app, items)}
       wide
       footer={
         <>

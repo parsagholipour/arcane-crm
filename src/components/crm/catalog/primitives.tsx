@@ -6,6 +6,7 @@ import { type ReactNode } from "react";
 import { type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/api/client";
+import { useDialogEnterAction } from "@/components/ui/crm-primitives";
 
 export type Toast = { tone: "success" | "error" | "warning"; message: string } | null;
 export const input =
@@ -27,19 +28,25 @@ export const json = apiRequest<Record<string, unknown>>;
 export function Modal({
   title,
   onClose,
+  onEnterAction,
   footer,
   children
 }: {
   title: string;
   onClose: () => void;
+  onEnterAction?: () => unknown;
   footer: ReactNode;
   children: ReactNode;
 }) {
+  const handleEnterAction = useDialogEnterAction(onEnterAction);
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[90] bg-black/40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[100] max-h-[90vh] w-[calc(100vw-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg bg-white shadow-2xl">
+        <Dialog.Content
+          onKeyDown={handleEnterAction}
+          className="fixed left-1/2 top-1/2 z-[100] max-h-[90vh] w-[calc(100vw-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg bg-white shadow-2xl"
+        >
           <div className="flex items-center justify-between border-b border-[#d8dde6] px-5 py-3">
             <Dialog.Title className="text-lg font-semibold">{title}</Dialog.Title>
             <button className="rounded p-1 hover:bg-[#f3f3f3]" onClick={onClose}>

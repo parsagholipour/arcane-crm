@@ -45,6 +45,7 @@ export function FulfillmentEditor({
     <Modal
       title={`Fulfill ${text(order.orderNumber)}`}
       onClose={onClose}
+      onEnterAction={save}
       footer={
         <>
           <button className={secondary} onClick={onClose}>

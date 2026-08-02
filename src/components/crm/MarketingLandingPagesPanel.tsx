@@ -6,6 +6,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import type { FieldDefinition, ScopedCrmData, RecordData } from "@/lib/crm-types";
 import { cn, formatDateTime, slugify } from "@/lib/utils";
 import { AsyncButton } from "@/components/crm/AsyncButton";
+import { useDialogEnterAction } from "@/components/ui/crm-primitives";
 import { LookupField } from "@/features/crm/form-controls";
 import { apiRequest } from "@/lib/api/client";
 
@@ -302,6 +303,7 @@ function LandingPageEditor({
     <Modal
       title={initial ? `Edit ${String(initial.name)}` : "New Landing Page"}
       onClose={close}
+      onEnterAction={save}
       footer={
         <>
           <button className={secondary} onClick={close}>
@@ -443,21 +445,27 @@ function Field({ label, required, children }: { label: string; required?: boolea
 function Modal({
   title,
   onClose,
+  onEnterAction,
   footer,
   children
 }: {
   title: string;
   onClose: () => void;
+  onEnterAction?: () => unknown;
   footer: ReactNode;
   children: ReactNode;
 }) {
+  const handleEnterAction = useDialogEnterAction(onEnterAction);
   return (
     <div
       className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4"
       role="dialog"
       aria-modal="true"
     >
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-auto rounded-lg bg-white shadow-2xl">
+      <div
+        className="max-h-[92vh] w-full max-w-3xl overflow-auto rounded-lg bg-white shadow-2xl"
+        onKeyDown={handleEnterAction}
+      >
         <div className="flex items-center justify-between border-b border-[#d8dde6] px-5 py-4">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button className={secondary} onClick={onClose}>

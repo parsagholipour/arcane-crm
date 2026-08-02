@@ -6,6 +6,7 @@ import { AsyncButton } from "@/components/crm/AsyncButton";
 import { DEFAULT_CALENDAR_COLOR } from "@/lib/calendar-items";
 import { cn } from "@/lib/utils";
 import { type RecordData } from "@/lib/crm-types";
+import { useDialogEnterAction } from "@/components/ui/crm-primitives";
 import {
   type CalendarSourceDialogState,
   text,
@@ -36,26 +37,26 @@ export function CalendarSourceModal({
   }));
   const [error, setError] = useState("");
 
+  function save() {
+    if (!text(values.name).trim()) {
+      setError("Complete this field.");
+      return;
+    }
+    setError("");
+    return onSave(values, source);
+  }
+
   return (
     <Modal
       title={source ? "Edit Calendar" : "Add Calendar"}
       onClose={onClose}
+      onEnterAction={save}
       footer={
         <>
           <button className={secondary} onClick={onClose}>
             Cancel
           </button>
-          <AsyncButton
-            className={primary}
-            onClick={() => {
-              if (!text(values.name).trim()) {
-                setError("Complete this field.");
-                return;
-              }
-              setError("");
-              return onSave(values, source);
-            }}
-          >
+          <AsyncButton className={primary} onClick={save}>
             Save
           </AsyncButton>
         </>
@@ -150,19 +151,25 @@ export function ScopeDialog({
 export function Modal({
   title,
   onClose,
+  onEnterAction,
   footer,
   children
 }: {
   title: string;
   onClose: () => void;
+  onEnterAction?: () => unknown;
   footer: ReactNode;
   children: ReactNode;
 }) {
+  const handleEnterAction = useDialogEnterAction(onEnterAction);
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[90] bg-black/40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[100] w-[min(30rem,92vw)] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[#d8dde6] bg-white shadow-popover">
+        <Dialog.Content
+          onKeyDown={handleEnterAction}
+          className="fixed left-1/2 top-1/2 z-[100] w-[min(30rem,92vw)] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[#d8dde6] bg-white shadow-popover"
+        >
           <Dialog.Title className="border-b border-[#d8dde6] px-4 py-3 text-base font-semibold">{title}</Dialog.Title>
           <div className="max-h-[70vh] overflow-auto p-4">{children}</div>
           <div className="flex justify-end gap-2 border-t border-[#d8dde6] px-4 py-3">{footer}</div>

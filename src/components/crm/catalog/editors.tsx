@@ -50,6 +50,7 @@ export function ProductEditor({
     <Modal
       title={`Edit ${text(product.name)}`}
       onClose={onClose}
+      onEnterAction={save}
       footer={
         <>
           <button className={secondary} onClick={onClose}>
@@ -156,6 +157,7 @@ export function PriceBookEditor({
     <Modal
       title={`Edit ${text(priceBook.name)}`}
       onClose={onClose}
+      onEnterAction={save}
       footer={
         <>
           <button className={secondary} onClick={onClose}>
@@ -254,6 +256,7 @@ export function EntryEditor({
     <Modal
       title={entry ? "Edit Price Book Entry" : "Add Product to Price Book"}
       onClose={onClose}
+      onEnterAction={save}
       footer={
         <>
           <button className={secondary} onClick={onClose}>

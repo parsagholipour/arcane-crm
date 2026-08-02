@@ -78,6 +78,7 @@ export function MessageModal({
     <DialogShell
       title="Record Message"
       onClose={onClose}
+      onEnterAction={canDeliver && deliver ? undefined : save}
       footer={
         <>
           <button className={secondaryButton} onClick={onClose}>

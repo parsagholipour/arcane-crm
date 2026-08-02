@@ -147,6 +147,7 @@ export function OrderEditor({
     <Modal
       title={initial ? `Edit ${text(initial.orderNumber)}` : "New Draft Order"}
       onClose={close}
+      onEnterAction={save}
       wide
       footer={
         <>

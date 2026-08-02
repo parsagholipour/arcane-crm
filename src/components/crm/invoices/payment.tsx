@@ -65,6 +65,7 @@ export function InvoicePaymentModal({
       title="Record Payment"
       description="Record an externally received payment. This does not process or transfer money."
       onClose={onClose}
+      onEnterAction={submit}
       footer={
         <>
           <InvoiceButton onClick={onClose}>Cancel</InvoiceButton>

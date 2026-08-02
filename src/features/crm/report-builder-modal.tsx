@@ -157,6 +157,7 @@ export function ReportBuilderModal({
         open
         title={initial ? "Edit Dashboard" : "New Dashboard"}
         onClose={onClose}
+        onEnterAction={saveDashboard}
         wide
         footer={
           <>
@@ -256,6 +257,7 @@ export function ReportBuilderModal({
       open
       title={initial ? "Edit Report" : "Report Builder"}
       onClose={onClose}
+      onEnterAction={saveReport}
       wide
       footer={
         <>

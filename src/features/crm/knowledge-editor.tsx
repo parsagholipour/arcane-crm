@@ -212,6 +212,7 @@ export function KnowledgeModal({
       open
       title={initial ? `Edit ${String(initial.title ?? "Knowledge")}` : "New Knowledge"}
       onClose={requestClose}
+      onEnterAction={() => submit(false)}
       wide
       footer={
         <>

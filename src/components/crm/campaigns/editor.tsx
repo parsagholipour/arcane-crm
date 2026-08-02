@@ -82,6 +82,7 @@ export function CampaignEditorModal({
     <Modal
       title={initial ? `Edit ${text(initial.name)}` : "New Campaign"}
       onClose={requestClose}
+      onEnterAction={save}
       wide
       footer={
         <>

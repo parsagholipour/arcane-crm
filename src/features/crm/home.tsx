@@ -374,6 +374,7 @@ export function HomePage({
             open
             title="Edit Quarterly Goal"
             onClose={() => setGoalDialogOpen(false)}
+            onEnterAction={saveGoal}
             footer={
               <>
                 <Button onClick={() => setGoalDialogOpen(false)}>Cancel</Button>

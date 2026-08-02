@@ -62,6 +62,7 @@ export function InventoryEditor({
     <Modal
       title="Set Inventory"
       onClose={onClose}
+      onEnterAction={save}
       footer={
         <>
           <button className={secondary} onClick={onClose}>

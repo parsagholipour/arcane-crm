@@ -6,6 +6,7 @@ import { type ReactNode } from "react";
 import { type RecordData as BaseRecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/api/client";
+import { useDialogEnterAction } from "@/components/ui/crm-primitives";
 
 export type Toast = { tone: "success" | "error" | "warning"; message: string } | null;
 export type RecordData = BaseRecordData & { notes?: ReactNode };
@@ -36,21 +37,25 @@ export const json = apiRequest<Record<string, unknown>>;
 export function Modal({
   title,
   onClose,
+  onEnterAction,
   footer,
   children,
   wide = false
 }: {
   title: string;
   onClose: () => void;
+  onEnterAction?: () => unknown;
   footer: ReactNode;
   children: ReactNode;
   wide?: boolean;
 }) {
+  const handleEnterAction = useDialogEnterAction(onEnterAction);
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[90] bg-black/40" />
         <Dialog.Content
+          onKeyDown={handleEnterAction}
           className={cn(
             "fixed left-1/2 top-1/2 z-[100] max-h-[92vh] w-[calc(100vw-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg bg-white shadow-2xl",
             wide ? "max-w-6xl" : "max-w-2xl"

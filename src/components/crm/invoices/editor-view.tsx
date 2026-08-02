@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
 import { type FieldDefinition } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { LookupField } from "@/features/crm/form-controls";
+import { useDialogEnterAction } from "@/components/ui/crm-primitives";
 import {
   text,
   InvoiceButton,
@@ -67,6 +68,7 @@ export function InvoiceEditorView({ model }: { model: InvoiceEditorModalModel })
     moveLine,
     save
   } = model;
+  const handleEnterAction = useDialogEnterAction(save);
   const activeProducts = data.products.filter((product) => product.active !== false);
 
   return (
@@ -78,7 +80,10 @@ export function InvoiceEditorView({ model }: { model: InvoiceEditorModalModel })
     >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[90] bg-[#080707]/55 backdrop-blur-[1px]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[91] flex max-h-[94vh] w-[min(98vw,1180px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-white shadow-modal">
+        <Dialog.Content
+          onKeyDown={handleEnterAction}
+          className="fixed left-1/2 top-1/2 z-[91] flex max-h-[94vh] w-[min(98vw,1180px)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-white shadow-modal"
+        >
           {confirmDiscard ? (
             <div className="p-6">
               <Dialog.Title className="text-xl font-semibold">Discard changes?</Dialog.Title>

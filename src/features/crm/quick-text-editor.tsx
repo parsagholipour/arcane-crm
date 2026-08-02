@@ -72,6 +72,7 @@ export function QuickTextModal({
       open
       title={initial ? `Edit ${String(initial.name ?? "Quick Text")}` : "New Quick Text"}
       onClose={requestClose}
+      onEnterAction={() => submit(false)}
       wide
       footer={
         <>

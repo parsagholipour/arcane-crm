@@ -55,6 +55,7 @@ export function PromotionEditor({
     <Modal
       title="New Promotion"
       onClose={onClose}
+      onEnterAction={save}
       footer={
         <>
           <button className={secondary} onClick={onClose}>

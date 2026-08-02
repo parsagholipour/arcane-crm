@@ -225,6 +225,7 @@ export function ListViewPreferenceModal({
         open
         title="Filters"
         onClose={onClose}
+        onEnterAction={saveFilters}
         wide
         footer={
           <>
@@ -316,6 +317,7 @@ export function ListViewPreferenceModal({
         open
         title="Charts"
         onClose={onClose}
+        onEnterAction={saveChart}
         wide
         footer={
           <>
@@ -387,6 +389,7 @@ export function ListViewPreferenceModal({
       open
       title={action === "Select Fields to Display" ? "Select Fields to Display" : `${action} List View`}
       onClose={onClose}
+      onEnterAction={submit}
       wide
       footer={
         <>

@@ -259,6 +259,7 @@ export function EventModal({
       open
       title={isEdit ? "Edit Event" : "New Event"}
       onClose={requestClose}
+      onEnterAction={() => submit(false)}
       wide
       footer={
         <>

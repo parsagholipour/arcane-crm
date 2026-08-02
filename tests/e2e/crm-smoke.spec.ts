@@ -37,6 +37,19 @@ test.describe.serial("authenticated CRM smoke", () => {
     expect(removed.ok()).toBeTruthy();
   });
 
+  test("saves a new record by pressing Enter in a text field", async ({ page }) => {
+    const accountName = `Enter save ${Date.now()}`;
+    await page.goto("/lightning/o/Account/new");
+
+    const dialog = page.getByRole("dialog");
+    const name = dialog.locator("label").filter({ hasText: "Account Name" }).locator("input");
+    await name.fill(accountName);
+    await name.press("Enter");
+
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole("status")).toContainText("Account saved.");
+  });
+
   test("isolates route data after an organization switch", async ({ page }) => {
     await page.goto("/lightning/page/home");
     const switchOrganization = (organizationId: string) =>

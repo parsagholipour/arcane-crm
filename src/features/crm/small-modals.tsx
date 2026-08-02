@@ -18,6 +18,7 @@ export function QuickTextFolderModal({
       open
       title="New Folder"
       onClose={onClose}
+      onEnterAction={() => onSave(values)}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
@@ -68,6 +69,7 @@ export function MarketingActivationModal({
       open
       title={initial ? "Edit Marketing Activation" : "Activate Marketing"}
       onClose={onClose}
+      onEnterAction={initial ? () => onSave(values) : undefined}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>

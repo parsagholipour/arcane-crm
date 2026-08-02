@@ -137,6 +137,7 @@ export function MessagingSessionEditorModal({
     <DialogShell
       title={initial ? `Edit ${text(initial.name)}` : "New Messaging Session"}
       onClose={requestClose}
+      onEnterAction={save}
       wide
       footer={
         <>

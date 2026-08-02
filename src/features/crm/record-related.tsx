@@ -479,6 +479,7 @@ export function PartnerModal({
       open
       title="New Partner"
       onClose={onClose}
+      onEnterAction={submit}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
