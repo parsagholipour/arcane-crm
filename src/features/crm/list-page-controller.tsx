@@ -22,6 +22,7 @@ import { requiredId } from "@/features/crm/record-model";
 import { type ScopedCrmDataUpdater, type ListSortState, type SaveRecordHandler } from "@/features/crm/shared-types";
 import { type ToastState } from "@/components/ui/crm-primitives";
 import { guidanceItemForObject, isContextualGuidanceVisible } from "@/features/crm/shell-model";
+import { useShipmentTrackingSweep } from "@/features/crm/use-shipment-tracking-sweep";
 
 export function useListViewController({
   object,
@@ -70,6 +71,7 @@ export function useListViewController({
   const [selected, setSelected] = useState<string[]>([]);
   const [sortState, setSortState] = useState<ListSortState>(null);
   const [controlDialog, setControlDialog] = useState<string | null>(null);
+  useShipmentTrackingSweep(object === "Opportunity", onDataChange);
   const listViews = useMemo(
     () =>
       Array.from(

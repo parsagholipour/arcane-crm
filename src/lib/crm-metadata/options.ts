@@ -81,6 +81,8 @@ export const OPPORTUNITY_STAGE = [
 
 export const FORECAST_CATEGORY = ["--None--", "Pipeline", "Best Case", "Commit", "Closed", "Omitted"];
 
+export const COURIER = ["--None--", "USPS", "UPS", "FedEx", "DHL", "Other"];
+
 export const CASE_STATUS = ["--None--", "New", "Working", "Waiting on Customer", "Escalated", "Closed"];
 
 export const CASE_ORIGIN = ["--None--", "Email", "Phone", "Web"];

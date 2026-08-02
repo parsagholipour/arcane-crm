@@ -14,6 +14,7 @@ import { DEFAULT_EVENT_REMINDER_MINUTES } from "@/lib/calendar-reminder-values";
 import { calendarErrorResponse, validateEventReminderMinutes } from "@/lib/calendar-events";
 import { prisma } from "@/lib/prisma";
 import { RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
+import { syncOpportunityShipment } from "@/lib/shipment-tracking-sync";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
@@ -101,6 +102,7 @@ export async function POST(request: NextRequest, context: { params: Params }) {
       }
     }
     const record = await createRecord(object, payload, authContext.organizationId, authContext.userId);
+    if (object === "Opportunity") await syncOpportunityShipment(authContext.organizationId, record);
     if (delivery?.deliveryIds?.length && (object === "Case" || object === "ListEmail")) {
       await attachTrackedDeliveries(delivery.deliveryIds, {
         organizationId: authContext.organizationId,

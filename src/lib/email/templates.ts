@@ -78,6 +78,50 @@ export function calendarReminderTemplate(input: {
   return { subject, text: plainText, html };
 }
 
+export function shipmentStatusTemplate(input: {
+  organizationName: string;
+  carrier: string;
+  trackingNumber: string;
+  subjectLabel: string;
+  statusLabel: string;
+  statusSummary?: string | null;
+  delivered: boolean;
+  recordUrl: string;
+  carrierUrl?: string | null;
+}) {
+  const headline = input.delivered ? "Package delivered" : "Shipment needs attention";
+  const subject = `${headline}: ${text(input.trackingNumber)}`;
+  const lines = [
+    `${text(input.carrier)} ${text(input.trackingNumber)}`,
+    `Status: ${text(input.statusLabel)}`,
+    `Record: ${text(input.subjectLabel)}`
+  ];
+  const plainText = [
+    `${text(input.organizationName)} shipment update`,
+    "",
+    headline,
+    ...lines,
+    ...(text(input.statusSummary) ? ["", text(input.statusSummary)] : []),
+    "",
+    `Open record: ${input.recordUrl}`,
+    ...(input.carrierUrl ? [`Track with ${text(input.carrier)}: ${input.carrierUrl}`] : [])
+  ].join("\n");
+  const html = [
+    `<div style="font-family:Arial,sans-serif;color:#181818">`,
+    `<p style="color:#706e6b">${escapeHtml(input.organizationName)} shipment update</p>`,
+    `<h2>${escapeHtml(headline)}</h2>`,
+    `<p>${lines.map((line) => escapeHtml(line)).join("<br>")}</p>`,
+    ...(text(input.statusSummary) ? [`<p>${escapeHtml(input.statusSummary)}</p>`] : []),
+    `<p><a href="${escapeHtml(input.recordUrl)}">Open record</a>`,
+    ...(input.carrierUrl
+      ? [` &middot; <a href="${escapeHtml(input.carrierUrl)}">Track with ${escapeHtml(input.carrier)}</a>`]
+      : []),
+    `</p>`,
+    `</div>`
+  ].join("");
+  return { subject, text: plainText, html };
+}
+
 export function organizationInvitationTemplate(input: {
   recipientName: string;
   organizationName: string;

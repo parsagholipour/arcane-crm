@@ -218,6 +218,8 @@ model Opportunity {
   forecastCategory String
   nextStep         String?
   leadSource       String?
+  courier          String?
+  trackingNumber   String?
   createdById      String
   updatedById      String
   createdAt        DateTime    @default(now())
@@ -1306,4 +1308,32 @@ model AiInsightCache {
 
   @@unique([organizationId, userId, surface, scopeKey])
   @@index([organizationId, userId, surface])
+}
+
+model ShipmentTracking {
+  id                      String    @id @default(cuid())
+  organizationId          String
+  subjectType             String
+  subjectId               String
+  carrier                 String
+  trackingNumber          String
+  status                  String    @default("Pending")
+  statusSummary           String?
+  expectedDeliveryAt      DateTime?
+  lastEventAt             DateTime?
+  lastEventDescription    String?
+  deliveredAt             DateTime?
+  deliveredNotificationId String?
+  alertNotificationId     String?
+  attemptCount            Int       @default(0)
+  failureCount            Int       @default(0)
+  lastPolledAt            DateTime?
+  nextPollAt              DateTime?
+  lastError               String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@unique([organizationId, subjectType, subjectId])
+  @@index([carrier, status, nextPollAt])
+  @@index([organizationId, subjectType, subjectId])
 }

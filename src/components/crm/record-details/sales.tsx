@@ -17,6 +17,7 @@ import {
   Card,
   Detail
 } from "@/components/crm/record-details/primitives";
+import { ShipmentCard } from "@/components/crm/record-details/shipment-card";
 
 export function SalesRecordDetailPage({
   object,
@@ -172,6 +173,13 @@ export function SalesRecordDetailPage({
             </div>
           )}
         </Card>
+        {object === "Opportunity" && (
+          <ShipmentCard
+            courier={record.courier}
+            trackingNumber={record.trackingNumber}
+            shipment={record.shipment as RecordData | null}
+          />
+        )}
         <Card
           title={
             object === "Opportunity"

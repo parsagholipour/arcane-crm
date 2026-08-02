@@ -55,7 +55,9 @@ export const opportunityDtoSchema = entityRecordSchema.extend({
   stage: z.string(),
   accountId: z.string().nullable().optional(),
   amount: z.union([z.string(), z.number()]).nullable().optional(),
-  closeDate: z.coerce.date().or(z.string()).nullable().optional()
+  closeDate: z.coerce.date().or(z.string()).nullable().optional(),
+  courier: z.string().nullable().optional(),
+  trackingNumber: z.string().nullable().optional()
 });
 
 export const caseDtoSchema = entityRecordSchema.extend({

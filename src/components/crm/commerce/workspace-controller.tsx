@@ -4,6 +4,7 @@ import { Box, ShoppingCart, Store, Tag } from "lucide-react";
 import { useState } from "react";
 import type { ScopedCrmData } from "@/lib/crm-types";
 import { type RecordData, text, type Mutation, id, json, type Toast } from "@/components/crm/commerce/primitives";
+import { useShipmentTrackingSweep } from "@/features/crm/use-shipment-tracking-sweep";
 
 export function useCommerceWorkspace({
   data,
@@ -21,6 +22,7 @@ export function useCommerceWorkspace({
     store?: RecordData;
   }>(null);
   const [selectedOrder, setSelectedOrder] = useState<RecordData | null>(null);
+  useShipmentTrackingSweep(true, onDataChange);
   const activeStores = data.stores.filter((store) => store.status === "Active").length;
   const openOrders = data.commerceOrders.filter((order) => ["Draft", "Confirmed"].includes(text(order.status))).length;
   const lowStock = data.inventoryItems.filter(

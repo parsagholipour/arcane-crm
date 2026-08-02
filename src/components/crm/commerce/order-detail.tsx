@@ -2,6 +2,7 @@
 
 import { CheckCircle2, PackageCheck, Trash2, Truck } from "lucide-react";
 import { formatDate, formatDateTime } from "@/lib/utils";
+import { carrierTrackingUrl, shipmentStatusLabel } from "@/lib/usps-status";
 import {
   type RecordData,
   records,
@@ -174,20 +175,34 @@ export function OrderDetail({
           </Panel>
         </div>
         <Panel title="Fulfillment History">
-          {fulfillments.map((fulfillment) => (
-            <div
-              key={id(fulfillment)}
-              className="flex items-center justify-between border-b border-[#eef1f6] py-2 text-sm last:border-0"
-            >
-              <span>
-                <span className="font-semibold">{text(fulfillment.fulfillmentNumber)}</span>
-                <span className="ml-2 text-[#706e6b]">
-                  {text(fulfillment.carrier)} {text(fulfillment.trackingNumber)}
+          {fulfillments.map((fulfillment) => {
+            const shipment = fulfillment.shipment as RecordData | undefined;
+            const carrierUrl = carrierTrackingUrl(fulfillment.carrier, fulfillment.trackingNumber);
+            return (
+              <div
+                key={id(fulfillment)}
+                className="flex items-center justify-between border-b border-[#eef1f6] py-2 text-sm last:border-0"
+              >
+                <span>
+                  <span className="font-semibold">{text(fulfillment.fulfillmentNumber)}</span>
+                  <span className="ml-2 text-[#706e6b]">
+                    {text(fulfillment.carrier)}{" "}
+                    {carrierUrl ? (
+                      <a className="text-brand-700 hover:underline" href={carrierUrl} target="_blank" rel="noreferrer">
+                        {text(fulfillment.trackingNumber)}
+                      </a>
+                    ) : (
+                      text(fulfillment.trackingNumber)
+                    )}
+                  </span>
+                  {shipment && (
+                    <span className="ml-2 text-[#706e6b]">· {shipmentStatusLabel(text(shipment.status))}</span>
+                  )}
                 </span>
-              </span>
-              <Badge value={fulfillment.status} />
-            </div>
-          ))}
+                <Badge value={fulfillment.status} />
+              </div>
+            );
+          })}
           {!fulfillments.length && <Empty text="No fulfillment events have been recorded." />}
         </Panel>
         {order.notes && (

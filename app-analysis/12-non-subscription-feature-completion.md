@@ -30,7 +30,8 @@ All dedicated reads and mutations use the active organization context. Aggregate
 - Email is sent only when `SENDGRID_API_KEY` and a verified `SENDGRID_EMAIL` are configured. No provider configuration means the UI records external communication or disables delivery; it never reports a fake send.
 - SendGrid event ingestion rejects unsigned requests and is unavailable until `SENDGRID_EVENT_WEBHOOK_PUBLIC_KEY` is configured. Provider acceptance is not presented as final delivery.
 - Recorded invoice payments are externally received money. The CRM does not charge cards or initiate bank transfers.
-- Commerce orders track externally collected payment state and fulfillment records. The CRM does not process payment or create carrier shipments.
+- Commerce orders track externally collected payment state and fulfillment records. The CRM does not process payment or create carrier shipments; it only reads USPS tracking status for a shipment someone else created.
+- USPS tracking is read-only and requires `USPS_CONSUMER_KEY` and `USPS_CONSUMER_SECRET`. Without them, a courier and tracking number are still recorded on Opportunities and fulfillments, but nothing is polled and no delivery notification is raised. Only USPS is polled; other couriers render a tracking link.
 - Video calls store validated provider/external links; the CRM does not provision Zoom, Google Meet, or Microsoft Teams rooms without those provider APIs.
 - Calendar sources are local CRM calendars. Google, Microsoft, and CalDAV OAuth synchronization are not simulated; `.ics` export is implemented for interoperability.
 - PDF generation is local and produces valid invoice PDFs. No e-signature provider is integrated.

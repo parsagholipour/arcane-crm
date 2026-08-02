@@ -6,6 +6,7 @@ import {
   CASE_ORIGIN,
   CASE_PRIORITY,
   CASE_STATUS,
+  COURIER,
   FORECAST_CATEGORY,
   INDUSTRIES,
   LEAD_RATING,
@@ -246,7 +247,16 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
         type: "picklist",
         options: LEAD_SOURCE,
         defaultValue: "--None--"
-      }
+      },
+      {
+        name: "courier",
+        label: "Courier",
+        section: "Shipping",
+        type: "picklist",
+        options: COURIER,
+        defaultValue: "--None--"
+      },
+      { name: "trackingNumber", label: "Tracking Number", section: "Shipping", type: "text" }
     ]
   },
   Case: {

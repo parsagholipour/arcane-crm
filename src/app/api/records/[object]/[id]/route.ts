@@ -8,6 +8,7 @@ import { emailErrorResponse } from "@/lib/email/http";
 import { deliverCaseNotification, deliverListEmail } from "@/lib/email/workflows";
 import { prisma } from "@/lib/prisma";
 import { RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
+import { deleteShipmentTracking, syncOpportunityShipment } from "@/lib/shipment-tracking-sync";
 import {
   calendarErrorResponse,
   detachOccurrence,
@@ -151,6 +152,7 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
         );
     }
     const record = await updateRecord(object, id, payload, authContext.userId);
+    if (object === "Opportunity") await syncOpportunityShipment(authContext.organizationId, record);
     const recordStatus = "status" in record ? String(record.status) : "";
     const skipped = delivery && "skipped" in delivery && Array.isArray(delivery.skipped) ? delivery.skipped.length : 0;
     const message =
@@ -261,6 +263,7 @@ export async function DELETE(request: NextRequest, context: { params: Params }) 
         );
     }
     await deleteRecord(object, id);
+    if (object === "Opportunity") await deleteShipmentTracking(authContext.organizationId, "Opportunity", id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error(error);

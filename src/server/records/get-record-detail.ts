@@ -143,5 +143,16 @@ export async function getRecordDetail(
       : object === "Contact"
         ? await contactRelated(organizationId, id)
         : {};
-  return JSON.parse(JSON.stringify({ record, related })) as RecordDetail<GenericRecord, Record<string, unknown>>;
+  // Carry live carrier status alongside the record so the detail page can render it without
+  // a second round trip.
+  const shipment =
+    object === "Opportunity"
+      ? await prisma.shipmentTracking.findUnique({
+          where: { organizationId_subjectType_subjectId: { organizationId, subjectType: "Opportunity", subjectId: id } }
+        })
+      : null;
+  return JSON.parse(JSON.stringify({ record: shipment ? { ...record, shipment } : record, related })) as RecordDetail<
+    GenericRecord,
+    Record<string, unknown>
+  >;
 }

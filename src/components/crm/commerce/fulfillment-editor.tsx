@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { COURIER } from "@/lib/crm-metadata/options";
 import { AsyncButton } from "@/components/crm/AsyncButton";
 import {
   type RecordData,
@@ -58,8 +59,8 @@ export function FulfillmentEditor({
       <div className="space-y-3">
         {error && <ErrorBox value={error} />}
         <p className="text-sm text-[#706e6b]">
-          This records an external packing or shipment event for all remaining quantities. It does not contact a
-          carrier.
+          This records an external packing or shipment event for all remaining quantities. USPS tracking numbers are
+          checked automatically, and you are notified when the package is delivered.
         </p>
         <Field label="Fulfillment State">
           <select
@@ -72,11 +73,17 @@ export function FulfillmentEditor({
           </select>
         </Field>
         <Field label="Carrier">
-          <input
+          <select
             className={input}
             value={values.carrier}
             onChange={(event) => setValues({ ...values, carrier: event.target.value })}
-          />
+          >
+            {COURIER.map((courier) => (
+              <option key={courier} value={courier === "--None--" ? "" : courier}>
+                {courier}
+              </option>
+            ))}
+          </select>
         </Field>
         <Field label="Tracking Number">
           <input

@@ -142,8 +142,8 @@ export function InvoiceField({
   return (
     <label className="block text-sm">
       <span className="mb-1 block text-xs text-[#444]">
-        {required && <span className="text-[#ba0517]">* </span>}
         {label}
+        {required && <span className="ml-1 text-[#ba0517]">*</span>}
       </span>
       {children}
       {error && <FieldError>{error}</FieldError>}

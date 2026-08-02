@@ -451,12 +451,12 @@ export function FieldShell({
   return (
     <label className="block text-sm" htmlFor={fieldId}>
       <span className="mb-1 block text-xs font-semibold text-[var(--control-label,#444)]">
+        {label}
         {required && (
-          <span className="mr-0.5 text-[#ba0517]" aria-hidden="true">
+          <span className="ml-0.5 text-[#ba0517]" aria-hidden="true">
             *
           </span>
         )}
-        {label}
         {required && <span className="sr-only"> (required)</span>}
       </span>
       {control}

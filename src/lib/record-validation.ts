@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { parseRecurrenceRule } from "@/lib/calendar-recurrence";
 import { MAX_EVENT_REMINDER_MINUTES } from "@/lib/calendar-reminder-values";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
+import { COURIERS, isLikelyUspsTrackingNumber, isUspsCarrier } from "@/lib/usps-status";
 
 export class RecordPayloadValidationError extends Error {
   constructor(
@@ -23,6 +24,7 @@ export const OPPORTUNITY_STAGES = new Set([
   "Closed Lost"
 ]);
 export const FORECAST_CATEGORIES = new Set(["Pipeline", "Best Case", "Commit", "Closed", "Omitted"]);
+const COURIER_CHOICES = new Set<string>(COURIERS);
 const CASE_STATUSES = new Set(["New", "Working", "Waiting on Customer", "Escalated", "Closed"]);
 const CASE_PRIORITIES = new Set(["Low", "Medium", "High"]);
 
@@ -57,6 +59,16 @@ export function validateRecordPayload(object: CrmObject, payload: RecordData) {
         throw new RecordPayloadValidationError("Probability must be a whole number from 0 through 100.", [
           "probability"
         ]);
+      }
+    }
+    optionalChoice(payload.courier, COURIER_CHOICES, "Choose a valid Courier.", "courier");
+    // Catch a mistyped USPS number at save time rather than letting the poller fail on it.
+    if (isUspsCarrier(payload.courier) && !isBlank(payload.trackingNumber)) {
+      if (!isLikelyUspsTrackingNumber(payload.trackingNumber)) {
+        throw new RecordPayloadValidationError(
+          "Enter a valid USPS tracking number (20-22 digits, or two letters, nine digits, and US).",
+          ["trackingNumber"]
+        );
       }
     }
   }
@@ -117,6 +129,10 @@ function optionalEmail(value: unknown, field: string) {
   if (!isValidEmail(value)) {
     throw new RecordPayloadValidationError("Enter a valid email address.", [field]);
   }
+}
+
+function isBlank(value: unknown) {
+  return value === null || value === undefined || String(value).trim() === "";
 }
 
 function optionalChoice(value: unknown, choices: Set<string>, message: string, field: string) {

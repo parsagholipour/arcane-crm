@@ -187,6 +187,8 @@ export async function updateRecord(object: CrmObject, id: string, payload: Recor
           forecastCategory: payload.forecastCategory ? String(payload.forecastCategory) : undefined,
           nextStep: payload.nextStep as string | null | undefined,
           leadSource: payload.leadSource as string | null | undefined,
+          courier: payload.courier as string | null | undefined,
+          trackingNumber: payload.trackingNumber as string | null | undefined,
           updatedById: userId
         }
       });

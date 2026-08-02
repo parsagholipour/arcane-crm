@@ -61,7 +61,7 @@ function modelConfig(object: CrmObject): ModelConfig {
     case "Opportunity":
       return {
         delegate: delegate(prisma.opportunity),
-        searchFields: ["name", "stage"],
+        searchFields: ["name", "stage", "trackingNumber"],
         sortFields: ["name", "stage", "amount", "closeDate", "updatedAt"],
         defaultSort: "updatedAt",
         include: { account: true, contact: true },

@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { calculateInvoiceTotals, InvoiceInputError, money } from "@/lib/invoice-calculations";
 import { prisma } from "@/lib/prisma";
+import { markShipmentDelivered, syncShipmentTracking } from "@/lib/shipment-tracking-sync";
 import type { RecordData } from "@/lib/crm-types";
 
 export const STORE_STATUSES = ["Draft", "Active", "Archived"] as const;
@@ -623,6 +624,12 @@ export async function transitionCommerceOrder(
         data: { status: "Delivered", deliveredAt: new Date() }
       });
       if (!result.count) throw new CommerceDomainError("A shipped fulfillment was not found.", 404);
+      // A human confirmed delivery, so stop polling USPS for this shipment.
+      await markShipmentDelivered(tx, {
+        organizationId,
+        subjectType: "CommerceFulfillment",
+        subjectId: fulfillmentId
+      });
       const order = await requireOrderFrom(tx, organizationId, id);
       const notification = await createCommerceNotification(tx, {
         organizationId,
@@ -680,6 +687,13 @@ async function fulfillCommerceOrder(
         create: normalized.map(({ source, quantity }) => ({ organizationId, orderLineId: source.id, quantity }))
       }
     }
+  });
+  await syncShipmentTracking(tx, {
+    organizationId,
+    subjectType: "CommerceFulfillment",
+    subjectId: fulfillment.id,
+    carrier: fulfillment.carrier,
+    trackingNumber: fulfillment.trackingNumber
   });
   for (const { source, quantity } of normalized) {
     await tx.commerceOrderLine.update({

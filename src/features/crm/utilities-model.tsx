@@ -10,7 +10,8 @@ export const notificationCategories = [
   "Activity",
   "Files",
   "Email",
-  "Calendar"
+  "Calendar",
+  "Shipping"
 ] as const;
 export const displayDensityOptions = ["Comfy", "Compact"];
 export const timezoneOptions = ["Asia/Dubai", "UTC", "America/New_York", "America/Los_Angeles", "Europe/London"];

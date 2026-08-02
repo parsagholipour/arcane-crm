@@ -109,9 +109,6 @@ export function GenericRecordModal({
         </>
       }
     >
-      <div className="mb-4 text-xs text-[#706e6b]">
-        <span className="text-[#ba0517]">*</span> = Required Information
-      </div>
       <FormFields
         fields={formDefinition.fields}
         values={values}

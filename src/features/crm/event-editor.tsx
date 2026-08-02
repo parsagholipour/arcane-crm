@@ -304,9 +304,6 @@ export function EventModal({
           </div>
         </div>
       )}
-      <div className="mb-4 text-xs text-[#706e6b]">
-        <span className="text-[#ba0517]">*</span>= Required Information
-      </div>
       <div className="grid gap-4 md:grid-cols-2">
         <FieldShell label="Subject" required error={errors.subject}>
           <NativeSelect

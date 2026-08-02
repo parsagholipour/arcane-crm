@@ -9,6 +9,7 @@ import { commerceOrderInclude, commerceStoreInclude } from "@/lib/commerce";
 import { markPastDueInvoices } from "@/lib/invoices";
 import { marketingLandingPageInclude } from "@/lib/marketing-pages";
 import { prisma } from "@/lib/prisma";
+import { attachShipmentTracking, shipmentTrackingBySubject } from "@/lib/shipment-tracking-sync";
 import { videoCallInclude } from "@/lib/video-calls";
 import { getRecordDetail } from "@/server/records/get-record-detail";
 import { listRecords } from "@/server/records/list-records";
@@ -248,14 +249,23 @@ async function loadCommerceData(organizationId: string, userId: string) {
       orderBy: { createdAt: "desc" }
     })
   ]);
+  // Carrier status hangs off the fulfillments nested in each order, which is what the order
+  // detail panel renders. One query covers every fulfillment on the screen.
+  const shipments = await shipmentTrackingBySubject(organizationId, "CommerceFulfillment", [
+    ...commerceFulfillments.map((fulfillment) => fulfillment.id),
+    ...commerceOrders.flatMap((order) => order.fulfillments.map((fulfillment) => fulfillment.id))
+  ]);
   return {
     ...collections,
     priceBookEntries,
     stores,
-    commerceOrders,
+    commerceOrders: commerceOrders.map((order) => ({
+      ...order,
+      fulfillments: attachShipmentTracking(order.fulfillments, shipments)
+    })),
     inventoryItems,
     commercePromotions,
-    commerceFulfillments
+    commerceFulfillments: attachShipmentTracking(commerceFulfillments, shipments)
   };
 }
 

@@ -106,6 +106,8 @@ export async function createRecord(object: CrmObject, payload: RecordData, organ
           forecastCategory: String(payload.forecastCategory),
           nextStep: payload.nextStep as string | null,
           leadSource: payload.leadSource as string | null,
+          courier: payload.courier as string | null,
+          trackingNumber: payload.trackingNumber as string | null,
           createdById: userId,
           updatedById: userId
         }
