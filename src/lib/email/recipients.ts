@@ -7,13 +7,20 @@ import type { EmailAddress } from "@/lib/email/types";
 
 export type RecipientKind = "lead" | "contact" | "account";
 
+type PersonRecipient = {
+  id: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+};
+
 export type RecipientRecordSet = {
-  leads: Array<{ id: string; firstName?: string | null; lastName: string; email?: string | null }>;
-  contacts: Array<{ id: string; firstName?: string | null; lastName: string; email?: string | null }>;
+  leads: PersonRecipient[];
+  contacts: PersonRecipient[];
   accounts: Array<{
     id: string;
     name: string;
-    contacts: Array<{ id: string; firstName?: string | null; lastName: string; email?: string | null }>;
+    contacts: PersonRecipient[];
   }>;
 };
 
@@ -31,7 +38,7 @@ export function parseRecipientReference(reference: string): { kind?: RecipientKi
   return match ? { kind: match[1] as RecipientKind, id: match[2] } : { id: reference };
 }
 
-function personName(person: { firstName?: string | null; lastName: string }) {
+function personName(person: PersonRecipient) {
   return [person.firstName, person.lastName].filter(Boolean).join(" ");
 }
 
@@ -43,7 +50,7 @@ export function resolveRecipientRecords(
   const skipped: ResolvedListEmailRecipients["skipped"] = [];
   const unknown: string[] = [];
 
-  function addPerson(reference: string, person: RecipientRecordSet["contacts"][number], label: string) {
+  function addPerson(reference: string, person: PersonRecipient, label: string) {
     if (!isValidEmail(person.email)) {
       skipped.push({ reference, label, reason: "No valid email address" });
       return false;

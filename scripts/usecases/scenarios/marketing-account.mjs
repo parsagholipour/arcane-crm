@@ -47,8 +47,10 @@ export async function runMarketingAccountScenarios(context, state) {
     let landingPage = remember("marketingLandingPages", createResult.page);
     createResult.notifications?.forEach((notification) => remember("notifications", notification));
     assert(landingPage.status === "Draft", "landing page did not start as Draft");
-    for (const requiredField of ["lastName", "email", "company"])
+    for (const requiredField of ["email"])
       assert(landingPage.fields.includes(requiredField), `landing page omitted required ${requiredField} field`);
+    for (const optionalField of ["lastName", "company"])
+      assert(!landingPage.fields.includes(optionalField), `landing page forced optional ${optionalField} field`);
 
     await request("/api/marketing/landing-pages", {
       method: "POST",
@@ -89,13 +91,13 @@ export async function runMarketingAccountScenarios(context, state) {
     await request(`/api/marketing/landing-pages/${landingPage.id}`, { method: "DELETE", expected: [409] });
 
     const publicHtml = await requestAnonymous(publicPath);
-    for (const fragment of [landingPage.headline, "Contact Me", "Last Name", "Email", "Company"])
+    for (const fragment of [landingPage.headline, "Contact Me", "Email"])
       assert(publicHtml.includes(fragment), `public marketing form missing ${fragment}`);
     await requestAnonymous(
       `/api/marketing/public/${encodeURIComponent(organization.slug)}/${encodeURIComponent(landingPage.slug)}/submissions`,
       {
         method: "POST",
-        body: { lastName: "Missing Company", email: "invalid" },
+        body: { email: "invalid" },
         expected: [400]
       }
     );
@@ -106,8 +108,6 @@ export async function runMarketingAccountScenarios(context, state) {
         method: "POST",
         body: {
           firstName: "Web",
-          lastName: `${tag} Submitter`,
-          company: `${tag} Prospect`,
           email: submissionEmail,
           phone: "555-0199",
           message: `${tag} form message`
@@ -124,7 +124,10 @@ export async function runMarketingAccountScenarios(context, state) {
       include: { lead: true }
     });
     assert(
-      submission?.lead?.email === submissionEmail && submission.lead.leadSource === "Web",
+      submission?.lead?.email === submissionEmail &&
+        submission.lead.leadSource === "Web" &&
+        submission.lead.lastName === null &&
+        submission.lead.company === null,
       "form submission did not create the expected Web Lead"
     );
     remember("marketingFormSubmissions", submission);
@@ -137,7 +140,7 @@ export async function runMarketingAccountScenarios(context, state) {
       `/api/marketing/public/${encodeURIComponent(organization.slug)}/${encodeURIComponent(landingPage.slug)}/submissions`,
       {
         method: "POST",
-        body: { lastName: `${tag} Submitter`, company: `${tag} Prospect`, email: submissionEmail },
+        body: { email: submissionEmail },
         expected: [429]
       }
     );

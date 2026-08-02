@@ -30,7 +30,7 @@ export type ConvertibleLead = {
   id: string;
   salutation?: string | null;
   firstName?: string | null;
-  lastName: string;
+  lastName?: string | null;
   company?: string | null;
   title?: string | null;
   website?: string | null;
@@ -236,7 +236,7 @@ export function buildContactData(lead: ConvertibleLead, accountId: string, overr
   return {
     salutation: override(overrides.salutation, lead.salutation),
     firstName: override(overrides.firstName, lead.firstName),
-    lastName: String(overrides.lastName ?? "").trim() || lead.lastName,
+    lastName: String(overrides.lastName ?? "").trim() || String(lead.lastName ?? "").trim() || "Converted Lead",
     accountId,
     title: override(overrides.title, lead.title),
     description: lead.description ?? null,

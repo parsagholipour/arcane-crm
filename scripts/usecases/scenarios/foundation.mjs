@@ -123,7 +123,7 @@ export async function runFoundationScenarios(context, state) {
     const requiredCases = [
       ["Account", {}, ["name"]],
       ["Contact", { lastName: `${tag} Invalid Contact` }, ["accountId"]],
-      ["Lead", { status: "New", company: `${tag} Company` }, ["lastName"]],
+      ["Lead", { lastName: `${tag} Lead`, company: `${tag} Company` }, ["status"]],
       [
         "Opportunity",
         { name: `${tag} Invalid Opportunity`, stage: "Qualify" },

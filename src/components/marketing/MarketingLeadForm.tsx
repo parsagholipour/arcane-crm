@@ -74,7 +74,7 @@ export function MarketingLeadForm({
                 <label key={field} className={field === "message" ? "sm:col-span-2" : ""}>
                   <span className="mb-1 block text-sm font-semibold">
                     {labels[field] ?? field}
-                    {["lastName", "email", "company"].includes(field) ? " *" : ""}
+                    {field === "email" ? " *" : ""}
                   </span>
                   {field === "message" ? (
                     <textarea
@@ -85,7 +85,7 @@ export function MarketingLeadForm({
                     <input
                       name={field}
                       type={field === "email" ? "email" : field === "phone" ? "tel" : "text"}
-                      required={["lastName", "email", "company"].includes(field)}
+                      required={field === "email"}
                       className="w-full rounded border border-[#c9c9c9] px-3 py-2 outline-none focus:border-[#0176d3] focus:ring-2 focus:ring-[#0176d333]"
                     />
                   )}

@@ -171,8 +171,8 @@ model Lead {
   status                   String                    @default("New")
   salutation               String?
   firstName                String?
-  lastName                 String
-  company                  String
+  lastName                 String?
+  company                  String?
   title                    String?
   website                  String?
   description              String?

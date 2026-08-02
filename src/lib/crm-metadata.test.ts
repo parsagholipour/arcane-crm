@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { OBJECT_DEFINITIONS } from "@/lib/crm-metadata";
+import { FORM_DEFINITIONS, OBJECT_DEFINITIONS } from "@/lib/crm-metadata";
 import type { CrmObject } from "@/lib/crm-types";
 
 test("record app landing views show populated All lists by default", () => {
@@ -35,4 +35,10 @@ test("work queues keep their purpose-built visible defaults", () => {
   assert.equal(OBJECT_DEFINITIONS.Case.defaultList, "All Open Cases");
   assert.equal(OBJECT_DEFINITIONS.Campaign.defaultList, "All Campaigns");
   assert.equal(OBJECT_DEFINITIONS.Invoice.defaultList, "All Invoices");
+});
+
+test("lead identity fields are optional in the record form", () => {
+  const fields = FORM_DEFINITIONS.Lead?.fields ?? [];
+  assert.equal(fields.find((field) => field.name === "lastName")?.required, undefined);
+  assert.equal(fields.find((field) => field.name === "company")?.required, undefined);
 });

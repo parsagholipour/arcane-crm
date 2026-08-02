@@ -11,9 +11,11 @@ import { apiRequest } from "@/lib/api/client";
 
 type Toast = { tone: "success" | "error" | "warning"; message: string } | null;
 type Updater = (updater: (previous: ScopedCrmData) => ScopedCrmData) => void;
-const optionalFields = ["firstName", "phone", "title", "message"];
+const optionalFields = ["firstName", "lastName", "company", "phone", "title", "message"];
 const fieldLabels: Record<string, string> = {
   firstName: "First Name",
+  lastName: "Last Name",
+  company: "Company",
   phone: "Phone",
   title: "Title",
   message: "Message"
@@ -394,7 +396,7 @@ function LandingPageEditor({
         <div className="sm:col-span-2">
           <div className="mb-2 text-sm font-semibold">Form Fields</div>
           <div className="mb-2 rounded bg-[#f8f9fb] p-2 text-xs text-[#706e6b]">
-            Last Name, Email, and Company are always required so each submission can create a usable Lead.
+            Email is always required. All other fields are optional.
           </div>
           <div className="flex flex-wrap gap-3">
             {optionalFields.map((field) => (

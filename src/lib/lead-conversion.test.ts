@@ -164,6 +164,11 @@ test("buildContactData carries leadSource and honours overrides", () => {
   assert.equal(overridden.firstName, "Ada", "fields without an override keep the lead value");
 });
 
+test("buildContactData gives a nameless lead a valid conversion fallback", () => {
+  const contact = buildContactData({ ...lead, lastName: null }, "acct-1");
+  assert.equal(contact.lastName, "Converted Lead");
+});
+
 test("buildContactMergeData fills only the gaps on an existing contact", () => {
   const merged = buildContactMergeData({ title: "VP", phone: null, email: null, leadSource: null }, lead, "acct-2");
   assert.equal(merged.accountId, "acct-2");

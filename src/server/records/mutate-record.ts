@@ -135,8 +135,10 @@ export async function updateRecord(object: CrmObject, id: string, payload: Recor
           status: payload.status ? String(payload.status) : undefined,
           salutation: payload.salutation as string | null | undefined,
           firstName: payload.firstName as string | null | undefined,
-          lastName: payload.lastName ? String(payload.lastName) : undefined,
-          company: payload.company ? String(payload.company) : undefined,
+          lastName:
+            payload.lastName === undefined ? undefined : payload.lastName === null ? null : String(payload.lastName),
+          company:
+            payload.company === undefined ? undefined : payload.company === null ? null : String(payload.company),
           title: payload.title as string | null | undefined,
           website: payload.website as string | null | undefined,
           description: payload.description as string | null | undefined,

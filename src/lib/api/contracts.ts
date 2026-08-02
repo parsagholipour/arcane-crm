@@ -43,8 +43,8 @@ export const contactDtoSchema = entityRecordSchema.extend({
 
 export const leadDtoSchema = entityRecordSchema.extend({
   firstName: z.string().nullable().optional(),
-  lastName: z.string(),
-  company: z.string(),
+  lastName: z.string().nullable().optional(),
+  company: z.string().nullable().optional(),
   status: z.string(),
   email: z.string().nullable().optional(),
   ownerId: z.string().optional()

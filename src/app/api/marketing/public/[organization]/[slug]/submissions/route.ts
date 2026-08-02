@@ -15,12 +15,13 @@ export async function POST(request: NextRequest, context: { params: Params }) {
     const page = await prisma.marketingLandingPage.findFirst({ where: { organizationId: organizationRecord.id, slug, status: "Published" }, include: marketingLandingPageInclude });
     if (!page) return NextResponse.json({ error: "Form not found." }, { status: 404 });
 
-    const text = (field: string, maximum: number) => String(payload[field] ?? "").trim().slice(0, maximum);
-    const lastName = text("lastName", 120);
-    const email = text("email", 320).toLowerCase();
-    const company = text("company", 200);
-    if (!lastName || !company || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return NextResponse.json({ error: "Last Name, Company, and a valid Email are required." }, { status: 400 });
     const allowed = new Set(page.fields);
+    const text = (field: string, maximum: number) => String(payload[field] ?? "").trim().slice(0, maximum);
+    const lastName = allowed.has("lastName") ? text("lastName", 120) : "";
+    const email = text("email", 320).toLowerCase();
+    const company = allowed.has("company") ? text("company", 200) : "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return NextResponse.json({ error: "A valid Email is required." }, { status: 400 });
     const firstName = allowed.has("firstName") ? text("firstName", 120) : "";
     const phone = allowed.has("phone") ? text("phone", 80) : "";
     const title = allowed.has("title") ? text("title", 160) : "";
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest, context: { params: Params }) {
 
     const result = await prisma.$transaction(async (tx) => {
       const lead = await tx.lead.create({
-        data: { organizationId: page.organizationId, status: "New", firstName: firstName || null, lastName, company, title: title || null, description: message || null, ownerId: page.ownerId, phone: phone || null, email, leadSource: "Web", createdById: page.createdById, updatedById: page.createdById }
+        data: { organizationId: page.organizationId, status: "New", firstName: firstName || null, lastName: lastName || null, company: company || null, title: title || null, description: message || null, ownerId: page.ownerId, phone: phone || null, email, leadSource: "Web", createdById: page.createdById, updatedById: page.createdById }
       });
       const submission = await tx.marketingFormSubmission.create({ data: { organizationId: page.organizationId, landingPageId: page.id, leadId: lead.id, data } });
       if (page.campaignId) {
@@ -45,7 +46,8 @@ export async function POST(request: NextRequest, context: { params: Params }) {
           create: { organizationId: page.organizationId, campaignId: page.campaignId, objectType: "Lead", recordId: lead.id, status: "Responded", responded: true, firstRespondedAt: new Date() }
         });
       }
-      const notification = await createMarketingPageNotification(tx, { organizationId: page.organizationId, userId: page.ownerId, title: "New marketing form submission", body: `${firstName ? `${firstName} ` : ""}${lastName} submitted ${page.name}.`, href: `/lightning/r/Lead/${lead.id}/view` });
+      const submitter = [firstName, lastName].filter(Boolean).join(" ") || email;
+      const notification = await createMarketingPageNotification(tx, { organizationId: page.organizationId, userId: page.ownerId, title: "New marketing form submission", body: `${submitter} submitted ${page.name}.`, href: `/lightning/r/Lead/${lead.id}/view` });
       return { submission, lead, notification };
     });
     return NextResponse.json({ ok: true, successMessage: page.successMessage, submissionId: result.submission.id }, { status: 201 });

@@ -189,7 +189,7 @@ function requiredFieldsForObject(object: CrmObject) {
     case "Contact":
       return ["lastName", "accountId"];
     case "Lead":
-      return ["status", "lastName", "company"];
+      return ["status"];
     case "Opportunity":
       return ["name", "accountId", "closeDate", "stage", "forecastCategory"];
     case "Product2":

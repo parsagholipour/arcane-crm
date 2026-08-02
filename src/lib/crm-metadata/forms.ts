@@ -147,8 +147,8 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
         defaultValue: "--None--"
       },
       { name: "firstName", label: "First Name", section: "About", type: "text" },
-      { name: "lastName", label: "Last Name", section: "About", type: "text", required: true },
-      { name: "company", label: "Company", section: "About", type: "text", required: true },
+      { name: "lastName", label: "Last Name", section: "About", type: "text" },
+      { name: "company", label: "Company", section: "About", type: "text" },
       { name: "title", label: "Title", section: "About", type: "text" },
       { name: "website", label: "Website", section: "About", type: "url" },
       { name: "description", label: "Description", section: "About", type: "textarea" },

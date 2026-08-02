@@ -10,7 +10,7 @@ export const MARKETING_FORM_FIELDS = [
   "title",
   "message"
 ] as const;
-export const REQUIRED_MARKETING_FORM_FIELDS = ["lastName", "email", "company"] as const;
+export const REQUIRED_MARKETING_FORM_FIELDS = ["email"] as const;
 
 export const marketingLandingPageInclude = {
   campaign: true,
