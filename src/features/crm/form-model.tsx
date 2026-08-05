@@ -25,9 +25,7 @@ export const IMPORT_COLUMNS: Partial<Record<CrmObject, string[]>> = {
 export function importColumnsLabel(object: CrmObject) {
   const columns = IMPORT_COLUMNS[object];
   if (!columns) return "";
-  return columns
-    .map((column) => (column === "accountName" ? "accountName (matched to Account)" : column))
-    .join(", ");
+  return columns.map((column) => (column === "accountName" ? "accountName (matched to Account)" : column)).join(", ");
 }
 
 export function importSampleForObject(object: CrmObject) {
@@ -83,11 +81,7 @@ export function importPayloadForObject(object: CrmObject, row: string, data: Sco
     if (value) mapped[column] = value;
   });
 
-  if (
-    (object === "Contact" || object === "Opportunity") &&
-    columns.includes("accountName") &&
-    !mapped.accountId
-  ) {
+  if ((object === "Contact" || object === "Opportunity") && columns.includes("accountName") && !mapped.accountId) {
     // Do not fall back to an arbitrary Account — fail the row instead.
     return null;
   }
@@ -120,12 +114,22 @@ export function buildInitialValues(
       values[field.name] = field.defaultValue;
     else if (record && values[field.name] === undefined && field.name === "ownerId" && currentUserId)
       values[field.name] = currentUserId;
+
+    if (field.type === "date") values[field.name] = dateInputValue(values[field.name]);
   });
   // When seeding from a partial record (import / convert), still fill ownerId if missing.
   if (values.ownerId === undefined && currentUserId && definition.fields.some((field) => field.name === "ownerId")) {
     values.ownerId = currentUserId;
   }
   return values;
+}
+export function dateInputValue(value: unknown) {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : value;
+  }
+  if (typeof value !== "string") return value;
+  const calendarDate = value.match(/^(\d{4}-\d{2}-\d{2})(?:T|$)/)?.[1];
+  return calendarDate ?? value;
 }
 export function splitDateTimeField(values: RecordData, dateField: string, timeField: string) {
   const raw = values[dateField];

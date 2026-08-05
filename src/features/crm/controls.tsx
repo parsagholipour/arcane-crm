@@ -414,15 +414,21 @@ export function NativeSelect({
 export function RadixCheckbox({
   checked,
   onCheckedChange,
-  id
+  id,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean | "indeterminate") => void;
   id?: string;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
 }) {
   return (
     <Checkbox.Root
       id={id}
+      aria-invalid={ariaInvalid}
+      aria-describedby={ariaDescribedBy}
       checked={checked}
       onCheckedChange={onCheckedChange}
       className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-[#c9c9c9] bg-white outline-none transition-all hover:border-[#a0a0a0] focus-visible:border-brand-500 focus-visible:shadow-[0_0_0_3px_rgba(79,70,229,0.16)] active:scale-90 data-[state=checked]:border-brand-600 data-[state=checked]:bg-brand-600 data-[state=checked]:hover:border-brand-600"

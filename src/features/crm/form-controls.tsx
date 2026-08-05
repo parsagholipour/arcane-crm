@@ -48,19 +48,28 @@ export function FieldInput({
   values,
   data,
   error,
-  onChange
+  onChange,
+  id,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy
 }: {
   field: FieldDefinition;
   values: RecordData;
   data: ScopedCrmData;
   error?: string;
   onChange: (name: string, value: unknown) => void;
+  id?: string;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
 }) {
   const value = values[field.name] ?? field.defaultValue ?? "";
   const controlClass = cn(inputClass, error && inputErrorClass);
   if (field.type === "textarea")
     return (
       <textarea
+        id={id}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
         className={cn(controlClass, "h-20")}
         value={String(value ?? "")}
         onChange={(event) => onChange(field.name, event.target.value)}
@@ -72,9 +81,12 @@ export function FieldInput({
       Boolean(field.dependsOn) && (!values[field.dependsOn!] || values[field.dependsOn!] === "--None--");
     return (
       <NativeSelect
+        id={id}
         options={options}
         value={String(value ?? "--None--")}
         error={Boolean(error)}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
         disabled={countryUnset}
         placeholder={countryUnset ? "Select a country first" : "Select..."}
         onChange={(next) => onChange(field.name, next)}
@@ -83,27 +95,47 @@ export function FieldInput({
   }
   if (field.type === "checkbox")
     return (
-      <RadixCheckbox checked={Boolean(value)} onCheckedChange={(checked) => onChange(field.name, Boolean(checked))} />
+      <RadixCheckbox
+        id={id}
+        checked={Boolean(value)}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
+        onCheckedChange={(checked) => onChange(field.name, Boolean(checked))}
+      />
     );
   if (field.type === "lookup") {
     return (
       <LookupField
+        id={id}
         field={field}
         value={String(value ?? "")}
         data={data}
         error={Boolean(error)}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
         inlineSelection
         onChange={(next) => onChange(field.name, next)}
       />
     );
   }
   if (field.type === "readonly") {
-    const display =
-      typeof value === "boolean" ? (value ? "True" : "False") : String(value ?? "");
-    return <input className={controlClass} readOnly value={display} />;
+    const display = typeof value === "boolean" ? (value ? "True" : "False") : String(value ?? "");
+    return (
+      <input
+        id={id}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
+        className={controlClass}
+        readOnly
+        value={display}
+      />
+    );
   }
   return (
     <input
+      id={id}
+      aria-invalid={ariaInvalid}
+      aria-describedby={ariaDescribedBy}
       className={controlClass}
       type={field.type === "currency" || field.type === "number" ? "number" : field.type}
       value={String(value ?? "")}

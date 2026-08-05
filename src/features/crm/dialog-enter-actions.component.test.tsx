@@ -99,7 +99,7 @@ describe("dialog Enter actions", () => {
 
     await user.type(screen.getByRole("textbox", { name: /Product Name/ }), "Keyboard Product");
     await user.keyboard("{Enter}");
-    expect(screen.getByText("New Price Book Entry - Current Stage")).toBeInTheDocument();
+    expect(screen.getByText("Optional pricing - Current Stage")).toBeInTheDocument();
     wizard.unmount();
 
     const onSave = vi.fn().mockResolvedValue(false);

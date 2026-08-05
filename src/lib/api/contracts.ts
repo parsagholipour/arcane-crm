@@ -53,9 +53,16 @@ export const leadDtoSchema = entityRecordSchema.extend({
 export const opportunityDtoSchema = entityRecordSchema.extend({
   name: z.string(),
   stage: z.string(),
-  accountId: z.string().nullable().optional(),
+  accountId: z.string(),
+  contactId: z.string().nullable().optional(),
   amount: z.union([z.string(), z.number()]).nullable().optional(),
-  closeDate: z.coerce.date().or(z.string()).nullable().optional(),
+  closeDate: z.coerce.date().or(z.string()),
+  description: z.string().nullable().optional(),
+  ownerId: z.string(),
+  probability: z.number().int().nullable().optional(),
+  forecastCategory: z.string(),
+  nextStep: z.string().nullable().optional(),
+  leadSource: z.string().nullable().optional(),
   courier: z.string().nullable().optional(),
   trackingNumber: z.string().nullable().optional()
 });
