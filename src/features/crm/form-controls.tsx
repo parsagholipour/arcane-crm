@@ -154,6 +154,7 @@ export function LookupField({
   value,
   data,
   options: suppliedOptions,
+  selectedLabel,
   disabled = false,
   error,
   inlineSelection = false,
@@ -166,6 +167,7 @@ export function LookupField({
   value: string;
   data: ScopedCrmData;
   options?: LookupOption[];
+  selectedLabel?: string;
   disabled?: boolean;
   error?: boolean;
   inlineSelection?: boolean;
@@ -180,8 +182,12 @@ export function LookupField({
   const generatedId = useId();
   const inputId = id ?? generatedId;
   const listId = `${inputId}-lookup-results`;
-  const options = suppliedOptions ?? lookupOptionsForField(field, data);
-  const selected = options.find((option) => option.id === value);
+  const availableOptions = suppliedOptions ?? lookupOptionsForField(field, data);
+  const availableSelection = availableOptions.find((option) => option.id === value);
+  const fallbackSelection =
+    value && !availableSelection ? { id: value, label: selectedLabel?.trim() || value } : undefined;
+  const options = fallbackSelection ? [fallbackSelection, ...availableOptions] : availableOptions;
+  const selected = availableSelection ?? fallbackSelection;
   const invalid = Boolean(error || ariaInvalid);
   const placeholder = lookupPlaceholder(field);
   const normalizedQuery = query.trim().toLowerCase();

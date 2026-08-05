@@ -1,7 +1,19 @@
 "use client";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, ChevronsUpDown, Edit3, Eye, MoreHorizontal, PanelLeft, Plus, Target, Trash2 } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  ChevronsUpDown,
+  Edit3,
+  Eye,
+  MoreHorizontal,
+  PanelLeft,
+  Plus,
+  Target,
+  Trash2
+} from "lucide-react";
 import Link from "next/link";
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { recordTitle, routeForRecord } from "@/lib/crm-data";
@@ -135,16 +147,34 @@ export function DataGrid({
             {definition.columns.map((column) => (
               <th
                 key={column.key}
+                aria-sort={
+                  sortState?.key === column.key
+                    ? sortState.direction === "asc"
+                      ? "ascending"
+                      : "descending"
+                    : undefined
+                }
                 className="border-r border-[#d8dde6] px-3 py-2 text-left"
                 style={{ minWidth: column.width ?? "150px", width: column.width ?? "150px" }}
               >
                 <div className="flex items-center justify-between gap-2">
                   <button
-                    className="flex items-center gap-1 font-semibold hover:text-brand-700"
+                    className={cn(
+                      "flex items-center gap-1 font-semibold hover:text-brand-700",
+                      sortState?.key === column.key && "text-brand-700"
+                    )}
                     onClick={() => onSort(column.key)}
                   >
                     {column.label}
-                    <ChevronsUpDown size={12} className={cn(sortState?.key === column.key && "text-brand-700")} />
+                    {sortState?.key === column.key ? (
+                      sortState.direction === "asc" ? (
+                        <ArrowUp aria-hidden="true" size={13} strokeWidth={2.5} />
+                      ) : (
+                        <ArrowDown aria-hidden="true" size={13} strokeWidth={2.5} />
+                      )
+                    ) : (
+                      <ChevronsUpDown aria-hidden="true" size={12} />
+                    )}
                   </button>
                   <div className="flex items-center gap-1">
                     <DropdownMenu.Root>

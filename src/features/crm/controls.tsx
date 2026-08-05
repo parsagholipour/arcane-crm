@@ -193,7 +193,11 @@ export function NativeSelect({
   const searchRef = useRef<HTMLInputElement>(null);
   const searchId = useId();
   const listId = `${searchId}-list`;
-  const normalizedOptions = normalizeSelectOptions(options);
+  const suppliedOptions = normalizeSelectOptions(options);
+  const normalizedOptions =
+    value && !suppliedOptions.some((option) => option.value === value)
+      ? [{ value, label: value }, ...suppliedOptions]
+      : suppliedOptions;
   const selectedOption = normalizedOptions.find((option) => option.value === value);
   const normalizedQuery = query.trim().toLowerCase();
   const filteredOptions = normalizedQuery
@@ -317,7 +321,7 @@ export function NativeSelect({
           aria-invalid={ariaInvalid}
           aria-describedby={ariaDescribedBy}
           aria-label={ariaLabel}
-          title={disabled ? placeholder : undefined}
+          title={disabled ? (selectedOption?.label ?? placeholder) : undefined}
           disabled={disabled}
           className={cn(
             inputClass,

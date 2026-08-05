@@ -183,6 +183,7 @@ export function EntryEditor({
   onClose: () => void;
   onSaved: (record: RecordData) => void;
 }) {
+  const entryProduct = entry?.product as RecordData | undefined;
   const [values, setValues] = useState({
     productId: text(entry?.productId),
     listPrice: text(entry?.listPrice),
@@ -230,6 +231,7 @@ export function EntryEditor({
           field={productLookupField}
           disabled={Boolean(entry)}
           value={values.productId}
+          selectedLabel={text(entryProduct?.name) || undefined}
           data={data}
           inlineSelection
           onChange={(productId) => setValues({ ...values, productId })}
@@ -254,7 +256,7 @@ export function EntryEditor({
               value={values.currency}
               onChange={(event) => setValues({ ...values, currency: event.target.value })}
             >
-              {["USD", "AED", "EUR", "GBP"].map((value) => (
+              {Array.from(new Set(["USD", "AED", "EUR", "GBP", values.currency].filter(Boolean))).map((value) => (
                 <option key={value}>{value}</option>
               ))}
             </select>
