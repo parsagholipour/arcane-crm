@@ -1,8 +1,12 @@
 import { FORECAST_CATEGORIES, isValidEmail, LEAD_STATUSES, OPPORTUNITY_STAGES } from "@/lib/record-validation";
+import { COURIERS, isLikelyUspsTrackingNumber, isUspsCarrier } from "@/lib/usps-status";
+import { LEAD_SOURCE } from "@/lib/crm-metadata/options";
 
 export const MAX_LEADS_PER_CONVERSION = 200;
 const DEFAULT_ACCOUNT_NAME = "Converted Lead Account";
 const CONVERSION_NEXT_STEP = "Follow up after lead conversion";
+const LEAD_SOURCES = new Set(LEAD_SOURCE.filter((value) => value !== "--None--"));
+const COURIER_CHOICES = new Set<string>(COURIERS);
 
 /** Probability seeded on the opportunity created by a conversion, by stage. */
 const STAGE_PROBABILITY: Record<string, number> = {
@@ -67,6 +71,13 @@ export type NormalizedConversion = {
   forecastCategory: string;
   closeDate: Date;
   amount: string | null;
+  description?: string | null;
+  ownerId: string;
+  probability: number | null;
+  nextStep?: string | null;
+  leadSource?: string | null;
+  courier: string | null;
+  trackingNumber: string | null;
   accountName: string;
   opportunityName: string;
   existingAccountId: string;
@@ -111,6 +122,13 @@ export function normalizeConversionValues(
   let forecastCategory = "Pipeline";
   let closeDate = daysFromNow(30, now);
   let amount: string | null = null;
+  let description: string | null | undefined = undefined;
+  let ownerId = "";
+  let probability: number | null = null;
+  let nextStep: string | null | undefined = undefined;
+  let leadSource: string | null | undefined = undefined;
+  let courier: string | null = null;
+  let trackingNumber: string | null = null;
 
   if (createOpportunity) {
     stage = String(values.stage ?? "Qualify");
@@ -128,6 +146,26 @@ export function normalizeConversionValues(
       }
     }
     amount = normalizeAmount(values.amount);
+    if (singleLead) {
+      if ("description" in values) description = optionalText(values.description);
+      ownerId = String(values.ownerId ?? "").trim();
+      if ("probability" in values) probability = normalizeProbability(values.probability);
+      if ("nextStep" in values) nextStep = optionalText(values.nextStep);
+      if ("leadSource" in values) {
+        leadSource = optionalChoice(values.leadSource, LEAD_SOURCES, "Choose a valid Lead Source.", "leadSource");
+      }
+      if ("courier" in values) {
+        courier = optionalChoice(values.courier, COURIER_CHOICES, "Choose a valid Courier.", "courier");
+      }
+      if ("trackingNumber" in values) trackingNumber = optionalText(values.trackingNumber);
+      if (isUspsCarrier(courier) && trackingNumber && !isLikelyUspsTrackingNumber(trackingNumber)) {
+        throw new LeadConversionValidationError(
+          "Enter a valid USPS tracking number (20-22 digits, or two letters, nine digits, and US).",
+          400,
+          "trackingNumber"
+        );
+      }
+    }
   }
 
   const contactOverrides = singleLead ? normalizeContactOverrides(values.contact) : {};
@@ -140,6 +178,13 @@ export function normalizeConversionValues(
     forecastCategory,
     closeDate,
     amount,
+    description,
+    ownerId,
+    probability,
+    nextStep,
+    leadSource,
+    courier,
+    trackingNumber,
     accountName: singleLead ? String(values.accountName ?? "").trim() : "",
     opportunityName: singleLead ? String(values.opportunityName ?? "").trim() : "",
     existingAccountId: singleLead ? String(values.existingAccountId ?? "").trim() : "",
@@ -156,6 +201,26 @@ function normalizeAmount(value: unknown): string | null {
     throw new LeadConversionValidationError("Amount must be a non-negative number.", 400, "amount");
   }
   return String(value).trim();
+}
+
+function normalizeProbability(value: unknown): number | null {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const probability = Number(value);
+  if (!Number.isInteger(probability) || probability < 0 || probability > 100) {
+    throw new LeadConversionValidationError("Probability must be a whole number from 0 through 100.", 400, "probability");
+  }
+  return probability;
+}
+
+function optionalText(value: unknown): string | null {
+  return blankToNull(value);
+}
+
+function optionalChoice(value: unknown, choices: Set<string>, message: string, field: string): string | null {
+  const text = blankToNull(value);
+  if (text === null) return null;
+  if (!choices.has(text)) throw new LeadConversionValidationError(message, 400, field);
+  return text;
 }
 
 function normalizeContactOverrides(value: unknown): ContactOverrides {
@@ -278,7 +343,20 @@ export function buildOpportunityData(
   lead: ConvertibleLead,
   accountId: string,
   contactId: string,
-  options: { name: string; closeDate: Date; stage: string; forecastCategory: string; amount: string | null }
+  options: {
+    name: string;
+    closeDate: Date;
+    stage: string;
+    forecastCategory: string;
+    amount: string | null;
+    description?: string | null;
+    ownerId?: string;
+    probability?: number | null;
+    nextStep?: string | null;
+    leadSource?: string | null;
+    courier?: string | null;
+    trackingNumber?: string | null;
+  }
 ) {
   return {
     name: options.name,
@@ -286,13 +364,15 @@ export function buildOpportunityData(
     contactId,
     closeDate: options.closeDate,
     amount: options.amount,
-    description: lead.description ?? null,
-    ownerId: lead.ownerId,
+    description: options.description !== undefined ? options.description : (lead.description ?? null),
+    ownerId: options.ownerId?.trim() || lead.ownerId,
     stage: options.stage,
-    probability: probabilityForStage(options.stage),
+    probability: options.probability ?? probabilityForStage(options.stage),
     forecastCategory: options.forecastCategory,
-    nextStep: CONVERSION_NEXT_STEP,
-    leadSource: lead.leadSource ?? null
+    nextStep: options.nextStep !== undefined ? options.nextStep : CONVERSION_NEXT_STEP,
+    leadSource: options.leadSource !== undefined ? options.leadSource : (lead.leadSource ?? null),
+    courier: options.courier ?? null,
+    trackingNumber: options.trackingNumber ?? null
   };
 }
 

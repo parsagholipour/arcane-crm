@@ -2,7 +2,7 @@
 
 import { Building2, Target, User } from "lucide-react";
 import { useState, type ElementType, type ReactNode } from "react";
-import { FORECAST_CATEGORY, LEAD_STATUS, OPPORTUNITY_STAGE, SALUTATIONS } from "@/lib/crm-metadata";
+import { FORM_DEFINITIONS, LEAD_STATUS, SALUTATIONS } from "@/lib/crm-metadata";
 import { contactName } from "@/lib/crm-data";
 import {
   accountNameForLead,
@@ -10,6 +10,7 @@ import {
   matchAccountsForLead,
   matchContactsForLead,
   opportunityNameFor,
+  probabilityForStage,
   type ConvertibleLead
 } from "@/lib/lead-conversion";
 import { isValidEmail } from "@/lib/record-validation";
@@ -18,8 +19,14 @@ import { cn } from "@/lib/utils";
 import { BaseDialog, Button } from "@/components/ui/crm-primitives";
 import { FieldShell, inputClass, NativeSelect, RadixCheckbox } from "@/features/crm/controls";
 import { defaultLeadConversionCloseDate } from "@/features/crm/data-model";
-import { LookupField } from "@/features/crm/form-controls";
+import { FormFields, LookupField, picklistOptionsForField } from "@/features/crm/form-controls";
+import { validateFields } from "@/features/crm/form-model";
 import { requiredId } from "@/features/crm/record-model";
+
+/** Same Opportunity create form, minus Account — conversion already picks that above. */
+export const CONVERSION_OPPORTUNITY_FIELDS = (FORM_DEFINITIONS.Opportunity?.fields ?? []).filter(
+  (field) => field.name !== "accountId"
+);
 
 export type LeadConversionForm = {
   accountMode: "new" | "existing";
@@ -31,11 +38,13 @@ export type LeadConversionForm = {
   createOpportunity: boolean;
   opportunityMode: "new" | "existing";
   existingOpportunityId: string;
-  opportunity: { name: string; amount: string; closeDate: string; stage: string; forecastCategory: string };
+  opportunity: RecordData;
   convertedStatus: string;
 };
 export function initialLeadConversionForm(lead: RecordData): LeadConversionForm {
   const accountName = accountNameForLead(leadForConversion(lead));
+  const stage = "Qualify";
+  const leadSource = String(lead.leadSource ?? "").trim();
   return {
     accountMode: "new",
     accountName,
@@ -57,8 +66,15 @@ export function initialLeadConversionForm(lead: RecordData): LeadConversionForm 
       name: opportunityNameFor(accountName),
       amount: "",
       closeDate: defaultLeadConversionCloseDate(),
-      stage: "Qualify",
-      forecastCategory: "Pipeline"
+      description: String(lead.description ?? ""),
+      ownerId: String(lead.ownerId ?? ""),
+      stage,
+      probability: String(probabilityForStage(stage) ?? ""),
+      forecastCategory: "Pipeline",
+      nextStep: "Follow up after lead conversion",
+      leadSource: leadSource || "--None--",
+      courier: "--None--",
+      trackingNumber: ""
     },
     convertedStatus: "Qualified"
   };
@@ -96,8 +112,18 @@ export function LeadConversionDialog({
   const update = (patch: Partial<LeadConversionForm>) => setForm((current) => ({ ...current, ...patch }));
   const updateContact = (patch: Partial<LeadConversionForm["contact"]>) =>
     setForm((current) => ({ ...current, contact: { ...current.contact, ...patch } }));
-  const updateOpportunity = (patch: Partial<LeadConversionForm["opportunity"]>) =>
-    setForm((current) => ({ ...current, opportunity: { ...current.opportunity, ...patch } }));
+  const setOpportunityField = (name: string, value: unknown) =>
+    setForm((current) => {
+      const opportunity = { ...current.opportunity, [name]: value };
+      for (const field of CONVERSION_OPPORTUNITY_FIELDS) {
+        if (field.dependsOn === name) {
+          const options = picklistOptionsForField(field, opportunity);
+          const currentDependent = String(opportunity[field.name] ?? "--None--");
+          if (!options.includes(currentDependent)) opportunity[field.name] = "--None--";
+        }
+      }
+      return { ...current, opportunity };
+    });
 
   const convertible = leadForConversion(firstLead);
   const contactDisplayName = contactName(firstLead) || "Converted Contact";
@@ -115,6 +141,7 @@ export function LeadConversionDialog({
   });
 
   const errors = leadConversionFormErrors(form, targetCount);
+  const opportunityErrors = opportunityFieldErrors(errors);
   const canConvert = targetCount > 0 && Object.keys(errors).length === 0;
 
   const accountLookupField: FieldDefinition = {
@@ -332,46 +359,13 @@ export function LeadConversionDialog({
             >
               {form.createOpportunity ? (
                 form.opportunityMode === "new" ? (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <FieldShell label="Opportunity Name" error={errors["opportunity.name"]}>
-                      <input
-                        className={inputClass}
-                        value={form.opportunity.name}
-                        onChange={(event) => updateOpportunity({ name: event.target.value })}
-                      />
-                    </FieldShell>
-                    <FieldShell label="Amount" error={errors["opportunity.amount"]}>
-                      <input
-                        className={inputClass}
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        value={form.opportunity.amount}
-                        onChange={(event) => updateOpportunity({ amount: event.target.value })}
-                      />
-                    </FieldShell>
-                    <FieldShell label="Close Date" error={errors["opportunity.closeDate"]}>
-                      <input
-                        className={inputClass}
-                        type="date"
-                        value={form.opportunity.closeDate}
-                        onChange={(event) => updateOpportunity({ closeDate: event.target.value })}
-                      />
-                    </FieldShell>
-                    <FieldShell label="Stage">
-                      <NativeSelect
-                        options={OPPORTUNITY_STAGE.filter((stage) => stage !== "--None--")}
-                        value={form.opportunity.stage}
-                        onChange={(value) => updateOpportunity({ stage: value })}
-                      />
-                    </FieldShell>
-                    <FieldShell label="Forecast Category">
-                      <NativeSelect
-                        options={FORECAST_CATEGORY.filter((category) => category !== "--None--")}
-                        value={form.opportunity.forecastCategory}
-                        onChange={(value) => updateOpportunity({ forecastCategory: value })}
-                      />
-                    </FieldShell>
-                  </div>
+                  <FormFields
+                    fields={CONVERSION_OPPORTUNITY_FIELDS}
+                    values={form.opportunity}
+                    errors={opportunityErrors}
+                    data={data}
+                    onChange={setOpportunityField}
+                  />
                 ) : (
                   <div className="space-y-2">
                     {opportunityOptions.length === 0 && form.existingAccountId ? (
@@ -485,13 +479,23 @@ export function leadConversionFormErrors(form: LeadConversionForm, targetCount: 
 
   if (form.createOpportunity) {
     if (form.opportunityMode === "new") {
-      if (!form.opportunity.name.trim()) errors["opportunity.name"] = "Opportunity Name is required.";
-      const amount = form.opportunity.amount.trim();
+      for (const [field, message] of Object.entries(validateFields(CONVERSION_OPPORTUNITY_FIELDS, form.opportunity))) {
+        errors[`opportunity.${field}`] = message;
+      }
+      const amount = String(form.opportunity.amount ?? "").trim();
       if (amount && (!Number.isFinite(Number(amount)) || Number(amount) < 0)) {
         errors["opportunity.amount"] = "Amount must be a non-negative number.";
       }
-      if (!form.opportunity.closeDate || !Number.isFinite(new Date(form.opportunity.closeDate).getTime())) {
+      const closeDate = String(form.opportunity.closeDate ?? "").trim();
+      if (closeDate && !Number.isFinite(new Date(closeDate).getTime())) {
         errors["opportunity.closeDate"] = "Choose a valid Close Date.";
+      }
+      const probability = String(form.opportunity.probability ?? "").trim();
+      if (probability) {
+        const value = Number(probability);
+        if (!Number.isInteger(value) || value < 0 || value > 100) {
+          errors["opportunity.probability"] = "Probability must be a whole number from 0 through 100.";
+        }
       }
     } else if (!form.existingOpportunityId) {
       errors.existingOpportunityId = "Choose an opportunity.";
@@ -500,11 +504,19 @@ export function leadConversionFormErrors(form: LeadConversionForm, targetCount: 
 
   return errors;
 }
+export function opportunityFieldErrors(errors: Record<string, string>) {
+  return Object.fromEntries(
+    Object.entries(errors)
+      .filter(([key]) => key.startsWith("opportunity."))
+      .map(([key, message]) => [key.slice("opportunity.".length), message])
+  );
+}
 export function leadConversionPayload(form: LeadConversionForm, targetCount: number): RecordData {
   if (targetCount !== 1) {
     return { createOpportunity: form.createOpportunity, convertedStatus: form.convertedStatus };
   }
   const usesNewOpportunity = form.createOpportunity && form.opportunityMode === "new";
+  const opportunity = form.opportunity;
   return {
     accountName: form.accountMode === "new" ? form.accountName : "",
     existingAccountId: form.accountMode === "existing" ? form.existingAccountId : "",
@@ -523,11 +535,18 @@ export function leadConversionPayload(form: LeadConversionForm, targetCount: num
     createOpportunity: form.createOpportunity,
     existingOpportunityId:
       form.createOpportunity && form.opportunityMode === "existing" ? form.existingOpportunityId : "",
-    opportunityName: usesNewOpportunity ? form.opportunity.name : "",
-    amount: usesNewOpportunity ? form.opportunity.amount : "",
-    closeDate: usesNewOpportunity ? form.opportunity.closeDate : "",
-    stage: usesNewOpportunity ? form.opportunity.stage : "Qualify",
-    forecastCategory: usesNewOpportunity ? form.opportunity.forecastCategory : "Pipeline",
+    opportunityName: usesNewOpportunity ? String(opportunity.name ?? "") : "",
+    amount: usesNewOpportunity ? String(opportunity.amount ?? "") : "",
+    closeDate: usesNewOpportunity ? String(opportunity.closeDate ?? "") : "",
+    stage: usesNewOpportunity ? String(opportunity.stage ?? "Qualify") : "Qualify",
+    forecastCategory: usesNewOpportunity ? String(opportunity.forecastCategory ?? "Pipeline") : "Pipeline",
+    description: usesNewOpportunity ? String(opportunity.description ?? "") : "",
+    ownerId: usesNewOpportunity ? String(opportunity.ownerId ?? "") : "",
+    probability: usesNewOpportunity ? String(opportunity.probability ?? "") : "",
+    nextStep: usesNewOpportunity ? String(opportunity.nextStep ?? "") : "",
+    leadSource: usesNewOpportunity ? String(opportunity.leadSource ?? "") : "",
+    courier: usesNewOpportunity ? String(opportunity.courier ?? "") : "",
+    trackingNumber: usesNewOpportunity ? String(opportunity.trackingNumber ?? "") : "",
     convertedStatus: form.convertedStatus
   };
 }

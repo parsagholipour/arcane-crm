@@ -98,7 +98,14 @@ export async function convertLeads(
                   closeDate: options.closeDate,
                   stage: options.stage,
                   forecastCategory: options.forecastCategory,
-                  amount: options.amount
+                  amount: options.amount,
+                  description: options.description,
+                  ownerId: options.ownerId,
+                  probability: options.probability,
+                  nextStep: options.nextStep,
+                  leadSource: options.leadSource,
+                  courier: options.courier,
+                  trackingNumber: options.trackingNumber
                 }),
                 createdById: userId,
                 updatedById: userId

@@ -194,6 +194,70 @@ test("buildOpportunityData carries amount, leadSource and a stage-derived probab
   assert.equal(opportunity.probability, 50);
   assert.equal(opportunity.contactId, "cont-1");
   assert.equal(opportunity.nextStep, "Follow up after lead conversion");
+  assert.equal(opportunity.description, lead.description);
+  assert.equal(opportunity.courier, null);
+  assert.equal(opportunity.trackingNumber, null);
+});
+
+test("buildOpportunityData honours form overrides for the full opportunity shape", () => {
+  const closeDate = new Date("2026-09-01T00:00:00.000Z");
+  const opportunity = buildOpportunityData(lead, "acct-1", "cont-1", {
+    name: "Custom Deal",
+    closeDate,
+    stage: "Negotiate",
+    forecastCategory: "Commit",
+    amount: "12000",
+    description: "Override description",
+    ownerId: "user-9",
+    probability: 80,
+    nextStep: "Send contract",
+    leadSource: "Partner",
+    courier: "USPS",
+    trackingNumber: "9400111899223344556677"
+  });
+
+  assert.equal(opportunity.description, "Override description");
+  assert.equal(opportunity.ownerId, "user-9");
+  assert.equal(opportunity.probability, 80);
+  assert.equal(opportunity.nextStep, "Send contract");
+  assert.equal(opportunity.leadSource, "Partner");
+  assert.equal(opportunity.courier, "USPS");
+  assert.equal(opportunity.trackingNumber, "9400111899223344556677");
+});
+
+test("normalizeConversionValues accepts the opportunity form fields", () => {
+  const result = normalizeConversionValues(
+    {
+      stage: "Propose",
+      forecastCategory: "Best Case",
+      description: "From convert form",
+      ownerId: "user-2",
+      probability: "55",
+      nextStep: "Demo follow-up",
+      leadSource: "Web",
+      courier: "FedEx",
+      trackingNumber: "FX123"
+    },
+    1
+  );
+
+  assert.equal(result.description, "From convert form");
+  assert.equal(result.ownerId, "user-2");
+  assert.equal(result.probability, 55);
+  assert.equal(result.nextStep, "Demo follow-up");
+  assert.equal(result.leadSource, "Web");
+  assert.equal(result.courier, "FedEx");
+  assert.equal(result.trackingNumber, "FX123");
+});
+
+test("normalizeConversionValues rejects invalid opportunity extras", () => {
+  expectValidationError(() => normalizeConversionValues({ probability: "101" }, 1), "probability");
+  expectValidationError(() => normalizeConversionValues({ leadSource: "Banana" }, 1), "leadSource");
+  expectValidationError(() => normalizeConversionValues({ courier: "Banana" }, 1), "courier");
+  expectValidationError(
+    () => normalizeConversionValues({ courier: "USPS", trackingNumber: "not-valid" }, 1),
+    "trackingNumber"
+  );
 });
 
 test("probabilityForStage covers every stage rather than only Qualify", () => {
