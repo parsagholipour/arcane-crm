@@ -13,7 +13,11 @@ import { attachTrackedDeliveries } from "@/lib/email/tracking";
 import { DEFAULT_EVENT_REMINDER_MINUTES } from "@/lib/calendar-reminder-values";
 import { calendarErrorResponse, validateEventReminderMinutes } from "@/lib/calendar-events";
 import { prisma } from "@/lib/prisma";
-import { RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
+import {
+  assertLeadIdentityFields,
+  RecordPayloadValidationError,
+  validateRecordPayload
+} from "@/lib/record-validation";
 import { syncOpportunityShipment } from "@/lib/shipment-tracking-sync";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 import { NextRequest, NextResponse } from "next/server";
@@ -55,6 +59,7 @@ export async function POST(request: NextRequest, context: { params: Params }) {
     if (missingFields.length > 0)
       return NextResponse.json({ error: "Complete this field.", fields: missingFields }, { status: 400 });
     validateRecordPayload(object, payload);
+    if (object === "Lead") assertLeadIdentityFields(payload);
     if (object === "Event") {
       const startAt = new Date(String(payload.startAt));
       const endAt = new Date(String(payload.endAt));

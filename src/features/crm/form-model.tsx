@@ -6,6 +6,7 @@ import {
   type FormDefinition,
   type RecordData
 } from "@/lib/crm-types";
+import { leadIdentityFieldErrors } from "@/lib/lead-identity";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { requiredId } from "@/features/crm/record-model";
 
@@ -151,12 +152,16 @@ export function normalizeDirtyValue(value: unknown) {
   }
   return String(value);
 }
-export function validateFields(fields: FieldDefinition[], values: RecordData) {
-  return Object.fromEntries(
+export function validateFields(fields: FieldDefinition[], values: RecordData, object?: CrmObject) {
+  const errors = Object.fromEntries(
     fields
       .filter((field) => field.required && (!values[field.name] || values[field.name] === "--None--"))
       .map((field) => [field.name, "Complete this field."])
   );
+  if (object === "Lead") {
+    return { ...errors, ...leadIdentityFieldErrors(values) };
+  }
+  return errors;
 }
 export function validateRequired(values: RecordData, required: string[]) {
   return Object.fromEntries(

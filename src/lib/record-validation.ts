@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { parseRecurrenceRule } from "@/lib/calendar-recurrence";
 import { MAX_EVENT_REMINDER_MINUTES } from "@/lib/calendar-reminder-values";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
+import { LEAD_IDENTITY_ERROR, LEAD_IDENTITY_FIELDS, leadHasIdentity } from "@/lib/lead-identity";
 import { COURIERS, isLikelyUspsTrackingNumber, isUspsCarrier } from "@/lib/usps-status";
 
 export class RecordPayloadValidationError extends Error {
@@ -27,6 +28,12 @@ export const FORECAST_CATEGORIES = new Set(["Pipeline", "Best Case", "Commit", "
 const COURIER_CHOICES = new Set<string>(COURIERS);
 const CASE_STATUSES = new Set(["New", "Working", "Waiting on Customer", "Escalated", "Closed"]);
 const CASE_PRIORITIES = new Set(["Low", "Medium", "High"]);
+
+/** Require First Name, Last Name, Company, or Title on Lead create (not partial PATCH). */
+export function assertLeadIdentityFields(payload: RecordData) {
+  if (leadHasIdentity(payload)) return;
+  throw new RecordPayloadValidationError(LEAD_IDENTITY_ERROR, [...LEAD_IDENTITY_FIELDS]);
+}
 
 export function validateRecordPayload(object: CrmObject, payload: RecordData) {
   if (object === "Account") {

@@ -79,7 +79,7 @@ export function GenericRecordModal({
   const title = mode === "edit" && record ? `Edit ${recordTitle(object, record)}` : formDefinition.title;
 
   async function submit(stayOpen = false) {
-    const nextErrors = validateFields(formDefinition.fields, values);
+    const nextErrors = validateFields(formDefinition.fields, values, object);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
     const ok = await onSave(values, stayOpen);
