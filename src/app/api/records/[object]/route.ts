@@ -196,6 +196,8 @@ function requiredFieldsForObject(object: CrmObject) {
       return ["name"];
     case "Pricebook2":
       return ["name"];
+    case "Case":
+      return ["status"];
     case "Event":
       return ["subject", "startAt", "endAt", "assignedToId"];
     case "QuickText":
@@ -209,7 +211,10 @@ function requiredFieldsForObject(object: CrmObject) {
 
 function isBlankRequiredValue(value: unknown) {
   if (value === null || value === undefined) return true;
-  if (typeof value === "string") return value.trim() === "";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed === "" || trimmed === "--None--";
+  }
   return false;
 }
 

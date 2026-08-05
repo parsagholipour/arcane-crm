@@ -205,7 +205,7 @@ export async function createRecord(object: CrmObject, payload: RecordData, organ
           name: String(payload.name),
           active: Boolean(payload.active),
           description: payload.description as string | null,
-          isStandard: Boolean(payload.isStandard),
+          isStandard: parseBooleanFlag(payload.isStandard),
           validFrom: combineDateAndTime(payload.validFrom, payload.validFromTime),
           validTo: combineDateAndTime(payload.validTo, payload.validToTime)
         }
@@ -296,6 +296,16 @@ function combineDateAndTime(dateValue: unknown, timeValue: unknown) {
   if (date.includes("T")) return new Date(date);
   const time = String(timeValue || "00:00").slice(0, 5);
   return new Date(`${date}T${time}:00.000Z`);
+}
+
+/** True only for boolean true or the strings "true"/"1" (case-insensitive). Avoids Boolean("False") === true. */
+function parseBooleanFlag(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  const text = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  return text === "true" || text === "1";
 }
 
 export async function allocateCaseNumber(organizationId: string) {

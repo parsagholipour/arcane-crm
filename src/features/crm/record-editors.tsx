@@ -205,10 +205,13 @@ export function ProductWizardModal({
           New Product - {step === 1 ? "Current Stage" : "Complete"}
         </div>
         <div className={cn("rounded border p-2", step === 2 ? "border-brand-500 bg-brand-50" : "border-[#d8dde6]")}>
-          New Price Book Entry - {step === 2 ? "Current Stage" : "Stage Not Started"}
+          Optional pricing - {step === 2 ? "Current Stage" : "Stage Not Started"}
         </div>
       </div>
-      <div className="mb-4 text-xs text-[#706e6b]">Progress: {step === 1 ? "0%" : "50%"}</div>
+      <div className="mb-4 text-xs text-[#706e6b]">
+        Progress: {step === 1 ? "0%" : "50%"}. Price book entries can also be added later from a Price Book detail
+        page.
+      </div>
       {step === 1 ? (
         <FormFields
           fields={productFields}

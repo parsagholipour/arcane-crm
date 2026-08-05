@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   accountNameForLead,
   buildAccountData,
+  buildAccountMergeData,
   buildContactData,
   buildContactMergeData,
   buildOpportunityData,
@@ -56,7 +57,7 @@ function expectValidationError(run: () => unknown, field: string) {
 
 test("normalizeConversionValues applies documented defaults", () => {
   const now = new Date("2026-07-25T00:00:00.000Z");
-  const result = normalizeConversionValues({}, 1, now);
+  const result = normalizeConversionValues({ createOpportunity: true }, 1, now);
 
   assert.equal(result.convertedStatus, "Qualified");
   assert.equal(result.stage, "Qualify");
@@ -67,20 +68,35 @@ test("normalizeConversionValues applies documented defaults", () => {
   assert.equal(result.singleLead, true);
 });
 
+test("normalizeConversionValues defaults createOpportunity to false unless explicitly true", () => {
+  assert.equal(normalizeConversionValues({}, 1).createOpportunity, false);
+  assert.equal(normalizeConversionValues({ createOpportunity: false }, 1).createOpportunity, false);
+  assert.equal(normalizeConversionValues({ createOpportunity: true }, 1).createOpportunity, true);
+});
+
 test("normalizeConversionValues rejects invalid picklist values", () => {
   expectValidationError(() => normalizeConversionValues({ convertedStatus: "Banana" }, 1), "convertedStatus");
-  expectValidationError(() => normalizeConversionValues({ stage: "Banana" }, 1), "stage");
-  expectValidationError(() => normalizeConversionValues({ forecastCategory: "Banana" }, 1), "forecastCategory");
+  expectValidationError(
+    () => normalizeConversionValues({ createOpportunity: true, stage: "Banana" }, 1),
+    "stage"
+  );
+  expectValidationError(
+    () => normalizeConversionValues({ createOpportunity: true, forecastCategory: "Banana" }, 1),
+    "forecastCategory"
+  );
 });
 
 test("normalizeConversionValues rejects an unparseable close date instead of passing it to the database", () => {
-  expectValidationError(() => normalizeConversionValues({ closeDate: "not-a-date" }, 1), "closeDate");
+  expectValidationError(
+    () => normalizeConversionValues({ createOpportunity: true, closeDate: "not-a-date" }, 1),
+    "closeDate"
+  );
 });
 
 test("normalizeConversionValues rejects a negative amount and keeps a valid one", () => {
-  expectValidationError(() => normalizeConversionValues({ amount: "-5" }, 1), "amount");
-  assert.equal(normalizeConversionValues({ amount: "12500.50" }, 1).amount, "12500.50");
-  assert.equal(normalizeConversionValues({ amount: "" }, 1).amount, null);
+  expectValidationError(() => normalizeConversionValues({ createOpportunity: true, amount: "-5" }, 1), "amount");
+  assert.equal(normalizeConversionValues({ createOpportunity: true, amount: "12500.50" }, 1).amount, "12500.50");
+  assert.equal(normalizeConversionValues({ createOpportunity: true, amount: "" }, 1).amount, null);
 });
 
 test("normalizeConversionValues caps bulk conversions", () => {
@@ -148,6 +164,7 @@ test("buildAccountData carries the lead segment fields that used to be dropped",
   assert.equal(account.numberOfEmployees, 120);
   assert.equal(account.rating, "Hot");
   assert.equal(account.type, null, "type is not hardcoded; convert UI supplies it when set");
+  assert.equal(account.description, "Inbound from the launch webinar.");
   assert.equal(account.ownerId, "user-1");
   assert.equal(account.billingCity, "San Francisco");
   assert.equal(buildAccountData({ ...lead, annualRevenue: null }, "X").annualRevenue, null);
@@ -174,12 +191,40 @@ test("buildContactData gives a nameless lead a valid conversion fallback", () =>
 });
 
 test("buildContactMergeData fills only the gaps on an existing contact", () => {
-  const merged = buildContactMergeData({ title: "VP", phone: null, email: null, leadSource: null }, lead, "acct-2");
+  const merged = buildContactMergeData(
+    {
+      title: "VP",
+      phone: null,
+      email: null,
+      leadSource: null,
+      firstName: "Existing",
+      mailingCity: null
+    },
+    lead,
+    "acct-2"
+  );
   assert.equal(merged.accountId, "acct-2");
   assert.equal(merged.title, "VP", "an existing value is never overwritten");
+  assert.equal(merged.firstName, "Existing");
   assert.equal(merged.phone, lead.phone);
   assert.equal(merged.email, lead.email);
   assert.equal(merged.leadSource, "Web");
+  assert.equal(merged.mailingCity, "San Francisco");
+  assert.equal(merged.description, lead.description);
+});
+
+test("buildAccountMergeData gap-fills blank account fields without overwriting", () => {
+  const merged = buildAccountMergeData(
+    { website: "https://kept.example", phone: null, industry: null, billingCity: "Oakland" },
+    lead,
+    { rating: "Warm" }
+  );
+  assert.equal(merged.website, "https://kept.example");
+  assert.equal(merged.phone, lead.phone);
+  assert.equal(merged.industry, "Technology");
+  assert.equal(merged.billingCity, "Oakland");
+  assert.equal(merged.rating, "Warm");
+  assert.equal(merged.description, lead.description);
 });
 
 test("buildOpportunityData carries amount, leadSource and a stage-derived probability", () => {
@@ -232,6 +277,7 @@ test("buildOpportunityData honours form overrides for the full opportunity shape
 test("normalizeConversionValues accepts the opportunity form fields", () => {
   const result = normalizeConversionValues(
     {
+      createOpportunity: true,
       stage: "Propose",
       forecastCategory: "Best Case",
       description: "From convert form",
@@ -255,12 +301,36 @@ test("normalizeConversionValues accepts the opportunity form fields", () => {
 });
 
 test("normalizeConversionValues rejects invalid opportunity extras", () => {
-  expectValidationError(() => normalizeConversionValues({ probability: "101" }, 1), "probability");
-  expectValidationError(() => normalizeConversionValues({ leadSource: "Banana" }, 1), "leadSource");
-  expectValidationError(() => normalizeConversionValues({ courier: "Banana" }, 1), "courier");
   expectValidationError(
-    () => normalizeConversionValues({ courier: "USPS", trackingNumber: "not-valid" }, 1),
+    () => normalizeConversionValues({ createOpportunity: true, probability: "101" }, 1),
+    "probability"
+  );
+  expectValidationError(
+    () => normalizeConversionValues({ createOpportunity: true, leadSource: "Banana" }, 1),
+    "leadSource"
+  );
+  expectValidationError(
+    () => normalizeConversionValues({ createOpportunity: true, courier: "Banana" }, 1),
+    "courier"
+  );
+  expectValidationError(
+    () => normalizeConversionValues({ createOpportunity: true, courier: "USPS", trackingNumber: "not-valid" }, 1),
     "trackingNumber"
+  );
+});
+
+test("normalizeConversionValues rejects negative account employees and revenue", () => {
+  expectValidationError(
+    () => normalizeConversionValues({ account: { numberOfEmployees: "-1" } }, 1),
+    "account.numberOfEmployees"
+  );
+  expectValidationError(
+    () => normalizeConversionValues({ account: { annualRevenue: "-10" } }, 1),
+    "account.annualRevenue"
+  );
+  expectValidationError(
+    () => normalizeConversionValues({ contact: { birthDate: "not-a-date" } }, 1),
+    "contact.birthDate"
   );
 });
 

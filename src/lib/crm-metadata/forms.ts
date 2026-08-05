@@ -333,7 +333,7 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
         label: "Is Standard Price Book",
         section: "Price Book Information",
         type: "readonly",
-        defaultValue: "False"
+        defaultValue: false
       },
       { name: "validFrom", label: "Valid From", section: "Price Book Information", type: "date" },
       {

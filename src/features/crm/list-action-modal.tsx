@@ -7,7 +7,7 @@ import { type ScopedCrmData, type CrmObject, type RecordData } from "@/lib/crm-t
 import { cn } from "@/lib/utils";
 import { BaseDialog, Button } from "@/components/ui/crm-primitives";
 import { FieldShell, inputClass, NativeSelect } from "@/features/crm/controls";
-import { formatCell, importPayloadForObject, importSampleForObject } from "@/features/crm/form-model";
+import { formatCell, importColumnsLabel, importPayloadForObject, importSampleForObject } from "@/features/crm/form-model";
 import { LeadConversionDialog } from "@/features/crm/lead-conversion";
 import { requiredId } from "@/features/crm/record-model";
 import { type ModalState } from "@/features/crm/shared-types";
@@ -134,8 +134,9 @@ export function ListActionModal({
       >
         <div className="space-y-3">
           <p className="text-sm text-[#706e6b]">
-            Paste one record per line. Columns map to canonical form fields for{" "}
-            {OBJECT_DEFINITIONS[modal.object].plural}; remaining fields use New Object defaults.
+            Intentional reduced import: only these columns are read —{" "}
+            <span className="font-medium text-[#181818]">{importColumnsLabel(modal.object)}</span>. Other form
+            fields use New Object defaults. Paste one record per line.
           </p>
           <div className="rounded border border-[#d8dde6] bg-[#f8f8f8] p-2 text-xs text-[#706e6b]">
             Example: {sample}

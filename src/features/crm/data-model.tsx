@@ -1,4 +1,5 @@
 import { OBJECT_DEFINITIONS } from "@/lib/crm-metadata";
+import { CONVERSION_CLOSE_DATE_OFFSET_DAYS, daysFromNow } from "@/lib/lead-conversion";
 import { type CrmObject, type RecordData } from "@/lib/crm-types";
 import { requiredId } from "@/features/crm/record-model";
 
@@ -56,9 +57,7 @@ export function upsertRecordsById(existing: RecordData[], incoming: RecordData[]
   return [...created, ...updated];
 }
 export function defaultLeadConversionCloseDate() {
-  const date = new Date();
-  date.setDate(date.getDate() + 30);
-  return date.toISOString().slice(0, 10);
+  return daysFromNow(CONVERSION_CLOSE_DATE_OFFSET_DAYS).toISOString().slice(0, 10);
 }
 export function enrichLocalRecord(object: CrmObject, record: RecordData, currentUserId: string): RecordData {
   const now = new Date().toISOString();

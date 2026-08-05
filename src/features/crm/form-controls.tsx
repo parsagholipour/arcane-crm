@@ -97,7 +97,11 @@ export function FieldInput({
       />
     );
   }
-  if (field.type === "readonly") return <input className={controlClass} readOnly value={String(value ?? "")} />;
+  if (field.type === "readonly") {
+    const display =
+      typeof value === "boolean" ? (value ? "True" : "False") : String(value ?? "");
+    return <input className={controlClass} readOnly value={display} />;
+  }
   return (
     <input
       className={controlClass}

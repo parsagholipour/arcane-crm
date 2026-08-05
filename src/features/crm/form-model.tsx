@@ -9,16 +9,25 @@ import {
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { requiredId } from "@/features/crm/record-model";
 
-/** Column order for CSV-style import lines — maps onto FORM_DEFINITIONS field names. */
-const IMPORT_COLUMNS: Partial<Record<CrmObject, string[]>> = {
+/** Column order for CSV-style import lines — maps onto FORM_DEFINITIONS field names.
+ * Intentional reduced set: only these columns are importable; other form fields get
+ * New Object defaults via buildInitialValues. Import is exposed only for objects that
+ * list "Import" in OBJECT_DEFINITIONS.actions (Account, Contact, Lead, Opportunity).
+ */
+export const IMPORT_COLUMNS: Partial<Record<CrmObject, string[]>> = {
   Account: ["name", "phone", "type"],
   Contact: ["firstName", "lastName", "accountName", "email"],
   Lead: ["firstName", "lastName", "company", "email"],
-  Opportunity: ["name", "accountName", "closeDate", "stage", "forecastCategory"],
-  Case: ["subject", "status", "priority", "origin"],
-  Product2: ["name", "family", "sku"],
-  Pricebook2: ["name", "active"]
+  Opportunity: ["name", "accountName", "closeDate", "stage", "forecastCategory"]
 };
+
+export function importColumnsLabel(object: CrmObject) {
+  const columns = IMPORT_COLUMNS[object];
+  if (!columns) return "";
+  return columns
+    .map((column) => (column === "accountName" ? "accountName (matched to Account)" : column))
+    .join(", ");
+}
 
 export function importSampleForObject(object: CrmObject) {
   switch (object) {
@@ -30,12 +39,6 @@ export function importSampleForObject(object: CrmObject) {
       return "Sam, Prospect, Prospect Co, sam@example.com";
     case "Opportunity":
       return "Starter Renewal, Robert, 2026-08-31, Qualify, Pipeline";
-    case "Case":
-      return "Login issue, New, Medium, Email";
-    case "Product2":
-      return "Starter Product, None, SKU-100";
-    case "Pricebook2":
-      return "Partner Price Book, true";
     default:
       return "Name, Description";
   }
@@ -43,10 +46,9 @@ export function importSampleForObject(object: CrmObject) {
 
 function resolveAccountId(accountName: string, data: ScopedCrmData) {
   const trimmed = accountName.trim();
-  const match = trimmed
-    ? data.accounts.find((account) => String(account.name).toLowerCase() === trimmed.toLowerCase())
-    : undefined;
-  return requiredId(match ?? data.accounts[0] ?? {});
+  if (!trimmed) return null;
+  const match = data.accounts.find((account) => String(account.name).toLowerCase() === trimmed.toLowerCase());
+  return match ? requiredId(match) : null;
 }
 
 function defaultImportCloseDate(now = new Date()) {
@@ -68,7 +70,9 @@ export function importPayloadForObject(object: CrmObject, row: string, data: Sco
   columns.forEach((column, index) => {
     const value = parts[index] ?? "";
     if (column === "accountName") {
-      mapped.accountId = resolveAccountId(value, data);
+      const accountId = resolveAccountId(value, data);
+      if (!accountId) return;
+      mapped.accountId = accountId;
       return;
     }
     if (column === "active") {
@@ -77,6 +81,15 @@ export function importPayloadForObject(object: CrmObject, row: string, data: Sco
     }
     if (value) mapped[column] = value;
   });
+
+  if (
+    (object === "Contact" || object === "Opportunity") &&
+    columns.includes("accountName") &&
+    !mapped.accountId
+  ) {
+    // Do not fall back to an arbitrary Account — fail the row instead.
+    return null;
+  }
 
   if (object === "Opportunity") {
     if (!mapped.closeDate) mapped.closeDate = defaultImportCloseDate();

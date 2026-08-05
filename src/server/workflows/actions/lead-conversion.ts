@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import {
   accountNameForLead,
   buildAccountData,
+  buildAccountMergeData,
   buildContactData,
   buildContactMergeData,
   buildOpportunityData,
@@ -44,14 +45,19 @@ export async function convertLeads(
 
       for (const lead of leads) {
         const accountName = accountNameForLead(lead, options.accountName);
+        // Only reuse an Account when the user explicitly selected one. Auto-matching
+        // by name silently dropped Create New overrides (type, address, segment, …).
         let account = options.existingAccountId
           ? await tx.account.findFirst({ where: { organizationId, id: options.existingAccountId } })
-          : await tx.account.findFirst({
-              where: { organizationId, name: { equals: accountName, mode: "insensitive" } }
-            });
+          : null;
         if (options.existingAccountId && !account)
           throw new WorkflowValidationError("The selected Account was not found.", 409);
-        if (!account) {
+        if (account) {
+          account = await tx.account.update({
+            where: { id: account.id },
+            data: { ...buildAccountMergeData(account, lead, options.accountOverrides), updatedById: userId }
+          });
+        } else {
           account = await tx.account.create({
             data: {
               organizationId,

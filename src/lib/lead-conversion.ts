@@ -4,7 +4,11 @@ import { LEAD_SOURCE } from "@/lib/crm-metadata/options";
 
 export const MAX_LEADS_PER_CONVERSION = 200;
 const DEFAULT_ACCOUNT_NAME = "Converted Lead Account";
-const CONVERSION_NEXT_STEP = "Follow up after lead conversion";
+/** Shared convert Opportunity seed — keep UI and normalizeConversionValues aligned. */
+export const CONVERSION_OPPORTUNITY_STAGE = "Qualify";
+export const CONVERSION_OPPORTUNITY_FORECAST = "Pipeline";
+export const CONVERSION_NEXT_STEP = "Follow up after lead conversion";
+export const CONVERSION_CLOSE_DATE_OFFSET_DAYS = 30;
 const LEAD_SOURCES = new Set(LEAD_SOURCE.filter((value) => value !== "--None--"));
 const COURIER_CHOICES = new Set<string>(COURIERS);
 
@@ -127,6 +131,22 @@ export function daysFromNow(days: number, now = new Date()) {
   return date;
 }
 
+/** Defaults for a new Opportunity created during lead conversion. */
+export function defaultOpportunitySeed(now = new Date()) {
+  const stage = CONVERSION_OPPORTUNITY_STAGE;
+  return {
+    stage,
+    forecastCategory: CONVERSION_OPPORTUNITY_FORECAST,
+    closeDate: daysFromNow(CONVERSION_CLOSE_DATE_OFFSET_DAYS, now),
+    probability: probabilityForStage(stage),
+    nextStep: CONVERSION_NEXT_STEP
+  };
+}
+
+export function probabilityForStage(stage: string): number | null {
+  return stage in STAGE_PROBABILITY ? STAGE_PROBABILITY[stage] : null;
+}
+
 /**
  * Coerce and validate the raw workflow `values` bag. Overrides that name a single
  * target record are only honoured for single-lead conversions; a bulk conversion
@@ -146,16 +166,18 @@ export function normalizeConversionValues(
   }
 
   const singleLead = leadCount === 1;
-  const createOpportunity = values.createOpportunity !== false;
+  // Match convert UI: only create an Opportunity when explicitly requested.
+  const createOpportunity = values.createOpportunity === true;
 
   const convertedStatus = String(values.convertedStatus ?? "Qualified");
   if (!LEAD_STATUSES.has(convertedStatus)) {
     throw new LeadConversionValidationError("Choose a valid Lead Status.", 400, "convertedStatus");
   }
 
-  let stage = "Qualify";
-  let forecastCategory = "Pipeline";
-  let closeDate = daysFromNow(30, now);
+  const opportunitySeed = defaultOpportunitySeed(now);
+  let stage = opportunitySeed.stage;
+  let forecastCategory = opportunitySeed.forecastCategory;
+  let closeDate = opportunitySeed.closeDate;
   let amount: string | null = null;
   let description: string | null | undefined = undefined;
   let ownerId = "";
@@ -166,11 +188,11 @@ export function normalizeConversionValues(
   let trackingNumber: string | null = null;
 
   if (createOpportunity) {
-    stage = String(values.stage ?? "Qualify");
+    stage = String(values.stage ?? opportunitySeed.stage);
     if (!OPPORTUNITY_STAGES.has(stage)) {
       throw new LeadConversionValidationError("Choose a valid Stage.", 400, "stage");
     }
-    forecastCategory = String(values.forecastCategory ?? "Pipeline");
+    forecastCategory = String(values.forecastCategory ?? opportunitySeed.forecastCategory);
     if (!FORECAST_CATEGORIES.has(forecastCategory)) {
       throw new LeadConversionValidationError("Choose a valid Forecast Category.", 400, "forecastCategory");
     }
@@ -272,7 +294,6 @@ function normalizeContactOverrides(value: unknown): ContactOverrides {
     "phone",
     "description",
     "ownerId",
-    "birthDate",
     "mailingCountry",
     "mailingStreet",
     "mailingPostalCode",
@@ -281,6 +302,18 @@ function normalizeContactOverrides(value: unknown): ContactOverrides {
     "reportsToContactId"
   ] as const) {
     if (source[field] !== undefined) overrides[field] = blankToNull(source[field]);
+  }
+
+  if (source.birthDate !== undefined) {
+    const raw = blankToNull(source.birthDate);
+    if (raw === null) overrides.birthDate = null;
+    else {
+      const date = new Date(raw);
+      if (!Number.isFinite(date.getTime())) {
+        throw new LeadConversionValidationError("Choose a valid birthdate.", 400, "contact.birthDate");
+      }
+      overrides.birthDate = raw;
+    }
   }
 
   if (source.lastName !== undefined) {
@@ -342,8 +375,12 @@ function normalizeAccountOverrides(value: unknown): AccountOverrides {
     if (!raw || raw === "--None--") overrides.numberOfEmployees = null;
     else {
       const employees = Number(raw);
-      if (!Number.isFinite(employees)) {
-        throw new LeadConversionValidationError("Enter a valid employee count.", 400, "account.numberOfEmployees");
+      if (!Number.isFinite(employees) || !Number.isInteger(employees) || employees < 0) {
+        throw new LeadConversionValidationError(
+          "Enter a non-negative whole number of employees.",
+          400,
+          "account.numberOfEmployees"
+        );
       }
       overrides.numberOfEmployees = employees;
     }
@@ -354,8 +391,12 @@ function normalizeAccountOverrides(value: unknown): AccountOverrides {
     if (!raw || raw === "--None--") overrides.annualRevenue = null;
     else {
       const revenue = Number(raw);
-      if (!Number.isFinite(revenue)) {
-        throw new LeadConversionValidationError("Enter a valid annual revenue.", 400, "account.annualRevenue");
+      if (!Number.isFinite(revenue) || revenue < 0) {
+        throw new LeadConversionValidationError(
+          "Enter a non-negative annual revenue.",
+          400,
+          "account.annualRevenue"
+        );
       }
       overrides.annualRevenue = raw;
     }
@@ -389,16 +430,14 @@ export function opportunityNameFor(accountName: string, override?: string) {
   return explicit || `${accountName} Opportunity`;
 }
 
-export function probabilityForStage(stage: string): number | null {
-  return stage in STAGE_PROBABILITY ? STAGE_PROBABILITY[stage] : null;
-}
-
 export function buildAccountData(lead: ConvertibleLead, accountName: string, overrides: AccountOverrides = {}) {
   return {
     name: accountName,
     website: override(overrides.website, lead.website),
+    // Align with Account form default (--None-- → null); convert UI may still override.
     type: overrides.type !== undefined ? overrides.type : null,
-    description: overrides.description !== undefined ? overrides.description : null,
+    description:
+      overrides.description !== undefined ? overrides.description : (lead.description ?? null),
     parentAccountId: overrides.parentAccountId !== undefined ? overrides.parentAccountId : null,
     ownerId: override(overrides.ownerId, lead.ownerId) || lead.ownerId,
     phone: override(overrides.phone, lead.phone),
@@ -418,6 +457,70 @@ export function buildAccountData(lead: ConvertibleLead, accountName: string, ove
     shippingPostalCode: overrides.shippingPostalCode !== undefined ? overrides.shippingPostalCode : null,
     shippingCity: overrides.shippingCity !== undefined ? overrides.shippingCity : null,
     shippingState: overrides.shippingState !== undefined ? overrides.shippingState : null
+  };
+}
+
+type ExistingAccount = {
+  website?: string | null;
+  type?: string | null;
+  description?: string | null;
+  phone?: string | null;
+  rating?: string | null;
+  numberOfEmployees?: number | null;
+  annualRevenue?: unknown;
+  industry?: string | null;
+  billingCountry?: string | null;
+  billingStreet?: string | null;
+  billingPostalCode?: string | null;
+  billingCity?: string | null;
+  billingState?: string | null;
+  shippingCountry?: string | null;
+  shippingStreet?: string | null;
+  shippingPostalCode?: string | null;
+  shippingCity?: string | null;
+  shippingState?: string | null;
+};
+
+/**
+ * Gap-fill an existing Account from the Lead (and optional overrides) without
+ * overwriting values the Account already has. Explicit convert overrides always win.
+ */
+export function buildAccountMergeData(
+  existing: ExistingAccount,
+  lead: ConvertibleLead,
+  overrides: AccountOverrides = {}
+) {
+  const gap = <T>(overrideValue: T | null | undefined, current: T | null | undefined, fromLead: T | null | undefined) =>
+    overrideValue !== undefined ? overrideValue : (current ?? fromLead ?? null);
+
+  return {
+    website: gap(overrides.website, existing.website, lead.website),
+    type: overrides.type !== undefined ? overrides.type : (existing.type ?? null),
+    description: gap(overrides.description, existing.description, lead.description),
+    phone: gap(overrides.phone, existing.phone, lead.phone),
+    rating: gap(overrides.rating, existing.rating, lead.rating),
+    numberOfEmployees:
+      overrides.numberOfEmployees !== undefined
+        ? overrides.numberOfEmployees
+        : (existing.numberOfEmployees ?? lead.numberOfEmployees ?? null),
+    annualRevenue:
+      overrides.annualRevenue !== undefined
+        ? overrides.annualRevenue
+        : (decimalString(existing.annualRevenue) ?? decimalString(lead.annualRevenue)),
+    industry: gap(overrides.industry, existing.industry, lead.industry),
+    billingCountry: gap(overrides.billingCountry, existing.billingCountry, lead.country),
+    billingStreet: gap(overrides.billingStreet, existing.billingStreet, lead.street),
+    billingPostalCode: gap(overrides.billingPostalCode, existing.billingPostalCode, lead.postalCode),
+    billingCity: gap(overrides.billingCity, existing.billingCity, lead.city),
+    billingState: gap(overrides.billingState, existing.billingState, lead.state),
+    shippingCountry:
+      overrides.shippingCountry !== undefined ? overrides.shippingCountry : (existing.shippingCountry ?? null),
+    shippingStreet:
+      overrides.shippingStreet !== undefined ? overrides.shippingStreet : (existing.shippingStreet ?? null),
+    shippingPostalCode:
+      overrides.shippingPostalCode !== undefined ? overrides.shippingPostalCode : (existing.shippingPostalCode ?? null),
+    shippingCity: overrides.shippingCity !== undefined ? overrides.shippingCity : (existing.shippingCity ?? null),
+    shippingState: overrides.shippingState !== undefined ? overrides.shippingState : (existing.shippingState ?? null)
   };
 }
 
@@ -447,21 +550,46 @@ function override(value: string | null | undefined, fallback: string | null | un
   return value === undefined ? (fallback ?? null) : value;
 }
 
+type ExistingContact = {
+  salutation?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  title?: string | null;
+  description?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  leadSource?: string | null;
+  mailingCountry?: string | null;
+  mailingStreet?: string | null;
+  mailingPostalCode?: string | null;
+  mailingCity?: string | null;
+  mailingState?: string | null;
+};
+
 /**
  * Re-parent an existing contact onto the converted account, filling only the
  * fields it is currently missing so the conversion never overwrites better data.
+ * accountId is always set (convert already chose the Account).
  */
-export function buildContactMergeData(
-  existing: { title?: string | null; phone?: string | null; email?: string | null; leadSource?: string | null },
-  lead: ConvertibleLead,
-  accountId: string
-) {
+export function buildContactMergeData(existing: ExistingContact, lead: ConvertibleLead, accountId: string) {
   return {
     accountId,
+    salutation: existing.salutation ?? lead.salutation ?? null,
+    firstName: existing.firstName ?? lead.firstName ?? null,
+    lastName:
+      String(existing.lastName ?? "").trim() ||
+      String(lead.lastName ?? "").trim() ||
+      "Converted Lead",
     title: existing.title ?? lead.title ?? null,
+    description: existing.description ?? lead.description ?? null,
     phone: existing.phone ?? lead.phone ?? null,
     email: existing.email ?? lead.email ?? null,
-    leadSource: existing.leadSource ?? lead.leadSource ?? null
+    leadSource: existing.leadSource ?? lead.leadSource ?? null,
+    mailingCountry: existing.mailingCountry ?? lead.country ?? null,
+    mailingStreet: existing.mailingStreet ?? lead.street ?? null,
+    mailingPostalCode: existing.mailingPostalCode ?? lead.postalCode ?? null,
+    mailingCity: existing.mailingCity ?? lead.city ?? null,
+    mailingState: existing.mailingState ?? lead.state ?? null
   };
 }
 

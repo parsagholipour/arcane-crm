@@ -6,11 +6,13 @@ import { FORM_DEFINITIONS, LEAD_STATUS } from "@/lib/crm-metadata";
 import { contactName } from "@/lib/crm-data";
 import {
   accountNameForLead,
+  CONVERSION_OPPORTUNITY_FORECAST,
+  CONVERSION_OPPORTUNITY_STAGE,
   findExactAccountMatch,
   matchAccountsForLead,
   matchContactsForLead,
   opportunityNameFor,
-  probabilityForStage,
+  defaultOpportunitySeed,
   type ConvertibleLead
 } from "@/lib/lead-conversion";
 import { isValidEmail } from "@/lib/record-validation";
@@ -18,7 +20,6 @@ import { type ScopedCrmData, type CrmObject, type FieldDefinition, type RecordDa
 import { cn } from "@/lib/utils";
 import { BaseDialog, Button } from "@/components/ui/crm-primitives";
 import { FieldShell, NativeSelect, RadixCheckbox } from "@/features/crm/controls";
-import { defaultLeadConversionCloseDate } from "@/features/crm/data-model";
 import { FormFields, LookupField, picklistOptionsForField } from "@/features/crm/form-controls";
 import { buildInitialValues, validateFields } from "@/features/crm/form-model";
 import { requiredId } from "@/features/crm/record-model";
@@ -55,7 +56,8 @@ export type LeadConversionForm = {
 
 export function initialLeadConversionForm(lead: RecordData, currentUserId?: string): LeadConversionForm {
   const accountName = accountNameForLead(leadForConversion(lead));
-  const stage = "Qualify";
+  const opportunitySeed = defaultOpportunitySeed();
+  const stage = opportunitySeed.stage;
   const leadSource = String(lead.leadSource ?? "").trim();
   const accountDefinition = FORM_DEFINITIONS.Account;
   const contactDefinition = FORM_DEFINITIONS.Contact;
@@ -66,7 +68,8 @@ export function initialLeadConversionForm(lead: RecordData, currentUserId?: stri
         {
           name: accountName,
           website: lead.website ?? "",
-          type: "Prospect",
+          // Match Account form default (--None--); do not hardcode Prospect.
+          description: lead.description ?? "",
           ownerId: String(lead.ownerId ?? currentUserId ?? ""),
           phone: lead.phone ?? "",
           numberOfEmployees: lead.numberOfEmployees ?? "",
@@ -124,13 +127,13 @@ export function initialLeadConversionForm(lead: RecordData, currentUserId?: stri
     opportunity: {
       name: opportunityNameFor(accountName),
       amount: "",
-      closeDate: defaultLeadConversionCloseDate(),
+      closeDate: opportunitySeed.closeDate.toISOString().slice(0, 10),
       description: String(lead.description ?? ""),
       ownerId: String(lead.ownerId ?? ""),
       stage,
-      probability: String(probabilityForStage(stage) ?? ""),
-      forecastCategory: "Pipeline",
-      nextStep: "Follow up after lead conversion",
+      probability: String(opportunitySeed.probability ?? ""),
+      forecastCategory: opportunitySeed.forecastCategory,
+      nextStep: opportunitySeed.nextStep,
       leadSource: leadSource || "--None--",
       courier: "--None--",
       trackingNumber: ""
@@ -294,14 +297,18 @@ export function LeadConversionDialog({
                   />
                   {duplicateAccount ? (
                     <DuplicateWarning
-                      message={`An account named "${String(duplicateAccount.name)}" already exists. Converting will reuse it instead of creating a duplicate.`}
-                      actionLabel="Choose it explicitly"
+                      message={`An account named "${String(duplicateAccount.name)}" already exists. Create New will still create another Account with this name unless you choose the existing one.`}
+                      actionLabel="Choose existing Account"
                       onAction={() => update({ accountMode: "existing", existingAccountId: duplicateAccount.id })}
                     />
                   ) : null}
                 </div>
               ) : (
                 <div className="space-y-2">
+                  <p className="text-xs text-[#706e6b]">
+                    Existing Account is kept; blank fields are gap-filled from the Lead. Values already on the Account
+                    are not overwritten.
+                  </p>
                   {matchedAccounts.length > 0 && !form.existingAccountId && (
                     <button
                       type="button"
@@ -355,6 +362,10 @@ export function LeadConversionDialog({
                 </div>
               ) : (
                 <div className="space-y-2">
+                  <p className="text-xs text-[#706e6b]">
+                    Existing Contact is re-parented onto the converted Account. Blank Contact fields are gap-filled from
+                    the Lead; existing values are kept.
+                  </p>
                   {matchedContacts.length > 0 && !form.existingContactId && (
                     <button
                       type="button"
@@ -410,6 +421,10 @@ export function LeadConversionDialog({
                   />
                 ) : (
                   <div className="space-y-2">
+                    <p className="text-xs text-[#706e6b]">
+                      Existing Opportunity is re-linked to the converted Account and Contact only. Stage, amount, and
+                      other Opportunity fields are not changed.
+                    </p>
                     {opportunityOptions.length === 0 && form.existingAccountId ? (
                       <p className="text-xs text-[#706e6b]">
                         No open opportunities on the selected account. Search all opportunities below, or create a new
@@ -638,8 +653,12 @@ export function leadConversionPayload(form: LeadConversionForm, targetCount: num
     opportunityName: usesNewOpportunity ? String(opportunity.name ?? "") : "",
     amount: usesNewOpportunity ? String(opportunity.amount ?? "") : "",
     closeDate: usesNewOpportunity ? String(opportunity.closeDate ?? "") : "",
-    stage: usesNewOpportunity ? String(opportunity.stage ?? "Qualify") : "Qualify",
-    forecastCategory: usesNewOpportunity ? String(opportunity.forecastCategory ?? "Pipeline") : "Pipeline",
+    stage: usesNewOpportunity
+      ? String(opportunity.stage ?? CONVERSION_OPPORTUNITY_STAGE)
+      : CONVERSION_OPPORTUNITY_STAGE,
+    forecastCategory: usesNewOpportunity
+      ? String(opportunity.forecastCategory ?? CONVERSION_OPPORTUNITY_FORECAST)
+      : CONVERSION_OPPORTUNITY_FORECAST,
     description: usesNewOpportunity ? String(opportunity.description ?? "") : "",
     ownerId: usesNewOpportunity ? String(opportunity.ownerId ?? "") : "",
     probability: usesNewOpportunity ? String(opportunity.probability ?? "") : "",

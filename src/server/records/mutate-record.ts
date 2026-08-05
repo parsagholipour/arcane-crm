@@ -72,6 +72,7 @@ export async function updateRecord(object: CrmObject, id: string, payload: Recor
           type: payload.type as string | null | undefined,
           description: payload.description as string | null | undefined,
           parentAccountId: payload.parentAccountId as string | null | undefined,
+          ownerId: payload.ownerId ? String(payload.ownerId) : undefined,
           phone: payload.phone as string | null | undefined,
           rating: payload.rating as string | null | undefined,
           numberOfEmployees:
@@ -111,6 +112,7 @@ export async function updateRecord(object: CrmObject, id: string, payload: Recor
           title: payload.title as string | null | undefined,
           reportsToContactId: payload.reportsToContactId as string | null | undefined,
           description: payload.description as string | null | undefined,
+          ownerId: payload.ownerId ? String(payload.ownerId) : undefined,
           phone: payload.phone as string | null | undefined,
           email: payload.email as string | null | undefined,
           birthDate:
@@ -234,7 +236,7 @@ export async function updateRecord(object: CrmObject, id: string, payload: Recor
           name: payload.name ? String(payload.name) : undefined,
           active: payload.active === undefined ? undefined : Boolean(payload.active),
           description: payload.description as string | null | undefined,
-          isStandard: payload.isStandard === undefined ? undefined : Boolean(payload.isStandard),
+          isStandard: payload.isStandard === undefined ? undefined : parseBooleanFlag(payload.isStandard),
           validFrom:
             payload.validFrom !== undefined || payload.validFromTime !== undefined
               ? combineDateAndTime(payload.validFrom, payload.validFromTime)
@@ -337,4 +339,14 @@ function combineDateAndTime(dateValue: unknown, timeValue: unknown) {
   if (date.includes("T")) return new Date(date);
   const time = String(timeValue || "00:00").slice(0, 5);
   return new Date(`${date}T${time}:00.000Z`);
+}
+
+/** True only for boolean true or the strings "true"/"1" (case-insensitive). Avoids Boolean("False") === true. */
+function parseBooleanFlag(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  const text = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  return text === "true" || text === "1";
 }
