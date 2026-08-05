@@ -100,13 +100,15 @@ test("normalizeConversionValues ignores single-target overrides for bulk convers
     existingAccountId: "acct-9",
     existingContactId: "cont-9",
     existingOpportunityId: "opp-9",
-    contact: { lastName: "Override" }
+    contact: { lastName: "Override" },
+    account: { type: "Customer" }
   };
 
   const single = normalizeConversionValues(values, 1);
   assert.equal(single.accountName, "Override Co");
   assert.equal(single.existingAccountId, "acct-9");
   assert.equal(single.contactOverrides.lastName, "Override");
+  assert.equal(single.accountOverrides.type, "Customer");
 
   const bulk = normalizeConversionValues(values, 5);
   assert.equal(bulk.accountName, "");
@@ -114,6 +116,7 @@ test("normalizeConversionValues ignores single-target overrides for bulk convers
   assert.equal(bulk.existingContactId, "");
   assert.equal(bulk.existingOpportunityId, "");
   assert.deepEqual(bulk.contactOverrides, {});
+  assert.deepEqual(bulk.accountOverrides, {});
 });
 
 test("normalizeConversionValues validates contact overrides", () => {
@@ -144,10 +147,11 @@ test("buildAccountData carries the lead segment fields that used to be dropped",
   assert.equal(account.annualRevenue, "2500000");
   assert.equal(account.numberOfEmployees, 120);
   assert.equal(account.rating, "Hot");
-  assert.equal(account.type, "Prospect");
+  assert.equal(account.type, null, "type is not hardcoded; convert UI supplies it when set");
   assert.equal(account.ownerId, "user-1");
   assert.equal(account.billingCity, "San Francisco");
   assert.equal(buildAccountData({ ...lead, annualRevenue: null }, "X").annualRevenue, null);
+  assert.equal(buildAccountData(lead, "X", { type: "Prospect" }).type, "Prospect");
 });
 
 test("buildContactData carries leadSource and honours overrides", () => {

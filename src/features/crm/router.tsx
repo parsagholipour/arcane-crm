@@ -110,7 +110,7 @@ export function FeatureScreen({
   screen: ScreenState;
   data: ScopedCrmData;
   getRecords: (object: CrmObject) => RecordData[];
-  onCreate: (object: CrmObject) => void;
+  onCreate: (object: CrmObject, initialValues?: RecordData) => void;
   onEdit: (object: CrmObject, record: RecordData) => void;
   onDelete: (object: CrmObject, record: RecordData) => void;
   onSaveActivity: (activity: RecordData) => Promise<boolean>;

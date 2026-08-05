@@ -47,7 +47,7 @@ export function useListViewController({
   campaignMembers: Record<string, string[]>;
   initialQuery: string;
   initialListView: string;
-  onCreate: (object: CrmObject) => void;
+  onCreate: (object: CrmObject, initialValues?: RecordData) => void;
   onEdit: (object: CrmObject, record: RecordData) => void;
   onDelete: (object: CrmObject, record: RecordData) => void;
   onToast: (toast: ToastState) => void;

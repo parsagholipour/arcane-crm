@@ -40,7 +40,7 @@ export function RelatedLists({
   object: "Account" | "Contact";
   record: RecordData;
   data: ScopedCrmData;
-  onCreate: (object: CrmObject) => void;
+  onCreate: (object: CrmObject, initialValues?: RecordData) => void;
   onSaveFile: (file: FileUploadRequest, attachment?: boolean) => Promise<boolean>;
   onDeleteFile: (file: RecordData, attachment?: boolean) => Promise<boolean>;
   onRecordEdit: (object: CrmObject, record: RecordData) => void;
@@ -67,7 +67,7 @@ export function RelatedLists({
         <RelatedListCard
           title={`Contacts (${contacts.length})`}
           action="New"
-          onAction={() => onCreate("Contact")}
+          onAction={() => onCreate("Contact", { accountId: requiredId(record) })}
           records={contacts}
           fields={["title", "email", "phone"]}
           viewAll="View All Contacts"
@@ -80,7 +80,14 @@ export function RelatedLists({
       <RelatedListCard
         title={`Opportunities (${opportunities.length})`}
         action="New"
-        onAction={() => onCreate("Opportunity")}
+        onAction={() =>
+          onCreate(
+            "Opportunity",
+            object === "Account"
+              ? { accountId: requiredId(record) }
+              : { contactId: requiredId(record), accountId: String(record.accountId ?? "") }
+          )
+        }
         records={opportunities}
         fields={["stage", "amount", "closeDate"]}
         object="Opportunity"
@@ -91,7 +98,14 @@ export function RelatedLists({
       <RelatedListCard
         title={`Cases (${cases.length})`}
         action="New"
-        onAction={() => onCreate("Case")}
+        onAction={() =>
+          onCreate(
+            "Case",
+            object === "Account"
+              ? { accountId: requiredId(record) }
+              : { contactId: requiredId(record), accountId: String(record.accountId ?? "") }
+          )
+        }
         records={cases}
         fields={["status", "priority", "subject"]}
         object="Case"

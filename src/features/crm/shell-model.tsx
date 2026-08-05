@@ -1,4 +1,5 @@
 import { APP_NAV, OBJECT_DEFINITIONS } from "@/lib/crm-metadata";
+import { recordTitle } from "@/lib/crm-data";
 import { type AppKey, type AppNavItem, type ScopedCrmData, type CrmObject, type RecordData } from "@/lib/crm-types";
 import { type ScreenDescriptor as ScreenState } from "@/lib/api/contracts";
 import { isCrmObject, pathnameWithSearch } from "@/features/routing/lightning-route";
@@ -9,11 +10,15 @@ import { notificationCategories } from "@/features/crm/utilities-model";
 export function screenToTab(
   screen: ScreenState,
   pathname: string,
-  searchParams: { get(name: string): string | null; toString(): string }
+  searchParams: { get(name: string): string | null; toString(): string },
+  record?: RecordData | null
 ): ConsoleTab {
   const href = pathnameWithSearch(pathname, searchParams);
-  if (screen.kind === "record")
-    return { href, label: `${screen.id.includes("robert") ? "Robert" : screen.id} | ${screen.object}` };
+  if (screen.kind === "record") {
+    const title =
+      (record ? recordTitle(screen.object, record) : "").trim() || OBJECT_DEFINITIONS[screen.object].label;
+    return { href, label: `${title} | ${screen.object}` };
+  }
   if (screen.kind === "list")
     return {
       href,

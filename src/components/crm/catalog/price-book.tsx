@@ -166,7 +166,7 @@ export function PriceBookDetailPage({
         ))}
         {!stores.length && <Empty value="No commerce store uses this Price Book." />}
       </Card>
-      {edit && <PriceBookEditor priceBook={priceBook} onClose={() => setEdit(false)} onSaved={saveBook} />}
+      {edit && <PriceBookEditor priceBook={priceBook} data={data} onClose={() => setEdit(false)} onSaved={saveBook} />}
       {entryModal && (
         <EntryEditor
           priceBook={priceBook}

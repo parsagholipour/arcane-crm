@@ -12,7 +12,7 @@ import { ActivityPanel } from "@/features/crm/activity";
 import { ObjectIcon } from "@/features/crm/controls";
 import { addressValue, formatCell } from "@/features/crm/form-model";
 import { DetailsSections } from "@/features/crm/record-files";
-import { duplicateReason } from "@/features/crm/record-model";
+import { duplicateReason, requiredId } from "@/features/crm/record-model";
 import {
   DuplicatePanel,
   PartnerModal,
@@ -45,7 +45,7 @@ export function RecordPage({
   object: "Account" | "Contact";
   record: RecordData;
   data: ScopedCrmData;
-  onCreate: (object: CrmObject) => void;
+  onCreate: (object: CrmObject, initialValues?: RecordData) => void;
   onEdit: () => void;
   onDelete: () => void;
   onChangeOwner: () => void;
@@ -97,8 +97,21 @@ export function RecordPage({
               <Button onClick={() => setDialog({ type: "hierarchy" })}>
                 {object === "Account" ? "View Account Hierarchy" : "View Contact Hierarchy"}
               </Button>
-              {object === "Account" && <Button onClick={() => onCreate("Contact")}>New Contact</Button>}
-              <Button onClick={() => onCreate("Opportunity")}>New Opportunity</Button>
+              {object === "Account" && (
+                <Button onClick={() => onCreate("Contact", { accountId: requiredId(record) })}>New Contact</Button>
+              )}
+              <Button
+                onClick={() =>
+                  onCreate(
+                    "Opportunity",
+                    object === "Account"
+                      ? { accountId: requiredId(record) }
+                      : { contactId: requiredId(record), accountId: String(record.accountId ?? "") }
+                  )
+                }
+              >
+                New Opportunity
+              </Button>
               <Button onClick={onEdit}>Edit</Button>
               {object === "Contact" ? (
                 <Button onClick={onDelete}>Delete</Button>

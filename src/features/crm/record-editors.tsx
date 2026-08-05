@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FORM_DEFINITIONS, PRODUCT_FAMILY } from "@/lib/crm-metadata";
+import { FORM_DEFINITIONS } from "@/lib/crm-metadata";
 import { recordTitle } from "@/lib/crm-data";
 import { type ScopedCrmData, type CrmObject, type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
@@ -141,8 +141,11 @@ export function ProductWizardModal({
   onClose: () => void;
   onSave: (values: RecordData) => Promise<boolean>;
 }) {
+  const productDefinition = FORM_DEFINITIONS.Product2;
+  const productFields = productDefinition?.fields ?? [];
   const [step, setStep] = useState(1);
   const [initialValues] = useState<RecordData>(() => ({
+    ...(productDefinition ? buildInitialValues(productDefinition, undefined, data.user.id) : {}),
     active: false,
     family: "--None--",
     currency: "USD",
@@ -152,7 +155,7 @@ export function ProductWizardModal({
     entryActive: true
   }));
   const [values, setValues] = useState<RecordData>(() => initialValues);
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [entryError, setEntryError] = useState("");
   const isDirty = !recordDataShallowEqual(values, initialValues);
   const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
@@ -166,11 +169,10 @@ export function ProductWizardModal({
     if (ok) onClose();
   }
   function advance() {
-    if (!values.name) setError("Complete this field.");
-    else {
-      setError("");
-      setStep(2);
-    }
+    const nextErrors = validateFields(productFields, values);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+    setStep(2);
   }
   if (discardDialog) return discardDialog;
   return (
@@ -208,49 +210,25 @@ export function ProductWizardModal({
       </div>
       <div className="mb-4 text-xs text-[#706e6b]">Progress: {step === 1 ? "0%" : "50%"}</div>
       {step === 1 ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          <FieldShell label="Product Name" required error={error}>
-            <input
-              className={inputClass}
-              value={String(values.name ?? "")}
-              onChange={(event) => setValues({ ...values, name: event.target.value })}
-            />
-          </FieldShell>
-          <FieldShell label="Product Family">
-            <NativeSelect
-              options={PRODUCT_FAMILY}
-              value={String(values.family ?? "--None--")}
-              onChange={(value) => setValues({ ...values, family: value })}
-            />
-          </FieldShell>
-          <FieldShell label="Product Code">
-            <input
-              className={inputClass}
-              value={String(values.productCode ?? "")}
-              onChange={(event) => setValues({ ...values, productCode: event.target.value })}
-            />
-          </FieldShell>
-          <FieldShell label="Product SKU">
-            <input
-              className={inputClass}
-              value={String(values.sku ?? "")}
-              onChange={(event) => setValues({ ...values, sku: event.target.value })}
-            />
-          </FieldShell>
-          <FieldShell label="Active">
-            <RadixCheckbox
-              checked={Boolean(values.active)}
-              onCheckedChange={(value) => setValues({ ...values, active: Boolean(value) })}
-            />
-          </FieldShell>
-          <FieldShell label="Product Description">
-            <textarea
-              className={inputClass}
-              value={String(values.description ?? "")}
-              onChange={(event) => setValues({ ...values, description: event.target.value })}
-            />
-          </FieldShell>
-        </div>
+        <FormFields
+          fields={productFields}
+          values={values}
+          errors={errors}
+          data={data}
+          onChange={(name, value) =>
+            setValues((current) => {
+              const next = { ...current, [name]: value };
+              for (const field of productFields) {
+                if (field.dependsOn === name) {
+                  const options = picklistOptionsForField(field, next);
+                  const currentDependent = String(next[field.name] ?? "--None--");
+                  if (!options.includes(currentDependent)) next[field.name] = "--None--";
+                }
+              }
+              return next;
+            })
+          }
+        />
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           <FieldShell label="Create Price Book Entry">

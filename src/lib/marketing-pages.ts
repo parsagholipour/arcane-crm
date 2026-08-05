@@ -12,6 +12,14 @@ export const MARKETING_FORM_FIELDS = [
 ] as const;
 export const REQUIRED_MARKETING_FORM_FIELDS = ["email"] as const;
 
+/**
+ * Intentional reduced Lead intake for public landing pages.
+ * Only MARKETING_FORM_FIELDS are collected; message maps to Lead.description.
+ * Server always sets status="New" (same as New Lead default) and leadSource="Web"
+ * (channel marker for marketing submissions). Owner is the landing page owner.
+ * Full Lead form fields (address, industry, rating, etc.) are not exposed publicly.
+ */
+
 export const marketingLandingPageInclude = {
   campaign: true,
   submissions: { include: { lead: true }, orderBy: { submittedAt: "desc" as const }, take: 20 },

@@ -35,8 +35,24 @@ export async function POST(request: NextRequest, context: { params: Params }) {
     if (recentDuplicate) return NextResponse.json({ error: "Please wait before submitting this form again." }, { status: 429 });
 
     const result = await prisma.$transaction(async (tx) => {
+      // Intentional reduced Lead create: public forms only collect MARKETING_FORM_FIELDS.
+      // status matches New Lead default; leadSource=Web marks marketing channel intake.
       const lead = await tx.lead.create({
-        data: { organizationId: page.organizationId, status: "New", firstName: firstName || null, lastName: lastName || null, company: company || null, title: title || null, description: message || null, ownerId: page.ownerId, phone: phone || null, email, leadSource: "Web", createdById: page.createdById, updatedById: page.createdById }
+        data: {
+          organizationId: page.organizationId,
+          status: "New",
+          firstName: firstName || null,
+          lastName: lastName || null,
+          company: company || null,
+          title: title || null,
+          description: message || null,
+          ownerId: page.ownerId,
+          phone: phone || null,
+          email,
+          leadSource: "Web",
+          createdById: page.createdById,
+          updatedById: page.createdById
+        }
       });
       const submission = await tx.marketingFormSubmission.create({ data: { organizationId: page.organizationId, landingPageId: page.id, leadId: lead.id, data } });
       if (page.campaignId) {

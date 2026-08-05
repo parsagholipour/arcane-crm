@@ -53,7 +53,12 @@ export async function convertLeads(
           throw new WorkflowValidationError("The selected Account was not found.", 409);
         if (!account) {
           account = await tx.account.create({
-            data: { organizationId, ...buildAccountData(lead, accountName), createdById: userId, updatedById: userId }
+            data: {
+              organizationId,
+              ...buildAccountData(lead, accountName, options.accountOverrides),
+              createdById: userId,
+              updatedById: userId
+            }
           });
         }
 

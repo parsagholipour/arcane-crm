@@ -2,7 +2,7 @@
 
 import { Building2, Target, User } from "lucide-react";
 import { useState, type ElementType, type ReactNode } from "react";
-import { FORM_DEFINITIONS, LEAD_STATUS, SALUTATIONS } from "@/lib/crm-metadata";
+import { FORM_DEFINITIONS, LEAD_STATUS } from "@/lib/crm-metadata";
 import { contactName } from "@/lib/crm-data";
 import {
   accountNameForLead,
@@ -17,49 +17,108 @@ import { isValidEmail } from "@/lib/record-validation";
 import { type ScopedCrmData, type CrmObject, type FieldDefinition, type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { BaseDialog, Button } from "@/components/ui/crm-primitives";
-import { FieldShell, inputClass, NativeSelect, RadixCheckbox } from "@/features/crm/controls";
+import { FieldShell, NativeSelect, RadixCheckbox } from "@/features/crm/controls";
 import { defaultLeadConversionCloseDate } from "@/features/crm/data-model";
 import { FormFields, LookupField, picklistOptionsForField } from "@/features/crm/form-controls";
-import { validateFields } from "@/features/crm/form-model";
+import { buildInitialValues, validateFields } from "@/features/crm/form-model";
 import { requiredId } from "@/features/crm/record-model";
 
-/** Same Opportunity create form, minus Account — conversion already picks that above. */
-export const CONVERSION_OPPORTUNITY_FIELDS = (FORM_DEFINITIONS.Opportunity?.fields ?? []).filter(
+/** Account create form — conversion already chooses create vs existing above. */
+export const CONVERSION_ACCOUNT_FIELDS = FORM_DEFINITIONS.Account?.fields ?? [];
+
+/** Contact create form, minus Account — conversion already picks that above. */
+export const CONVERSION_CONTACT_FIELDS = (FORM_DEFINITIONS.Contact?.fields ?? []).filter(
   (field) => field.name !== "accountId"
+);
+
+/**
+ * Opportunity create form, minus Account and Contact — conversion already picks those.
+ * Contact is linked automatically to the converted contact.
+ */
+export const CONVERSION_OPPORTUNITY_FIELDS = (FORM_DEFINITIONS.Opportunity?.fields ?? []).filter(
+  (field) => field.name !== "accountId" && field.name !== "contactId"
 );
 
 export type LeadConversionForm = {
   accountMode: "new" | "existing";
-  accountName: string;
   existingAccountId: string;
+  account: RecordData;
   contactMode: "new" | "existing";
   existingContactId: string;
-  contact: { salutation: string; firstName: string; lastName: string; title: string; phone: string; email: string };
+  contact: RecordData;
   createOpportunity: boolean;
   opportunityMode: "new" | "existing";
   existingOpportunityId: string;
   opportunity: RecordData;
   convertedStatus: string;
 };
-export function initialLeadConversionForm(lead: RecordData): LeadConversionForm {
+
+export function initialLeadConversionForm(lead: RecordData, currentUserId?: string): LeadConversionForm {
   const accountName = accountNameForLead(leadForConversion(lead));
   const stage = "Qualify";
   const leadSource = String(lead.leadSource ?? "").trim();
+  const accountDefinition = FORM_DEFINITIONS.Account;
+  const contactDefinition = FORM_DEFINITIONS.Contact;
+
+  const account = accountDefinition
+    ? buildInitialValues(
+        accountDefinition,
+        {
+          name: accountName,
+          website: lead.website ?? "",
+          type: "Prospect",
+          ownerId: String(lead.ownerId ?? currentUserId ?? ""),
+          phone: lead.phone ?? "",
+          numberOfEmployees: lead.numberOfEmployees ?? "",
+          annualRevenue: lead.annualRevenue ?? "",
+          industry: lead.industry ?? "--None--",
+          rating: lead.rating ?? "--None--",
+          billingCountry: lead.country ?? "--None--",
+          billingStreet: lead.street ?? "",
+          billingPostalCode: lead.postalCode ?? "",
+          billingCity: lead.city ?? "",
+          billingState: lead.state ?? "--None--"
+        },
+        currentUserId
+      )
+    : { name: accountName };
+
+  const contact = contactDefinition
+    ? buildInitialValues(
+        contactDefinition,
+        {
+          salutation: lead.salutation ?? "--None--",
+          firstName: lead.firstName ?? "",
+          lastName: lead.lastName ?? "",
+          title: lead.title ?? "",
+          description: lead.description ?? "",
+          ownerId: String(lead.ownerId ?? currentUserId ?? ""),
+          phone: lead.phone ?? "",
+          email: lead.email ?? "",
+          leadSource: leadSource || "--None--",
+          mailingCountry: lead.country ?? "--None--",
+          mailingStreet: lead.street ?? "",
+          mailingPostalCode: lead.postalCode ?? "",
+          mailingCity: lead.city ?? "",
+          mailingState: lead.state ?? "--None--"
+        },
+        currentUserId
+      )
+    : {
+        firstName: String(lead.firstName ?? ""),
+        lastName: String(lead.lastName ?? ""),
+        phone: String(lead.phone ?? ""),
+        email: String(lead.email ?? "")
+      };
+
   return {
     accountMode: "new",
-    accountName,
     existingAccountId: "",
+    account,
     contactMode: "new",
     existingContactId: "",
-    contact: {
-      salutation: String(lead.salutation ?? ""),
-      firstName: String(lead.firstName ?? ""),
-      lastName: String(lead.lastName ?? ""),
-      title: String(lead.title ?? ""),
-      phone: String(lead.phone ?? ""),
-      email: String(lead.email ?? "")
-    },
-    createOpportunity: true,
+    contact,
+    createOpportunity: false,
     opportunityMode: "new",
     existingOpportunityId: "",
     opportunity: {
@@ -79,6 +138,7 @@ export function initialLeadConversionForm(lead: RecordData): LeadConversionForm 
     convertedStatus: "Qualified"
   };
 }
+
 export function leadForConversion(lead: RecordData): ConvertibleLead {
   return {
     id: requiredId(lead),
@@ -90,6 +150,19 @@ export function leadForConversion(lead: RecordData): ConvertibleLead {
     email: lead.email == null ? null : String(lead.email)
   };
 }
+
+function setDependentFields(fields: FieldDefinition[], values: RecordData, name: string) {
+  const next = { ...values, [name]: values[name] };
+  for (const field of fields) {
+    if (field.dependsOn === name) {
+      const options = picklistOptionsForField(field, next);
+      const currentDependent = String(next[field.name] ?? "--None--");
+      if (!options.includes(currentDependent)) next[field.name] = "--None--";
+    }
+  }
+  return next;
+}
+
 export function LeadConversionDialog({
   title,
   leads,
@@ -107,31 +180,35 @@ export function LeadConversionDialog({
 }) {
   const targetCount = leads.length;
   const firstLead = leads[0] ?? {};
-  const [form, setForm] = useState<LeadConversionForm>(() => initialLeadConversionForm(firstLead));
+  const [form, setForm] = useState<LeadConversionForm>(() =>
+    initialLeadConversionForm(firstLead, data.user.id)
+  );
 
   const update = (patch: Partial<LeadConversionForm>) => setForm((current) => ({ ...current, ...patch }));
-  const updateContact = (patch: Partial<LeadConversionForm["contact"]>) =>
-    setForm((current) => ({ ...current, contact: { ...current.contact, ...patch } }));
+  const setAccountField = (name: string, value: unknown) =>
+    setForm((current) => ({
+      ...current,
+      account: setDependentFields(CONVERSION_ACCOUNT_FIELDS, { ...current.account, [name]: value }, name)
+    }));
+  const setContactField = (name: string, value: unknown) =>
+    setForm((current) => ({
+      ...current,
+      contact: setDependentFields(CONVERSION_CONTACT_FIELDS, { ...current.contact, [name]: value }, name)
+    }));
   const setOpportunityField = (name: string, value: unknown) =>
-    setForm((current) => {
-      const opportunity = { ...current.opportunity, [name]: value };
-      for (const field of CONVERSION_OPPORTUNITY_FIELDS) {
-        if (field.dependsOn === name) {
-          const options = picklistOptionsForField(field, opportunity);
-          const currentDependent = String(opportunity[field.name] ?? "--None--");
-          if (!options.includes(currentDependent)) opportunity[field.name] = "--None--";
-        }
-      }
-      return { ...current, opportunity };
-    });
+    setForm((current) => ({
+      ...current,
+      opportunity: setDependentFields(CONVERSION_OPPORTUNITY_FIELDS, { ...current.opportunity, [name]: value }, name)
+    }));
 
   const convertible = leadForConversion(firstLead);
   const contactDisplayName = contactName(firstLead) || "Converted Contact";
   const matchedAccounts = targetCount === 1 ? matchAccountsForLead(data.accounts.map(toNamedAccount), convertible) : [];
   const matchedContacts = targetCount === 1 ? matchContactsForLead(data.contacts.map(toNamedContact), convertible) : [];
+  const accountName = String(form.account.name ?? "").trim();
   const duplicateAccount =
     targetCount === 1 && form.accountMode === "new"
-      ? findExactAccountMatch(data.accounts.map(toNamedAccount), form.accountName)
+      ? findExactAccountMatch(data.accounts.map(toNamedAccount), accountName)
       : undefined;
   const duplicateContact = targetCount === 1 && form.contactMode === "new" ? matchedContacts[0] : undefined;
 
@@ -141,7 +218,9 @@ export function LeadConversionDialog({
   });
 
   const errors = leadConversionFormErrors(form, targetCount);
-  const opportunityErrors = opportunityFieldErrors(errors);
+  const accountErrors = prefixedFieldErrors(errors, "account.");
+  const contactErrors = prefixedFieldErrors(errors, "contact.");
+  const opportunityErrors = prefixedFieldErrors(errors, "opportunity.");
   const canConvert = targetCount > 0 && Object.keys(errors).length === 0;
 
   const accountLookupField: FieldDefinition = {
@@ -206,13 +285,13 @@ export function LeadConversionDialog({
             >
               {form.accountMode === "new" ? (
                 <div className="space-y-2">
-                  <FieldShell label="Account Name" error={errors.accountName}>
-                    <input
-                      className={inputClass}
-                      value={form.accountName}
-                      onChange={(event) => update({ accountName: event.target.value })}
-                    />
-                  </FieldShell>
+                  <FormFields
+                    fields={CONVERSION_ACCOUNT_FIELDS}
+                    values={form.account}
+                    errors={accountErrors}
+                    data={data}
+                    onChange={setAccountField}
+                  />
                   {duplicateAccount ? (
                     <DuplicateWarning
                       message={`An account named "${String(duplicateAccount.name)}" already exists. Converting will reuse it instead of creating a duplicate.`}
@@ -259,50 +338,13 @@ export function LeadConversionDialog({
             >
               {form.contactMode === "new" ? (
                 <div className="space-y-2">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <FieldShell label="Salutation">
-                      <NativeSelect
-                        options={SALUTATIONS}
-                        value={form.contact.salutation || "--None--"}
-                        onChange={(value) => updateContact({ salutation: value })}
-                      />
-                    </FieldShell>
-                    <FieldShell label="Title">
-                      <input
-                        className={inputClass}
-                        value={form.contact.title}
-                        onChange={(event) => updateContact({ title: event.target.value })}
-                      />
-                    </FieldShell>
-                    <FieldShell label="First Name">
-                      <input
-                        className={inputClass}
-                        value={form.contact.firstName}
-                        onChange={(event) => updateContact({ firstName: event.target.value })}
-                      />
-                    </FieldShell>
-                    <FieldShell label="Last Name" required error={errors["contact.lastName"]}>
-                      <input
-                        className={inputClass}
-                        value={form.contact.lastName}
-                        onChange={(event) => updateContact({ lastName: event.target.value })}
-                      />
-                    </FieldShell>
-                    <FieldShell label="Email" error={errors["contact.email"]}>
-                      <input
-                        className={inputClass}
-                        value={form.contact.email}
-                        onChange={(event) => updateContact({ email: event.target.value })}
-                      />
-                    </FieldShell>
-                    <FieldShell label="Phone">
-                      <input
-                        className={inputClass}
-                        value={form.contact.phone}
-                        onChange={(event) => updateContact({ phone: event.target.value })}
-                      />
-                    </FieldShell>
-                  </div>
+                  <FormFields
+                    fields={CONVERSION_CONTACT_FIELDS}
+                    values={form.contact}
+                    errors={contactErrors}
+                    data={data}
+                    onChange={setContactField}
+                  />
                   {duplicateContact ? (
                     <DuplicateWarning
                       message={`${contactName(duplicateContact as RecordData) || "An existing contact"} already looks like this lead. Creating a new contact will duplicate them.`}
@@ -402,8 +444,16 @@ export function LeadConversionDialog({
           </div>
         ) : targetCount > 1 ? (
           <div className="grid gap-3">
+            {/*
+              Intentional reduced flow: bulk convert cannot edit per-lead Account/Contact/Opportunity
+              forms. Each lead uses its Company/person fields and the same opportunity defaults as a
+              single-lead convert (Qualify / Pipeline / +30 days / conversion next step).
+            */}
             <p className="text-sm text-[#706e6b]">
-              Each selected lead uses its Company value for the converted account and creates a matching contact.
+              Bulk convert is a reduced flow: each lead uses its Company value for the account and creates
+              a matching contact from lead fields. Opportunity fields use the same system defaults as a
+              single convert (Qualify, Pipeline, close date +30 days). Open a single lead to edit full
+              Account, Contact, or Opportunity forms.
             </p>
             <FieldShell label="Create Opportunity">
               <RadixCheckbox
@@ -441,6 +491,7 @@ export function LeadConversionDialog({
     </BaseDialog>
   );
 }
+
 export function DuplicateWarning({
   message,
   actionLabel,
@@ -459,20 +510,25 @@ export function DuplicateWarning({
     </div>
   );
 }
+
 export function leadConversionFormErrors(form: LeadConversionForm, targetCount: number) {
   const errors: Record<string, string> = {};
   if (targetCount !== 1) return errors;
 
   if (form.accountMode === "new") {
-    if (!form.accountName.trim()) errors.accountName = "Account Name is required.";
+    for (const [field, message] of Object.entries(validateFields(CONVERSION_ACCOUNT_FIELDS, form.account))) {
+      errors[`account.${field}`] = message;
+    }
   } else if (!form.existingAccountId) {
     errors.existingAccountId = "Choose an account.";
   }
 
   if (form.contactMode === "new") {
-    if (!form.contact.lastName.trim()) errors["contact.lastName"] = "Last Name is required.";
-    if (form.contact.email.trim() && !isValidEmail(form.contact.email))
-      errors["contact.email"] = "Enter a valid email address.";
+    for (const [field, message] of Object.entries(validateFields(CONVERSION_CONTACT_FIELDS, form.contact))) {
+      errors[`contact.${field}`] = message;
+    }
+    const email = String(form.contact.email ?? "").trim();
+    if (email && !isValidEmail(email)) errors["contact.email"] = "Enter a valid email address.";
   } else if (!form.existingContactId) {
     errors.existingContactId = "Choose a contact.";
   }
@@ -504,32 +560,76 @@ export function leadConversionFormErrors(form: LeadConversionForm, targetCount: 
 
   return errors;
 }
-export function opportunityFieldErrors(errors: Record<string, string>) {
+
+export function prefixedFieldErrors(errors: Record<string, string>, prefix: string) {
   return Object.fromEntries(
     Object.entries(errors)
-      .filter(([key]) => key.startsWith("opportunity."))
-      .map(([key, message]) => [key.slice("opportunity.".length), message])
+      .filter(([key]) => key.startsWith(prefix))
+      .map(([key, message]) => [key.slice(prefix.length), message])
   );
 }
+
+/** @deprecated Prefer prefixedFieldErrors(errors, "opportunity.") */
+export function opportunityFieldErrors(errors: Record<string, string>) {
+  return prefixedFieldErrors(errors, "opportunity.");
+}
+
 export function leadConversionPayload(form: LeadConversionForm, targetCount: number): RecordData {
   if (targetCount !== 1) {
     return { createOpportunity: form.createOpportunity, convertedStatus: form.convertedStatus };
   }
   const usesNewOpportunity = form.createOpportunity && form.opportunityMode === "new";
   const opportunity = form.opportunity;
+  const account = form.account;
+  const contact = form.contact;
   return {
-    accountName: form.accountMode === "new" ? form.accountName : "",
+    accountName: form.accountMode === "new" ? String(account.name ?? "") : "",
+    account:
+      form.accountMode === "new"
+        ? {
+            type: account.type,
+            description: account.description,
+            parentAccountId: account.parentAccountId,
+            website: account.website,
+            ownerId: account.ownerId,
+            phone: account.phone,
+            numberOfEmployees: account.numberOfEmployees,
+            annualRevenue: account.annualRevenue,
+            industry: account.industry,
+            rating: account.rating,
+            billingCountry: account.billingCountry,
+            billingStreet: account.billingStreet,
+            billingPostalCode: account.billingPostalCode,
+            billingCity: account.billingCity,
+            billingState: account.billingState,
+            shippingCountry: account.shippingCountry,
+            shippingStreet: account.shippingStreet,
+            shippingPostalCode: account.shippingPostalCode,
+            shippingCity: account.shippingCity,
+            shippingState: account.shippingState
+          }
+        : undefined,
     existingAccountId: form.accountMode === "existing" ? form.existingAccountId : "",
     existingContactId: form.contactMode === "existing" ? form.existingContactId : "",
     contact:
       form.contactMode === "new"
         ? {
-            salutation: form.contact.salutation,
-            firstName: form.contact.firstName,
-            lastName: form.contact.lastName,
-            title: form.contact.title,
-            phone: form.contact.phone,
-            email: form.contact.email
+            salutation: contact.salutation,
+            firstName: contact.firstName,
+            lastName: contact.lastName,
+            title: contact.title,
+            phone: contact.phone,
+            email: contact.email,
+            description: contact.description,
+            ownerId: contact.ownerId,
+            birthDate: contact.birthDate,
+            leadSource: contact.leadSource,
+            reportsToContactId: contact.reportsToContactId,
+            mailingCountry: contact.mailingCountry,
+            mailingStreet: contact.mailingStreet,
+            mailingPostalCode: contact.mailingPostalCode,
+            mailingCity: contact.mailingCity,
+            mailingState: contact.mailingState
           }
         : undefined,
     createOpportunity: form.createOpportunity,
@@ -550,9 +650,11 @@ export function leadConversionPayload(form: LeadConversionForm, targetCount: num
     convertedStatus: form.convertedStatus
   };
 }
+
 export function toNamedAccount(account: RecordData) {
   return { id: requiredId(account), name: account.name == null ? null : String(account.name) };
 }
+
 export function toNamedContact(contact: RecordData) {
   return {
     id: requiredId(contact),
@@ -562,6 +664,7 @@ export function toNamedContact(contact: RecordData) {
     phone: contact.phone == null ? null : String(contact.phone)
   };
 }
+
 export function ConversionSection({
   icon: Icon,
   title,

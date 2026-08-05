@@ -13,6 +13,7 @@ import {
   LEAD_SOURCE,
   LEAD_STATUS,
   OPPORTUNITY_STAGE,
+  PRODUCT_FAMILY,
   SALUTATIONS
 } from "@/lib/crm-metadata/options";
 
@@ -216,6 +217,13 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
         lookupObject: "Account",
         required: true
       },
+      {
+        name: "contactId",
+        label: "Contact Name",
+        section: "About",
+        type: "lookup",
+        lookupObject: "Contact"
+      },
       { name: "closeDate", label: "Close Date", section: "About", type: "date", required: true },
       { name: "amount", label: "Amount", section: "About", type: "currency" },
       { name: "description", label: "Description", section: "About", type: "textarea" },
@@ -345,6 +353,26 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
         options: TIME_SLOTS,
         defaultValue: "00:00"
       }
+    ]
+  },
+  Product2: {
+    object: "Product2",
+    title: "New Product",
+    fields: [
+      { name: "name", label: "Product Name", section: "Product Information", type: "text", required: true },
+      {
+        name: "family",
+        label: "Product Family",
+        section: "Product Information",
+        type: "picklist",
+        options: PRODUCT_FAMILY,
+        defaultValue: "--None--"
+      },
+      { name: "productCode", label: "Product Code", section: "Product Information", type: "text" },
+      { name: "sku", label: "Product SKU", section: "Product Information", type: "text" },
+      { name: "category", label: "Category", section: "Product Information", type: "text" },
+      { name: "active", label: "Active", section: "Product Information", type: "checkbox" },
+      { name: "description", label: "Description", section: "Product Information", type: "textarea" }
     ]
   }
 };

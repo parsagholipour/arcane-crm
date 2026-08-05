@@ -97,6 +97,7 @@ export async function createRecord(object: CrmObject, payload: RecordData, organ
           organizationId,
           name: String(payload.name),
           accountId: String(payload.accountId),
+          contactId: payload.contactId ? String(payload.contactId) : null,
           closeDate: new Date(String(payload.closeDate)),
           amount: payload.amount ? String(payload.amount) : null,
           description: payload.description as string | null,

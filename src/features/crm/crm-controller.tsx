@@ -64,12 +64,20 @@ export function useCrmController(initialData: ScopedCrmData) {
   }, [data.organization.id, queryClient]);
 
   useEffect(() => {
-    const tab = screenToTab(screen, pathname, searchParams);
+    const record =
+      screen.kind === "record" ? getRecords(screen.object).find((item) => item.id === screen.id) : undefined;
+    const tab = screenToTab(screen, pathname, searchParams, record);
     setConsoleTabs((tabs) => {
-      if (tabs.some((item) => item.href === tab.href)) return tabs;
+      const existingIndex = tabs.findIndex((item) => item.href === tab.href);
+      if (existingIndex >= 0) {
+        if (tabs[existingIndex]?.label === tab.label) return tabs;
+        return tabs.map((item, index) => (index === existingIndex ? tab : item));
+      }
       return [...tabs.slice(-7), tab];
     });
-  }, [pathname, screen, searchParams]);
+    // getRecords reads from data; include data so tab labels refresh after record loads/updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, screen, searchParams, data]);
 
   useEffect(() => {
     if (screen.kind !== "record") {
@@ -109,7 +117,7 @@ export function useCrmController(initialData: ScopedCrmData) {
     return data[dataKeyForObject(object)] as RecordData[];
   }
 
-  function openCreate(object: CrmObject) {
+  function openCreate(object: CrmObject, initialValues?: RecordData) {
     if (object === "Invoice") setModal({ type: "invoice", mode: "new" });
     else if (object === "Campaign") setModal({ type: "campaign", mode: "new" });
     else if (object === "MessagingSession") setModal({ type: "messaging", mode: "new" });
@@ -119,7 +127,7 @@ export function useCrmController(initialData: ScopedCrmData) {
     else if (object === "QuickText") setModal({ type: "quickText" });
     else if (object === "Knowledge__kav") setModal({ type: "knowledge" });
     else if (object === "ListEmail") setModal({ type: "listEmail" });
-    else setModal({ type: "record", mode: "new", object });
+    else setModal({ type: "record", mode: "new", object, record: initialValues });
   }
 
   function openEdit(object: CrmObject, record: RecordData) {

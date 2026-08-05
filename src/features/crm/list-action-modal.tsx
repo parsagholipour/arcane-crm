@@ -134,8 +134,8 @@ export function ListActionModal({
       >
         <div className="space-y-3">
           <p className="text-sm text-[#706e6b]">
-            Paste one record per line. This importer maps common CRM fields for{" "}
-            {OBJECT_DEFINITIONS[modal.object].plural}.
+            Paste one record per line. Columns map to canonical form fields for{" "}
+            {OBJECT_DEFINITIONS[modal.object].plural}; remaining fields use New Object defaults.
           </p>
           <div className="rounded border border-[#d8dde6] bg-[#f8f8f8] p-2 text-xs text-[#706e6b]">
             Example: {sample}

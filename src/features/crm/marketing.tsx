@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { LIST_EMAIL_LAYOUTS } from "@/lib/crm-metadata";
-import { type ScopedCrmData, type CrmObject } from "@/lib/crm-types";
+import { type ScopedCrmData, type CrmObject, type RecordData } from "@/lib/crm-types";
 import { formatDateTime } from "@/lib/utils";
 import { MarketingLandingPagesPanel } from "@/components/crm/MarketingLandingPagesPanel";
 import { Button, DashboardPanel, type ToastState } from "@/components/ui/crm-primitives";
@@ -16,7 +16,7 @@ export function MarketingPage({
   onToast
 }: {
   data: ScopedCrmData;
-  onCreate: (object: CrmObject) => void;
+  onCreate: (object: CrmObject, initialValues?: RecordData) => void;
   onActivate: () => void;
   onDataChange: ScopedCrmDataUpdater;
   onToast: (toast: ToastState) => void;

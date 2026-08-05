@@ -148,7 +148,7 @@ export function ProductDetailPage({
           {!orderLines.length && <Empty value="This Product has not been used on a commerce order." />}
         </Card>
       </div>
-      {edit && <ProductEditor product={product} onClose={() => setEdit(false)} onSaved={saved} />}
+      {edit && <ProductEditor product={product} data={data} onClose={() => setEdit(false)} onSaved={saved} />}
     </section>
   );
 }

@@ -61,6 +61,40 @@ export type ContactOverrides = {
   title?: string | null;
   phone?: string | null;
   email?: string | null;
+  description?: string | null;
+  ownerId?: string | null;
+  birthDate?: string | null;
+  leadSource?: string | null;
+  reportsToContactId?: string | null;
+  mailingCountry?: string | null;
+  mailingStreet?: string | null;
+  mailingPostalCode?: string | null;
+  mailingCity?: string | null;
+  mailingState?: string | null;
+};
+
+/** Account fields the convert UI can override; unset keys fall back to the lead mapping. */
+export type AccountOverrides = {
+  type?: string | null;
+  description?: string | null;
+  parentAccountId?: string | null;
+  website?: string | null;
+  ownerId?: string | null;
+  phone?: string | null;
+  numberOfEmployees?: number | null;
+  annualRevenue?: string | null;
+  industry?: string | null;
+  rating?: string | null;
+  billingCountry?: string | null;
+  billingStreet?: string | null;
+  billingPostalCode?: string | null;
+  billingCity?: string | null;
+  billingState?: string | null;
+  shippingCountry?: string | null;
+  shippingStreet?: string | null;
+  shippingPostalCode?: string | null;
+  shippingCity?: string | null;
+  shippingState?: string | null;
 };
 
 export type NormalizedConversion = {
@@ -83,6 +117,7 @@ export type NormalizedConversion = {
   existingAccountId: string;
   existingContactId: string;
   existingOpportunityId: string;
+  accountOverrides: AccountOverrides;
   contactOverrides: ContactOverrides;
 };
 
@@ -169,6 +204,7 @@ export function normalizeConversionValues(
   }
 
   const contactOverrides = singleLead ? normalizeContactOverrides(values.contact) : {};
+  const accountOverrides = singleLead ? normalizeAccountOverrides(values.account) : {};
 
   return {
     singleLead,
@@ -190,6 +226,7 @@ export function normalizeConversionValues(
     existingAccountId: singleLead ? String(values.existingAccountId ?? "").trim() : "",
     existingContactId: singleLead ? String(values.existingContactId ?? "").trim() : "",
     existingOpportunityId: singleLead && createOpportunity ? String(values.existingOpportunityId ?? "").trim() : "",
+    accountOverrides,
     contactOverrides
   };
 }
@@ -228,7 +265,21 @@ function normalizeContactOverrides(value: unknown): ContactOverrides {
   const source = value as Record<string, unknown>;
   const overrides: ContactOverrides = {};
 
-  for (const field of ["salutation", "firstName", "title", "phone"] as const) {
+  for (const field of [
+    "salutation",
+    "firstName",
+    "title",
+    "phone",
+    "description",
+    "ownerId",
+    "birthDate",
+    "mailingCountry",
+    "mailingStreet",
+    "mailingPostalCode",
+    "mailingCity",
+    "mailingState",
+    "reportsToContactId"
+  ] as const) {
     if (source[field] !== undefined) overrides[field] = blankToNull(source[field]);
   }
 
@@ -244,6 +295,70 @@ function normalizeContactOverrides(value: unknown): ContactOverrides {
       throw new LeadConversionValidationError("Enter a valid email address.", 400, "contact.email");
     }
     overrides.email = email || null;
+  }
+
+  if (source.leadSource !== undefined) {
+    overrides.leadSource = optionalChoice(
+      source.leadSource,
+      LEAD_SOURCES,
+      "Choose a valid Lead Source.",
+      "contact.leadSource"
+    );
+  }
+
+  return overrides;
+}
+
+function normalizeAccountOverrides(value: unknown): AccountOverrides {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const source = value as Record<string, unknown>;
+  const overrides: AccountOverrides = {};
+
+  for (const field of [
+    "type",
+    "description",
+    "parentAccountId",
+    "website",
+    "ownerId",
+    "phone",
+    "industry",
+    "rating",
+    "billingCountry",
+    "billingStreet",
+    "billingPostalCode",
+    "billingCity",
+    "billingState",
+    "shippingCountry",
+    "shippingStreet",
+    "shippingPostalCode",
+    "shippingCity",
+    "shippingState"
+  ] as const) {
+    if (source[field] !== undefined) overrides[field] = blankToNull(source[field]);
+  }
+
+  if (source.numberOfEmployees !== undefined) {
+    const raw = String(source.numberOfEmployees ?? "").trim();
+    if (!raw || raw === "--None--") overrides.numberOfEmployees = null;
+    else {
+      const employees = Number(raw);
+      if (!Number.isFinite(employees)) {
+        throw new LeadConversionValidationError("Enter a valid employee count.", 400, "account.numberOfEmployees");
+      }
+      overrides.numberOfEmployees = employees;
+    }
+  }
+
+  if (source.annualRevenue !== undefined) {
+    const raw = String(source.annualRevenue ?? "").trim();
+    if (!raw || raw === "--None--") overrides.annualRevenue = null;
+    else {
+      const revenue = Number(raw);
+      if (!Number.isFinite(revenue)) {
+        throw new LeadConversionValidationError("Enter a valid annual revenue.", 400, "account.annualRevenue");
+      }
+      overrides.annualRevenue = raw;
+    }
   }
 
   return overrides;
@@ -278,22 +393,31 @@ export function probabilityForStage(stage: string): number | null {
   return stage in STAGE_PROBABILITY ? STAGE_PROBABILITY[stage] : null;
 }
 
-export function buildAccountData(lead: ConvertibleLead, accountName: string) {
+export function buildAccountData(lead: ConvertibleLead, accountName: string, overrides: AccountOverrides = {}) {
   return {
     name: accountName,
-    website: lead.website ?? null,
-    type: "Prospect",
-    ownerId: lead.ownerId,
-    phone: lead.phone ?? null,
-    rating: lead.rating ?? null,
-    numberOfEmployees: lead.numberOfEmployees ?? null,
-    annualRevenue: decimalString(lead.annualRevenue),
-    industry: lead.industry ?? null,
-    billingCountry: lead.country ?? null,
-    billingStreet: lead.street ?? null,
-    billingPostalCode: lead.postalCode ?? null,
-    billingCity: lead.city ?? null,
-    billingState: lead.state ?? null
+    website: override(overrides.website, lead.website),
+    type: overrides.type !== undefined ? overrides.type : null,
+    description: overrides.description !== undefined ? overrides.description : null,
+    parentAccountId: overrides.parentAccountId !== undefined ? overrides.parentAccountId : null,
+    ownerId: override(overrides.ownerId, lead.ownerId) || lead.ownerId,
+    phone: override(overrides.phone, lead.phone),
+    rating: override(overrides.rating, lead.rating),
+    numberOfEmployees:
+      overrides.numberOfEmployees !== undefined ? overrides.numberOfEmployees : (lead.numberOfEmployees ?? null),
+    annualRevenue:
+      overrides.annualRevenue !== undefined ? overrides.annualRevenue : decimalString(lead.annualRevenue),
+    industry: override(overrides.industry, lead.industry),
+    billingCountry: override(overrides.billingCountry, lead.country),
+    billingStreet: override(overrides.billingStreet, lead.street),
+    billingPostalCode: override(overrides.billingPostalCode, lead.postalCode),
+    billingCity: override(overrides.billingCity, lead.city),
+    billingState: override(overrides.billingState, lead.state),
+    shippingCountry: overrides.shippingCountry !== undefined ? overrides.shippingCountry : null,
+    shippingStreet: overrides.shippingStreet !== undefined ? overrides.shippingStreet : null,
+    shippingPostalCode: overrides.shippingPostalCode !== undefined ? overrides.shippingPostalCode : null,
+    shippingCity: overrides.shippingCity !== undefined ? overrides.shippingCity : null,
+    shippingState: overrides.shippingState !== undefined ? overrides.shippingState : null
   };
 }
 
@@ -304,16 +428,18 @@ export function buildContactData(lead: ConvertibleLead, accountId: string, overr
     lastName: String(overrides.lastName ?? "").trim() || String(lead.lastName ?? "").trim() || "Converted Lead",
     accountId,
     title: override(overrides.title, lead.title),
-    description: lead.description ?? null,
-    ownerId: lead.ownerId,
+    reportsToContactId: overrides.reportsToContactId !== undefined ? overrides.reportsToContactId : null,
+    description: override(overrides.description, lead.description),
+    ownerId: override(overrides.ownerId, lead.ownerId) || lead.ownerId,
     phone: override(overrides.phone, lead.phone),
     email: override(overrides.email, lead.email),
-    leadSource: lead.leadSource ?? null,
-    mailingCountry: lead.country ?? null,
-    mailingStreet: lead.street ?? null,
-    mailingPostalCode: lead.postalCode ?? null,
-    mailingCity: lead.city ?? null,
-    mailingState: lead.state ?? null
+    birthDate: overrides.birthDate ? new Date(overrides.birthDate) : null,
+    leadSource: override(overrides.leadSource, lead.leadSource),
+    mailingCountry: override(overrides.mailingCountry, lead.country),
+    mailingStreet: override(overrides.mailingStreet, lead.street),
+    mailingPostalCode: override(overrides.mailingPostalCode, lead.postalCode),
+    mailingCity: override(overrides.mailingCity, lead.city),
+    mailingState: override(overrides.mailingState, lead.state)
   };
 }
 

@@ -1,3 +1,4 @@
+import { FORM_DEFINITIONS } from "@/lib/crm-metadata";
 import {
   type ScopedCrmData,
   type CrmObject,
@@ -8,6 +9,17 @@ import {
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { requiredId } from "@/features/crm/record-model";
 
+/** Column order for CSV-style import lines — maps onto FORM_DEFINITIONS field names. */
+const IMPORT_COLUMNS: Partial<Record<CrmObject, string[]>> = {
+  Account: ["name", "phone", "type"],
+  Contact: ["firstName", "lastName", "accountName", "email"],
+  Lead: ["firstName", "lastName", "company", "email"],
+  Opportunity: ["name", "accountName", "closeDate", "stage", "forecastCategory"],
+  Case: ["subject", "status", "priority", "origin"],
+  Product2: ["name", "family", "sku"],
+  Pricebook2: ["name", "active"]
+};
+
 export function importSampleForObject(object: CrmObject) {
   switch (object) {
     case "Account":
@@ -17,7 +29,7 @@ export function importSampleForObject(object: CrmObject) {
     case "Lead":
       return "Sam, Prospect, Prospect Co, sam@example.com";
     case "Opportunity":
-      return "Starter Renewal, Robert, 2026-08-31, Qualify";
+      return "Starter Renewal, Robert, 2026-08-31, Qualify, Pipeline";
     case "Case":
       return "Login issue, New, Medium, Email";
     case "Product2":
@@ -28,55 +40,58 @@ export function importSampleForObject(object: CrmObject) {
       return "Name, Description";
   }
 }
-export function importPayloadForObject(object: CrmObject, row: string, data: ScopedCrmData): RecordData | null {
-  const [a = "", b = "", c = "", d = ""] = row.split(",").map((part) => part.trim());
-  const accountId = requiredId(
-    data.accounts.find((account) => String(account.name).toLowerCase() === c.toLowerCase()) ?? data.accounts[0] ?? {}
-  );
-  const opportunityAccountId = requiredId(
-    data.accounts.find((account) => String(account.name).toLowerCase() === b.toLowerCase()) ?? data.accounts[0] ?? {}
-  );
-  const defaultAccountId = requiredId(data.accounts[0] ?? {});
 
-  switch (object) {
-    case "Account":
-      return { name: a || "Imported Account", phone: b, type: c || "Customer", ownerId: data.user.id };
-    case "Contact":
-      return {
-        firstName: a,
-        lastName: b || "Imported",
-        accountId: accountId || defaultAccountId,
-        email: d,
-        ownerId: data.user.id
-      };
-    case "Lead":
-      return {
-        firstName: a,
-        lastName: b || "Imported",
-        company: c || "Imported Company",
-        email: d,
-        status: "New",
-        ownerId: data.user.id
-      };
-    case "Opportunity":
-      return {
-        name: a || "Imported Opportunity",
-        accountId: opportunityAccountId || defaultAccountId,
-        closeDate: c || "2026-08-31",
-        stage: d || "Qualify",
-        forecastCategory: "Pipeline",
-        ownerId: data.user.id
-      };
-    case "Case":
-      return { subject: a, status: b || "New", priority: c || "Medium", origin: d || "Email", ownerId: data.user.id };
-    case "Product2":
-      return { name: a || "Imported Product", family: b || "None", sku: c, active: false };
-    case "Pricebook2":
-      return { name: a || "Imported Price Book", active: b.toLowerCase() === "true" };
-    default:
-      return null;
-  }
+function resolveAccountId(accountName: string, data: ScopedCrmData) {
+  const trimmed = accountName.trim();
+  const match = trimmed
+    ? data.accounts.find((account) => String(account.name).toLowerCase() === trimmed.toLowerCase())
+    : undefined;
+  return requiredId(match ?? data.accounts[0] ?? {});
 }
+
+function defaultImportCloseDate(now = new Date()) {
+  const date = new Date(now);
+  date.setDate(date.getDate() + 30);
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Build a create payload from a CSV-style line using FORM_DEFINITIONS defaults via
+ * buildInitialValues. Positional columns are listed in IMPORT_COLUMNS.
+ */
+export function importPayloadForObject(object: CrmObject, row: string, data: ScopedCrmData): RecordData | null {
+  const columns = IMPORT_COLUMNS[object];
+  if (!columns) return null;
+
+  const parts = row.split(",").map((part) => part.trim());
+  const mapped: RecordData = {};
+  columns.forEach((column, index) => {
+    const value = parts[index] ?? "";
+    if (column === "accountName") {
+      mapped.accountId = resolveAccountId(value, data);
+      return;
+    }
+    if (column === "active") {
+      mapped.active = value.toLowerCase() === "true" || value === "1";
+      return;
+    }
+    if (value) mapped[column] = value;
+  });
+
+  if (object === "Opportunity") {
+    if (!mapped.closeDate) mapped.closeDate = defaultImportCloseDate();
+    // Required companion when stage is provided but forecast is omitted from the line.
+    if (mapped.stage && !mapped.forecastCategory) mapped.forecastCategory = "Pipeline";
+  }
+
+  const definition = FORM_DEFINITIONS[object];
+  if (definition) {
+    return buildInitialValues(definition, mapped, data.user.id);
+  }
+
+  return { ...mapped, ownerId: data.user.id };
+}
+
 export function buildInitialValues(
   definition: FormDefinition,
   record?: RecordData,
@@ -89,7 +104,13 @@ export function buildInitialValues(
     if (!record && field.name === "ownerId" && currentUserId) values[field.name] = currentUserId;
     else if (values[field.name] === undefined && field.defaultValue !== undefined)
       values[field.name] = field.defaultValue;
+    else if (record && values[field.name] === undefined && field.name === "ownerId" && currentUserId)
+      values[field.name] = currentUserId;
   });
+  // When seeding from a partial record (import / convert), still fill ownerId if missing.
+  if (values.ownerId === undefined && currentUserId && definition.fields.some((field) => field.name === "ownerId")) {
+    values.ownerId = currentUserId;
+  }
   return values;
 }
 export function splitDateTimeField(values: RecordData, dateField: string, timeField: string) {

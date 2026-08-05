@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { FORM_DEFINITIONS } from "@/lib/crm-metadata";
 import { type FieldDefinition, type ScopedCrmData, type RecordData } from "@/lib/crm-types";
-import { cn } from "@/lib/utils";
 import { AsyncButton } from "@/components/crm/AsyncButton";
-import { text, json, id, Modal, secondary, primary, Field, input } from "@/components/crm/catalog/primitives";
-import { LookupField } from "@/features/crm/form-controls";
+import { text, json, id, Modal, secondary, primary } from "@/components/crm/catalog/primitives";
+import { FormFields, LookupField, picklistOptionsForField } from "@/features/crm/form-controls";
+import { buildInitialValues, validateFields } from "@/features/crm/form-model";
 
 const productLookupField: FieldDefinition = {
   name: "productId",
@@ -17,24 +18,26 @@ const productLookupField: FieldDefinition = {
 
 export function ProductEditor({
   product,
+  data,
   onClose,
   onSaved
 }: {
   product: RecordData;
+  data: ScopedCrmData;
   onClose: () => void;
   onSaved: (record: RecordData) => void;
 }) {
-  const [values, setValues] = useState({
-    name: text(product.name),
-    family: text(product.family),
-    productCode: text(product.productCode),
-    sku: text(product.sku),
-    category: text(product.category),
-    active: Boolean(product.active),
-    description: text(product.description)
-  });
+  const definition = FORM_DEFINITIONS.Product2;
+  const fields = definition?.fields ?? [];
+  const [values, setValues] = useState<RecordData>(() =>
+    definition ? buildInitialValues(definition, product, data.user.id) : { ...product }
+  );
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   async function save() {
+    const nextErrors = validateFields(fields, values);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
     try {
       const payload = await json(`/api/records/Product2/${id(product)}`, {
         method: "PATCH",
@@ -62,86 +65,56 @@ export function ProductEditor({
         </>
       }
     >
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="space-y-3">
         {error && (
-          <div className="rounded border border-[#ea001e] bg-[#fff1f1] p-2 text-sm text-[#8e030f] md:col-span-2">
-            {error}
-          </div>
+          <div className="rounded border border-[#ea001e] bg-[#fff1f1] p-2 text-sm text-[#8e030f]">{error}</div>
         )}
-        <Field label="Name">
-          <input
-            className={input}
-            value={values.name}
-            onChange={(event) => setValues({ ...values, name: event.target.value })}
-          />
-        </Field>
-        <Field label="Family">
-          <input
-            className={input}
-            value={values.family}
-            onChange={(event) => setValues({ ...values, family: event.target.value })}
-          />
-        </Field>
-        <Field label="Product Code">
-          <input
-            className={input}
-            value={values.productCode}
-            onChange={(event) => setValues({ ...values, productCode: event.target.value })}
-          />
-        </Field>
-        <Field label="SKU">
-          <input
-            className={input}
-            value={values.sku}
-            onChange={(event) => setValues({ ...values, sku: event.target.value })}
-          />
-        </Field>
-        <Field label="Category">
-          <input
-            className={input}
-            value={values.category}
-            onChange={(event) => setValues({ ...values, category: event.target.value })}
-          />
-        </Field>
-        <label className="mt-6 flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={values.active}
-            onChange={(event) => setValues({ ...values, active: event.target.checked })}
-          />{" "}
-          Active
-        </label>
-        <div className="md:col-span-2">
-          <Field label="Description">
-            <textarea
-              className={cn(input, "min-h-24")}
-              value={values.description}
-              onChange={(event) => setValues({ ...values, description: event.target.value })}
-            />
-          </Field>
-        </div>
+        <FormFields
+          fields={fields}
+          values={values}
+          errors={errors}
+          data={data}
+          onChange={(name, value) =>
+            setValues((current) => {
+              const next = { ...current, [name]: value };
+              for (const field of fields) {
+                if (field.dependsOn === name) {
+                  const options = picklistOptionsForField(field, next);
+                  const currentDependent = String(next[field.name] ?? "--None--");
+                  if (!options.includes(currentDependent)) next[field.name] = "--None--";
+                }
+              }
+              return next;
+            })
+          }
+        />
       </div>
     </Modal>
   );
 }
+
 export function PriceBookEditor({
   priceBook,
+  data,
   onClose,
   onSaved
 }: {
   priceBook: RecordData;
+  data: ScopedCrmData;
   onClose: () => void;
   onSaved: (record: RecordData) => void;
 }) {
-  const [values, setValues] = useState({
-    name: text(priceBook.name),
-    active: Boolean(priceBook.active),
-    description: text(priceBook.description),
-    validFrom: text(priceBook.validFrom).slice(0, 10),
-    validTo: text(priceBook.validTo).slice(0, 10)
-  });
+  const definition = FORM_DEFINITIONS.Pricebook2;
+  const fields = definition?.fields ?? [];
+  const [values, setValues] = useState<RecordData>(() =>
+    definition ? buildInitialValues(definition, priceBook, data.user.id) : { ...priceBook }
+  );
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   async function save() {
+    const nextErrors = validateFields(fields, values);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
     try {
       const payload = await json(`/api/records/Pricebook2/${id(priceBook)}`, {
         method: "PATCH",
@@ -173,50 +146,30 @@ export function PriceBookEditor({
         {error && (
           <div className="rounded border border-[#ea001e] bg-[#fff1f1] p-2 text-sm text-[#8e030f]">{error}</div>
         )}
-        <Field label="Name">
-          <input
-            className={input}
-            value={values.name}
-            onChange={(event) => setValues({ ...values, name: event.target.value })}
-          />
-        </Field>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={values.active}
-            onChange={(event) => setValues({ ...values, active: event.target.checked })}
-          />{" "}
-          Active
-        </label>
-        <div className="grid gap-3 md:grid-cols-2">
-          <Field label="Valid From">
-            <input
-              className={input}
-              type="date"
-              value={values.validFrom}
-              onChange={(event) => setValues({ ...values, validFrom: event.target.value })}
-            />
-          </Field>
-          <Field label="Valid To">
-            <input
-              className={input}
-              type="date"
-              value={values.validTo}
-              onChange={(event) => setValues({ ...values, validTo: event.target.value })}
-            />
-          </Field>
-        </div>
-        <Field label="Description">
-          <textarea
-            className={cn(input, "min-h-24")}
-            value={values.description}
-            onChange={(event) => setValues({ ...values, description: event.target.value })}
-          />
-        </Field>
+        <FormFields
+          fields={fields}
+          values={values}
+          errors={errors}
+          data={data}
+          onChange={(name, value) =>
+            setValues((current) => {
+              const next = { ...current, [name]: value };
+              for (const field of fields) {
+                if (field.dependsOn === name) {
+                  const options = picklistOptionsForField(field, next);
+                  const currentDependent = String(next[field.name] ?? "--None--");
+                  if (!options.includes(currentDependent)) next[field.name] = "--None--";
+                }
+              }
+              return next;
+            })
+          }
+        />
       </div>
     </Modal>
   );
 }
+
 export function EntryEditor({
   priceBook,
   data,
@@ -272,30 +225,31 @@ export function EntryEditor({
         {error && (
           <div className="rounded border border-[#ea001e] bg-[#fff1f1] p-2 text-sm text-[#8e030f]">{error}</div>
         )}
-        <Field label="Product">
-          <LookupField
-            field={productLookupField}
-            disabled={Boolean(entry)}
-            value={values.productId}
-            data={data}
-            inlineSelection
-            onChange={(productId) => setValues({ ...values, productId })}
-          />
-        </Field>
+        <div className="text-sm font-semibold text-[#3e3e3c]">Product</div>
+        <LookupField
+          field={productLookupField}
+          disabled={Boolean(entry)}
+          value={values.productId}
+          data={data}
+          inlineSelection
+          onChange={(productId) => setValues({ ...values, productId })}
+        />
         <div className="grid gap-3 md:grid-cols-2">
-          <Field label="List Price">
+          <label className="block text-sm">
+            <span className="mb-1 block font-semibold">List Price</span>
             <input
-              className={input}
+              className="min-h-9 w-full rounded border border-[#c9c9c9] bg-white px-3 py-2 text-sm outline-none focus:border-[#0176d3] focus:ring-2 focus:ring-[#0176d3]/20"
               type="number"
               min="0"
               step="0.01"
               value={values.listPrice}
               onChange={(event) => setValues({ ...values, listPrice: event.target.value })}
             />
-          </Field>
-          <Field label="Currency">
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-semibold">Currency</span>
             <select
-              className={input}
+              className="min-h-9 w-full rounded border border-[#c9c9c9] bg-white px-3 py-2 text-sm outline-none focus:border-[#0176d3] focus:ring-2 focus:ring-[#0176d3]/20 disabled:bg-[#f3f3f3]"
               disabled={Boolean(entry)}
               value={values.currency}
               onChange={(event) => setValues({ ...values, currency: event.target.value })}
@@ -304,9 +258,9 @@ export function EntryEditor({
                 <option key={value}>{value}</option>
               ))}
             </select>
-          </Field>
+          </label>
         </div>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="mt-2 flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={values.active}
