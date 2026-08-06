@@ -28,13 +28,15 @@ enum UserStatus {
 }
 
 model Organization {
-  id          String                   @id @default(cuid())
-  name        String
-  slug        String                   @unique
-  status      OrganizationStatus       @default(ACTIVE)
-  memberships OrganizationMembership[]
-  createdAt   DateTime                 @default(now())
-  updatedAt   DateTime                 @updatedAt
+  id            String                   @id @default(cuid())
+  name          String
+  slug          String                   @unique
+  logoUrl       String?
+  logoObjectKey String?
+  status        OrganizationStatus       @default(ACTIVE)
+  memberships   OrganizationMembership[]
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
 }
 
 model User {

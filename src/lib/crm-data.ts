@@ -80,17 +80,21 @@ export function decorateScopedData(data: ScopedCrmData): ScopedCrmData {
       displayName: contactName(lead),
       ownerAlias: ownerAlias(lead.ownerId)
     })),
-    opportunities: data.opportunities.map((opportunity) => ({
-      ...opportunity,
-      accountName:
-        accountsById.get(String(opportunity.accountId))?.name ??
-        (opportunity.account as RecordData | undefined)?.name ??
-        "",
-      contactName: contactsById.get(String(opportunity.contactId))
-        ? contactName(contactsById.get(String(opportunity.contactId))!)
-        : "",
-      ownerAlias: ownerAlias(opportunity.ownerId)
-    })),
+    opportunities: data.opportunities.map((opportunity) => {
+      const shipment = opportunity.shipment as RecordData | undefined;
+      return {
+        ...opportunity,
+        accountName:
+          accountsById.get(String(opportunity.accountId))?.name ??
+          (opportunity.account as RecordData | undefined)?.name ??
+          "",
+        contactName: contactsById.get(String(opportunity.contactId))
+          ? contactName(contactsById.get(String(opportunity.contactId))!)
+          : "",
+        trackingStatus: String(shipment?.status ?? opportunity.trackingStatus ?? ""),
+        ownerAlias: ownerAlias(opportunity.ownerId)
+      };
+    }),
     cases: data.cases.map((caseRecord) => ({
       ...caseRecord,
       accountName:

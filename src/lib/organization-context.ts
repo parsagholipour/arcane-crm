@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { AppAuthorizationError } from "@/lib/authorization-errors";
 import { prisma } from "@/lib/prisma";
+import { resolveOrganizationLogoUrl } from "@/lib/organization-branding";
 export { AppAuthorizationError } from "@/lib/authorization-errors";
 export { activateOrganizationForUser } from "@/lib/organization-activation";
 
@@ -41,6 +42,7 @@ export async function requireOrganizationContext() {
       id: row.organization.id,
       name: row.organization.name,
       slug: row.organization.slug,
+      logoUrl: resolveOrganizationLogoUrl(row.organization),
       role: row.role
     }))
   };

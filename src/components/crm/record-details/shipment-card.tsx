@@ -13,6 +13,16 @@ const TONES: Record<string, string> = {
   Failed: "bg-[#fdeaea] text-[#8e030f] border-[#f3c2c5]"
 };
 
+export function TrackingStatusBadge({ status }: { status: string }) {
+  if (!status) return null;
+  const tone = TONES[status] ?? "bg-[#f3f3f3] text-[#514f4d] border-[#d8dde6]";
+  return (
+    <span className={`rounded border px-2 py-0.5 text-xs font-semibold ${tone}`}>
+      {shipmentStatusLabel(status)}
+    </span>
+  );
+}
+
 /**
  * Read-only view of the carrier status the poller keeps fresh. Rendered only when a
  * shipment is actually being tracked, so a courier-less record shows nothing.
@@ -31,7 +41,6 @@ export function ShipmentCard({
   const carrier = text(courier) || "Carrier";
   const carrierUrl = carrierTrackingUrl(carrier, number);
   const status = text(shipment?.status);
-  const tone = TONES[status] ?? "bg-[#f3f3f3] text-[#514f4d] border-[#d8dde6]";
 
   return (
     <Card title="Shipment">
@@ -45,11 +54,7 @@ export function ShipmentCard({
         ) : (
           <span className="text-sm">{number}</span>
         )}
-        {status && (
-          <span className={`rounded border px-2 py-0.5 text-xs font-semibold ${tone}`}>
-            {shipmentStatusLabel(status)}
-          </span>
-        )}
+        {status ? <TrackingStatusBadge status={status} /> : null}
       </div>
       {shipment ? (
         <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

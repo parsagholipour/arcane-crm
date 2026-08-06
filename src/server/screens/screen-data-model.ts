@@ -30,6 +30,14 @@ export function editorLookupObjects(object: CrmObject, includeCurrentObject: boo
   return includeCurrentObject ? objects : objects.filter((lookupObject) => lookupObject !== object);
 }
 
+/**
+ * Product rows are decorated with their primary list price, while Product and Price Book detail
+ * pages render their entries directly. Invoice editors also need the entries for line pricing.
+ */
+export function needsPriceBookEntries(object: CrmObject, screenKind: "list" | "record") {
+  return object === "Invoice" || object === "Product2" || (object === "Pricebook2" && screenKind === "record");
+}
+
 function mergeRecordsById(primary: RecordData[], lookups: RecordData[]) {
   const ids = new Set<string>();
   return [...primary, ...lookups].filter((record) => {

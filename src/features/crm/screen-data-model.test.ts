@@ -3,7 +3,8 @@ import test from "node:test";
 import {
   calendarEditorLookups,
   editorLookupObjects,
-  mergeScopedRecordCollections
+  mergeScopedRecordCollections,
+  needsPriceBookEntries
 } from "@/server/screens/screen-data-model";
 
 test("list editors load every cross-object lookup collection they render", () => {
@@ -33,6 +34,16 @@ test("record editors retain same-object lookup collections", () => {
   assert.deepEqual(editorLookupObjects("Account", true), ["Account", "Contact"]);
   assert.deepEqual(editorLookupObjects("Contact", true), ["Account", "Contact"]);
   assert.deepEqual(editorLookupObjects("Campaign", true), ["Account", "Contact", "Campaign"]);
+});
+
+test("screens load the price entries they render or use for pricing", () => {
+  assert.equal(needsPriceBookEntries("Product2", "list"), true);
+  assert.equal(needsPriceBookEntries("Product2", "record"), true);
+  assert.equal(needsPriceBookEntries("Pricebook2", "list"), false);
+  assert.equal(needsPriceBookEntries("Pricebook2", "record"), true);
+  assert.equal(needsPriceBookEntries("Invoice", "list"), true);
+  assert.equal(needsPriceBookEntries("Invoice", "record"), true);
+  assert.equal(needsPriceBookEntries("Account", "record"), false);
 });
 
 test("list lookup batches do not replace the current filtered list collection", () => {

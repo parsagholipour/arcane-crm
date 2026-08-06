@@ -7,6 +7,7 @@ import {
   type RecordData
 } from "@/lib/crm-types";
 import { leadIdentityFieldErrors } from "@/lib/lead-identity";
+import { shipmentStatusLabel } from "@/lib/usps-status";
 import { formatDate, formatDateTime } from "@/lib/utils";
 import { requiredId } from "@/features/crm/record-model";
 
@@ -199,6 +200,9 @@ export function formatListCell(object: CrmObject, record: RecordData, key: strin
   }
   if (object === "Invoice" && ["issueDate", "dueDate"].includes(key) && record[key])
     return formatDate(String(record[key]));
+  if (object === "Opportunity" && key === "trackingStatus" && record[key]) {
+    return shipmentStatusLabel(String(record[key]));
+  }
   return formatCell(record[key]);
 }
 export function fieldLabel(field: string) {

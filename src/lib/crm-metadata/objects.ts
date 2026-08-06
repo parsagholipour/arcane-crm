@@ -42,7 +42,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
       "Recently Viewed (Pinned list)",
       "Recently Viewed Accounts"
     ],
-    actions: ["New", "Import", "Assign Label"],
+    actions: ["Import", "Assign Label", "New"],
     columns: [
       { key: "name", label: "Account Name", editable: true, link: true, width: "240px" },
       { key: "phone", label: "Phone", editable: true, width: "160px" },
@@ -84,13 +84,14 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     dataKey: "opportunities",
     defaultList: "All Opportunities",
     listViews: ["All Opportunities", "Closing Next Month", "My Opportunities", "Recently Viewed (Pinned list)"],
-    actions: ["New", "Import", "Assign Label"],
+    actions: ["Import", "Assign Label", "New"],
     columns: [
       { key: "name", label: "Opportunity Name", link: true },
       { key: "accountName", label: "Account Name" },
       { key: "closeDate", label: "Close Date" },
       { key: "stage", label: "Stage" },
       { key: "amount", label: "Amount" },
+      { key: "trackingStatus", label: "Tracking Status" },
       { key: "ownerAlias", label: "Owner Alias" }
     ],
     searchInputName: "Opportunity-search-input",

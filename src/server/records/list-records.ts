@@ -3,6 +3,7 @@ import "server-only";
 import { invoiceInclude } from "@/lib/invoices";
 import { OBJECT_DEFINITIONS } from "@/lib/crm-metadata";
 import { prisma } from "@/lib/prisma";
+import { shipmentTrackingBySubject } from "@/lib/shipment-tracking-sync";
 import type { GenericRecord, ListQuery, ListResult } from "@/lib/api/contracts";
 import type { CrmObject } from "@/lib/crm-types";
 
@@ -254,11 +255,26 @@ export async function listRecords(
     config.delegate.count({ where })
   ]);
   const hasNextPage = records.length > query.limit;
-  const items = hasNextPage ? records.slice(0, query.limit) : records;
+  const page = hasNextPage ? records.slice(0, query.limit) : records;
+  let items = serializeRecords(page);
+
+  // Flatten live carrier status onto each opportunity so the list column can read a
+  // plain `trackingStatus` field without nesting.
+  if (object === "Opportunity" && items.length) {
+    const shipments = await shipmentTrackingBySubject(
+      organizationId,
+      "Opportunity",
+      items.map((item) => String(item.id))
+    );
+    items = items.map((item) => ({
+      ...item,
+      trackingStatus: shipments.get(String(item.id))?.status ?? ""
+    }));
+  }
 
   return {
-    items: serializeRecords(items),
+    items,
     total,
-    nextCursor: hasNextPage ? String(items.at(-1)?.id ?? "") || null : null
+    nextCursor: hasNextPage ? String(page.at(-1)?.id ?? "") || null : null
   };
 }

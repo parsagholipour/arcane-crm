@@ -50,6 +50,8 @@ test("organization activation records access before returning the selected organ
       id: "org-1",
       name: "Example",
       slug: "example",
+      logoUrl: null,
+      logoObjectKey: null,
       status: "ACTIVE" as const,
       createdAt: new Date(),
       updatedAt: new Date()

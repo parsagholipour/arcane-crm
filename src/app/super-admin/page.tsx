@@ -11,10 +11,14 @@ import {
   updateOrganizationAction
 } from "@/app/super-admin/actions";
 import { NameSlugFields } from "@/components/forms/NameSlugFields";
+import { OrganizationLogo } from "@/components/brand/OrganizationLogo";
 import { ORGANIZATION_INVITATION_SOURCE } from "@/lib/organization-invitations";
+import { resolveOrganizationLogoUrl } from "@/lib/organization-branding";
 import { prisma } from "@/lib/prisma";
 
 const inputClass = "h-9 rounded border border-[#c9c9c9] bg-white px-3 text-sm outline-none focus:border-brand-500";
+const fileInputClass =
+  "block h-9 min-w-0 rounded border border-[#c9c9c9] bg-white text-xs text-[#706e6b] file:mr-2 file:h-full file:border-0 file:border-r file:border-[#c9c9c9] file:bg-[#f3f3f3] file:px-3 file:text-xs file:font-semibold";
 const buttonClass =
   "inline-flex h-9 items-center justify-center rounded border border-brand-600 bg-white px-3 text-sm font-semibold text-brand-700 hover:bg-brand-50";
 const primaryClass =
@@ -76,13 +80,21 @@ export default async function SuperAdminPage({
 
       <section className="rounded border border-[#d8dde6] bg-white p-4 shadow-sm">
         <h2 className="text-lg font-semibold">Create organization</h2>
-        <form action={createOrganizationAction} className="mt-3 grid gap-3 md:grid-cols-5">
+        <form action={createOrganizationAction} className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
           <NameSlugFields
             className="contents"
             nameClassName={inputClass}
             slugClassName={inputClass}
             namePlaceholder="Organization name"
             slugPlaceholder="organization-slug"
+          />
+          <input className={inputClass} name="logoUrl" type="url" maxLength={2048} placeholder="Logo URL (optional)" />
+          <input
+            aria-label="Upload organization logo"
+            className={fileInputClass}
+            name="logo"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
           />
           <input className={inputClass} name="adminName" placeholder="First administrator" required />
           <input className={inputClass} name="adminEmail" type="email" placeholder="admin@example.com" required />
@@ -119,8 +131,9 @@ export default async function SuperAdminPage({
           return (
             <article key={organization.id} className="rounded border border-[#d8dde6] bg-white p-4 shadow-sm">
               <form
+                id={`organization-${organization.id}`}
                 action={updateOrganizationAction.bind(null, organization.id)}
-                className="grid gap-3 md:grid-cols-[1fr_1fr_160px_auto]"
+                className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1.3fr_1.5fr_160px_auto]"
               >
                 <NameSlugFields
                   className="contents"
@@ -131,12 +144,41 @@ export default async function SuperAdminPage({
                   namePlaceholder="Organization name"
                   slugPlaceholder="organization-slug"
                 />
+                <input
+                  className={inputClass}
+                  name="logoUrl"
+                  type="url"
+                  maxLength={2048}
+                  defaultValue={organization.logoUrl ?? ""}
+                  placeholder="Logo URL (optional)"
+                />
+                <input
+                  aria-label={`Upload logo for ${organization.name}`}
+                  className={fileInputClass}
+                  name="logo"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                />
                 <select className={inputClass} name="status" defaultValue={organization.status}>
                   <option value="ACTIVE">Active</option>
                   <option value="SUSPENDED">Suspended</option>
                 </select>
                 <button className={buttonClass}>Save organization</button>
               </form>
+              {(organization.logoObjectKey || organization.logoUrl) && (
+                <div className="mt-3 flex flex-wrap items-center gap-3 rounded border border-[#e4e7ec] bg-[#f8f8f8] p-2">
+                  <OrganizationLogo
+                    name={organization.name}
+                    logoUrl={resolveOrganizationLogoUrl(organization)}
+                    className="min-w-0"
+                  />
+                  <span className="text-xs text-[#706e6b]">Current navbar logo</span>
+                  <label className="ml-auto flex items-center gap-1.5 text-xs font-medium text-red-700">
+                    <input form={`organization-${organization.id}`} name="removeLogo" type="checkbox" value="true" />
+                    Remove logo
+                  </label>
+                </div>
+              )}
               <p className="mt-2 text-xs text-[#706e6b]">
                 {organization.memberships.length} memberships · {activeAdmins} active admins · Created{" "}
                 {organization.createdAt.toLocaleDateString()}

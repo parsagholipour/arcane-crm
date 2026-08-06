@@ -3,6 +3,7 @@ import "server-only";
 import type { MembershipStatus, Organization, OrganizationMembership, OrganizationRole, User } from "@prisma/client";
 import { deleteKeycloakUser, provisionKeycloakUser, sendKeycloakActionsEmail } from "@/lib/keycloak-admin";
 import { sendOrganizationInvitation } from "@/lib/organization-invitations";
+import { normalizeOrganizationLogoUrl } from "@/lib/organization-branding";
 import { prisma } from "@/lib/prisma";
 import { normalizeEmail } from "@/lib/super-admin-constants";
 
@@ -168,11 +169,13 @@ export async function inviteOrganizationMember(input: {
 export async function createOrganizationWithAdmin(input: {
   name: string;
   slug: string;
+  logoUrl?: string | null;
   adminName: string;
   adminEmail: string;
   initiatedByUserId: string;
 }) {
   const name = normalizeName(input.name);
+  const logoUrl = normalizeOrganizationLogoUrl(input.logoUrl);
   const slug = (input.slug.trim() || name)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -191,7 +194,7 @@ export async function createOrganizationWithAdmin(input: {
   let result: { organization: Organization; user: User; membership: OrganizationMembership };
   try {
     result = await prisma.$transaction(async (tx) => {
-      const organization = await tx.organization.create({ data: { name, slug } });
+      const organization = await tx.organization.create({ data: { name, slug, logoUrl } });
       const bySub = await tx.user.findUnique({ where: { keycloakSub: provisioned.id } });
       const byEmail = bySub ? null : await tx.user.findUnique({ where: { email } });
       const existing = bySub ?? byEmail;

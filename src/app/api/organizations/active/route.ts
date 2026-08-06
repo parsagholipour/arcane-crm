@@ -5,6 +5,7 @@ import {
   requireAuthenticatedUser,
   setActiveOrganizationCookie
 } from "@/lib/organization-context";
+import { resolveOrganizationLogoUrl } from "@/lib/organization-branding";
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +17,8 @@ export async function POST(request: NextRequest) {
       organization: {
         id: membership.organization.id,
         name: membership.organization.name,
-        slug: membership.organization.slug
+        slug: membership.organization.slug,
+        logoUrl: resolveOrganizationLogoUrl(membership.organization)
       },
       role: membership.role
     });

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { RECENT_HISTORY_LIMIT } from "@/lib/recent-records";
 import { requireOrganizationContext } from "@/lib/organization-context";
 import { isSuperAdminEmail } from "@/lib/super-admin-constants";
+import { resolveOrganizationLogoUrl } from "@/lib/organization-branding";
 
 type OrganizationContext = Awaited<ReturnType<typeof requireOrganizationContext>>;
 
@@ -52,6 +53,7 @@ export async function loadShellData(suppliedContext?: OrganizationContext): Prom
         id: context.organization.id,
         name: context.organization.name,
         slug: context.organization.slug,
+        logoUrl: resolveOrganizationLogoUrl(context.organization),
         role: context.role
       },
       organizations: context.availableOrganizations,

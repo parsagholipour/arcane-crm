@@ -6,12 +6,12 @@ import {
   Bell,
   Building2,
   ChevronDown,
-  CircleHelp,
+  // CircleHelp,
   Edit3,
   HelpCircle,
   Home,
   List,
-  Megaphone,
+  // Megaphone,
   Settings,
   ShoppingBag,
   Sparkles,
@@ -24,7 +24,7 @@ import { type ElementType } from "react";
 import { type AppKey, type ScopedCrmData } from "@/lib/crm-types";
 import { type AiEmailDraft } from "@/lib/ai-types";
 import { cn } from "@/lib/utils";
-import { Logo } from "@/components/brand/Logo";
+import { OrganizationLogo } from "@/components/brand/OrganizationLogo";
 import { BRAND } from "@/lib/brand";
 import { type ToastState } from "@/components/ui/crm-primitives";
 import { HeaderUtility } from "@/features/crm/header-utility";
@@ -38,8 +38,8 @@ export const appRail: Array<{ key: AppKey; label: string; href: string; icon: El
   { key: "contacts", label: "Contacts", href: "/lightning/app/contacts", icon: User },
   { key: "accounts", label: "Accounts", href: "/lightning/app/accounts", icon: Building2 },
   { key: "sales", label: "Sales", href: "/lightning/app/sales", icon: Target },
-  { key: "service", label: "Service", href: "/lightning/app/service", icon: CircleHelp },
-  { key: "marketing", label: "Marketing", href: "/lightning/app/marketing", icon: Megaphone },
+  // { key: "service", label: "Service", href: "/lightning/app/service", icon: CircleHelp },
+  // { key: "marketing", label: "Marketing", href: "/lightning/app/marketing", icon: Megaphone },
   { key: "commerce", label: "Commerce", href: "/lightning/app/commerce", icon: ShoppingBag },
   { key: "your-account", label: "Your Account", href: "/lightning/app/your-account", icon: User }
 ];
@@ -95,7 +95,16 @@ export function GlobalHeader({
 }) {
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[#d8dde6] bg-white px-3">
-      <Logo className="min-w-[112px] text-shell" wordmarkClassName="text-[17px] font-bold" />
+      <div className="flex min-w-0 shrink-0 items-center gap-1.5">
+        <OrganizationLogo
+          name={data.organization.name}
+          logoUrl={data.organization.logoUrl}
+          className="min-w-0"
+        />
+        <span className="max-w-[14rem] truncate text-[15px] font-semibold tracking-[-0.02em] text-[#181818]">
+          {data.organization.name}
+        </span>
+      </div>
       <SearchOverlay data={data} onNavigate={onNavigate} onDataChange={onDataChange} onToast={onToast} />
       <div className="ml-auto flex items-center gap-1">
         <HeaderUtility

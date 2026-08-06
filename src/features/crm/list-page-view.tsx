@@ -143,18 +143,20 @@ export function ListView({ model }: { model: ListViewPageModel }) {
             </div>
           </div>
           <div className="flex flex-wrap justify-end gap-1">
-            {definition.actions.map((action) => (
-              <Button
-                key={action}
-                variant={
-                  action === "New" || action === "New Quick Text" || action === "Send Email" ? "primary" : "secondary"
-                }
-                onClick={() => handleAction(action)}
-              >
-                {action === "New" && <Plus size={14} />}
-                {object === "Invoice" && action === "New" ? "New Invoice" : action}
-              </Button>
-            ))}
+            {definition.actions
+              .filter((action) => action !== "Assign Label" || selected.length > 0)
+              .map((action) => (
+                <Button
+                  key={action}
+                  variant={
+                    action === "New" || action === "New Quick Text" || action === "New Event" ? "primary" : "secondary"
+                  }
+                  onClick={() => handleAction(action)}
+                >
+                  {action === "New" && <Plus size={14} />}
+                  {object === "Invoice" && action === "New" ? "New Invoice" : action}
+                </Button>
+              ))}
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 p-3">

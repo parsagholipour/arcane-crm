@@ -13,6 +13,8 @@ import {
 import { prisma } from "@/lib/prisma";
 import { assertSuperAdmin } from "@/lib/super-admin";
 import { normalizeEmail } from "@/lib/super-admin-constants";
+import { normalizeOrganizationLogoUrl } from "@/lib/organization-branding";
+import { removeOrganizationLogo, uploadOrganizationLogo } from "@/lib/minio";
 import {
   createOrganizationWithAdmin,
   inviteOrganizationMember,
@@ -24,6 +26,20 @@ import {
 
 function value(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
+}
+
+function uploadedFile(formData: FormData, key: string) {
+  const candidate = formData.get(key);
+  return candidate instanceof File && candidate.size > 0 ? candidate : null;
+}
+
+async function removeStoredLogo(objectKey: string | null | undefined) {
+  if (!objectKey) return;
+  try {
+    await removeOrganizationLogo(objectKey);
+  } catch (error) {
+    console.warn("[minio] obsolete organization logo could not be removed", { objectKey, error });
+  }
 }
 
 function destination(message: string, error = false) {
@@ -47,23 +63,48 @@ function actionError(error: unknown) {
 
 export async function createOrganizationAction(formData: FormData) {
   const actor = await assertSuperAdmin();
+  let message = "Organization and initial administrator created. Invitation sent.";
   try {
     const result = await createOrganizationWithAdmin({
       name: value(formData, "name"),
       slug: value(formData, "slug"),
+      logoUrl: value(formData, "logoUrl"),
       adminName: value(formData, "adminName"),
       adminEmail: value(formData, "adminEmail"),
       initiatedByUserId: actor.id
     });
-    destination(result.warning ?? "Organization and initial administrator created. Invitation sent.");
+    message = result.warning ?? message;
+    const logo = uploadedFile(formData, "logo");
+    if (logo) {
+      try {
+        const uploaded = await uploadOrganizationLogo(result.organization.id, logo);
+        try {
+          await prisma.organization.update({
+            where: { id: result.organization.id },
+            data: { logoObjectKey: uploaded.objectKey, logoUrl: null }
+          });
+        } catch (error) {
+          await removeStoredLogo(uploaded.objectKey);
+          throw error;
+        }
+      } catch (error) {
+        message = `${message} The organization was created, but its logo was not uploaded: ${actionError(error)}`;
+      }
+    }
   } catch (error) {
     destination(actionError(error), true);
   }
+  destination(message);
 }
 
 export async function updateOrganizationAction(organizationId: string, formData: FormData) {
   await assertSuperAdmin();
   try {
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { logoObjectKey: true, logoUrl: true }
+    });
+    if (!organization) throw new UserManagementError("Organization not found.", 404);
     const name = value(formData, "name");
     const slug = (value(formData, "slug") || name)
       .toLowerCase()
@@ -72,11 +113,41 @@ export async function updateOrganizationAction(organizationId: string, formData:
     const status = value(formData, "status") === "SUSPENDED" ? "SUSPENDED" : "ACTIVE";
     if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug))
       throw new UserManagementError("A valid name and slug are required.");
-    await prisma.organization.update({ where: { id: organizationId }, data: { name, slug, status } });
-    destination("Organization updated.");
+
+    const logo = uploadedFile(formData, "logo");
+    const requestedLogoUrl = value(formData, "logoUrl");
+    const removeLogo = value(formData, "removeLogo") === "true";
+    let logoObjectKey = organization.logoObjectKey;
+    let logoUrl = organization.logoUrl;
+    let stagedObjectKey: string | null = null;
+
+    if (removeLogo) {
+      logoObjectKey = null;
+      logoUrl = null;
+    } else if (logo) {
+      const uploaded = await uploadOrganizationLogo(organizationId, logo);
+      stagedObjectKey = uploaded.objectKey;
+      logoObjectKey = uploaded.objectKey;
+      logoUrl = null;
+    } else if (requestedLogoUrl !== (organization.logoUrl ?? "")) {
+      logoUrl = normalizeOrganizationLogoUrl(requestedLogoUrl);
+      logoObjectKey = requestedLogoUrl ? null : organization.logoObjectKey;
+    }
+
+    try {
+      await prisma.organization.update({
+        where: { id: organizationId },
+        data: { name, slug, logoObjectKey, logoUrl, status }
+      });
+    } catch (error) {
+      await removeStoredLogo(stagedObjectKey);
+      throw error;
+    }
+    if (organization.logoObjectKey !== logoObjectKey) await removeStoredLogo(organization.logoObjectKey);
   } catch (error) {
     destination(actionError(error), true);
   }
+  destination("Organization updated.");
 }
 
 export async function addOrganizationMemberAction(formData: FormData) {

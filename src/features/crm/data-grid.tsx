@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { InvoiceStatusBadge } from "@/components/crm/InvoiceWorkspace";
 import { CommunicationsStatusBadge } from "@/components/crm/CommunicationsWorkspace";
 import { CampaignStatusBadge } from "@/components/crm/CampaignWorkspace";
+import { TrackingStatusBadge } from "@/components/crm/record-details/shipment-card";
 import { Button } from "@/components/ui/crm-primitives";
 import { checkboxClass, inputClass } from "@/features/crm/controls";
 import { formatListCell } from "@/features/crm/form-model";
@@ -296,6 +297,12 @@ export function DataGrid({
                           <CommunicationsStatusBadge status={record.status} />
                         ) : definition.object === "Campaign" && column.key === "status" ? (
                           <CampaignStatusBadge status={record.status} />
+                        ) : definition.object === "Opportunity" && column.key === "trackingStatus" ? (
+                          record.trackingStatus ? (
+                            <TrackingStatusBadge status={String(record.trackingStatus)} />
+                          ) : (
+                            <span className="truncate">-</span>
+                          )
                         ) : column.link && canRouteToRecord(definition.object) ? (
                           <Link
                             href={routeForRecord(definition.object, requiredId(record))}

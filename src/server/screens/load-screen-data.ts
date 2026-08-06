@@ -16,7 +16,8 @@ import { listRecords } from "@/server/records/list-records";
 import {
   calendarEditorLookups,
   editorLookupObjects,
-  mergeScopedRecordCollections
+  mergeScopedRecordCollections,
+  needsPriceBookEntries
 } from "@/server/screens/screen-data-model";
 
 export type ScopedScreenPayload = {
@@ -307,7 +308,7 @@ async function loadRecordData(organizationId: string, userId: string, object: Cr
 
   const [lookups, priceBookEntries] = await Promise.all([
     loadLookupCollections(organizationId, userId, editorLookupObjects(object, true)),
-    object === "Invoice" ? loadPriceBookEntries(organizationId) : Promise.resolve([])
+    needsPriceBookEntries(object, "record") ? loadPriceBookEntries(organizationId) : Promise.resolve([])
   ]);
 
   const relationship = { organizationId, relatedObjectType: object, relatedRecordId: id };
@@ -342,7 +343,7 @@ async function loadRecordData(organizationId: string, userId: string, object: Cr
   const [tasks, emailActivities, callActivities, events, files, attachments] = activities;
   return {
     ...mergeScopedRecordCollections(lookups, data),
-    ...(object === "Invoice" ? { priceBookEntries } : {}),
+    ...(needsPriceBookEntries(object, "record") ? { priceBookEntries } : {}),
     recordLabels,
     campaignMembers,
     tasks,
@@ -388,7 +389,7 @@ export async function loadScopedScreenData({
       const ids = result.items.map((item) => String(item.id)).filter(Boolean);
       const [lookups, priceBookEntries, recordLabels, campaignMembers] = await Promise.all([
         loadLookupCollections(organizationId, userId, editorLookupObjects(descriptor.object, false)),
-        descriptor.object === "Invoice" ? loadPriceBookEntries(organizationId) : Promise.resolve([]),
+        needsPriceBookEntries(descriptor.object, "list") ? loadPriceBookEntries(organizationId) : Promise.resolve([]),
         prisma.recordLabel.findMany({
           where: { organizationId, objectType: descriptor.object, recordId: { in: ids } }
         }),
@@ -399,7 +400,7 @@ export async function loadScopedScreenData({
       ]);
       screenData = {
         ...lookups,
-        ...(descriptor.object === "Invoice" ? { priceBookEntries } : {}),
+        ...(needsPriceBookEntries(descriptor.object, "list") ? { priceBookEntries } : {}),
         [dataKeyForObject(descriptor.object)]: result.items,
         recordLabels,
         campaignMembers
