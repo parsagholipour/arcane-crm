@@ -27,6 +27,14 @@ export function ListEmailWizard({
   onClose: () => void;
   onSave: (values: RecordData) => Promise<boolean>;
 }) {
+  function scheduleFields(value: unknown) {
+    if (!value) return {};
+    const date = new Date(String(value));
+    if (Number.isNaN(date.getTime())) return {};
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString();
+    return { scheduleDate: local.slice(0, 10), scheduleTime: local.slice(11, 16) };
+  }
+
   function normalizeRecipientReference(value: unknown) {
     const reference = String(value);
     if (/^(lead|contact|account):/.test(reference)) return reference;
@@ -45,8 +53,9 @@ export function ListEmailWizard({
     return true;
   }
 
+  const initialLayoutValue = String(providedInitialValues?.layoutType || initialLayout);
   const [step, setStep] = useState<1 | 2>(startingStep);
-  const [layout, setLayout] = useState(initialLayout);
+  const [layout, setLayout] = useState(initialLayoutValue);
   const [layoutQuery, setLayoutQuery] = useState("");
   const [savedQuery, setSavedQuery] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -54,6 +63,7 @@ export function ListEmailWizard({
     recipientType: "Leads and Contacts",
     status: "Draft",
     scheduleTime: "09:00",
+    ...scheduleFields(providedInitialValues?.scheduledAt),
     ...providedInitialValues,
     recipients: Array.isArray(providedInitialValues?.recipients)
       ? providedInitialValues.recipients.map(normalizeRecipientReference)
@@ -62,7 +72,8 @@ export function ListEmailWizard({
   const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const recipientType = String(values.recipientType ?? "Leads and Contacts");
-  const recipientOptions = [
+  const selectedRecipients = Array.isArray(values.recipients) ? values.recipients.map(String) : [];
+  const loadedRecipientOptions = [
     ...data.leads.map((lead) => ({
       id: `lead:${String(lead.id)}`,
       label: `Lead: ${contactName(lead) || lead.company || lead.id}`,
@@ -89,18 +100,32 @@ export function ListEmailWizard({
       };
     })
   ];
-  const availableRecipients = recipientOptions.filter((recipient) => recipientTypeAllows(recipient.id, recipientType));
-  const selectedRecipients = Array.isArray(values.recipients) ? values.recipients.map(String) : [];
-  const visibleLayouts = LIST_EMAIL_LAYOUTS.filter((item) =>
+  const loadedRecipientIds = new Set(loadedRecipientOptions.map((recipient) => recipient.id));
+  const missingRecipientOptions = selectedRecipients
+    .filter((reference) => !loadedRecipientIds.has(reference))
+    .map((reference) => ({
+      id: reference,
+      label: `Saved recipient: ${reference}`,
+      disabled: false,
+      detail: "Outside the currently loaded record set"
+    }));
+  const recipientOptions = [...loadedRecipientOptions, ...missingRecipientOptions];
+  const availableRecipients = recipientOptions.filter(
+    (recipient) => selectedRecipients.includes(recipient.id) || recipientTypeAllows(recipient.id, recipientType)
+  );
+  const layoutOptions = LIST_EMAIL_LAYOUTS.some((item) => item.name === layout)
+    ? LIST_EMAIL_LAYOUTS
+    : [{ name: layout, description: "Saved custom layout." }, ...LIST_EMAIL_LAYOUTS];
+  const visibleLayouts = layoutOptions.filter((item) =>
     `${item.name} ${item.description}`.toLowerCase().includes(layoutQuery.toLowerCase())
   );
   const visibleSavedEmails = data.listEmails.filter((email) =>
     `${email.subject ?? ""} ${email.layoutType ?? ""}`.toLowerCase().includes(savedQuery.toLowerCase())
   );
-  const selectedLayout = LIST_EMAIL_LAYOUTS.find((item) => item.name === layout) ?? LIST_EMAIL_LAYOUTS[0];
+  const selectedLayout = layoutOptions.find((item) => item.name === layout) ?? LIST_EMAIL_LAYOUTS[0];
   const previewSubject = String(values.subject ?? defaultListEmailSubject(layout));
   const previewBody = String(values.body ?? defaultListEmailBody(layout));
-  const isDirty = layout !== initialLayout || !recordDataShallowEqual(values, initialValues);
+  const isDirty = layout !== initialLayoutValue || !recordDataShallowEqual(values, initialValues);
   const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
 
   function toggleRecipient(id: string) {
@@ -265,8 +290,8 @@ export function ListEmailWizard({
           {previewOpen && (
             <ListEmailPreview
               title={`${selectedLayout.name} Layout`}
-              subject={defaultListEmailSubject(layout)}
-              body={defaultListEmailBody(layout)}
+              subject={previewSubject}
+              body={previewBody}
               recipients={[selectedLayout.description]}
             />
           )}
@@ -290,12 +315,14 @@ export function ListEmailWizard({
             <FieldShell label="Schedule">
               <div className="grid grid-cols-2 gap-2">
                 <input
+                  aria-label="Schedule Date"
                   className={inputClass}
                   type="date"
                   value={String(values.scheduleDate ?? "")}
                   onChange={(event) => setValues({ ...values, scheduleDate: event.target.value })}
                 />
                 <NativeSelect
+                  aria-label="Schedule Time"
                   options={TIME_SLOTS}
                   value={String(values.scheduleTime ?? "09:00")}
                   onChange={(value) => setValues({ ...values, scheduleTime: value })}

@@ -49,6 +49,7 @@ export function StoreEditor({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const snapshot = useMemo(() => JSON.stringify(values), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const currencyOptions = [...new Set([values.currency, "USD", "AED", "EUR", "GBP"])].filter(Boolean);
   function close() {
     if (snapshot === JSON.stringify(values) || window.confirm("Discard unsaved store changes?")) onClose();
   }
@@ -114,7 +115,7 @@ export function StoreEditor({
               value={values.currency}
               onChange={(event) => setValues({ ...values, currency: event.target.value })}
             >
-              {["USD", "AED", "EUR", "GBP"].map((value) => (
+              {currencyOptions.map((value) => (
                 <option key={value}>{value}</option>
               ))}
             </select>

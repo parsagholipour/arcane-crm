@@ -132,13 +132,24 @@ describe("searchable record lookups", () => {
       <EntryEditor
         priceBook={{ id: "price-book-1", name: "Standard Prices" }}
         data={data}
-        entry={{ id: "entry-1", productId: "product-1" }}
+        entry={{
+          id: "entry-1",
+          productId: "archived-product",
+          product: { id: "archived-product", name: "Archived Widget" },
+          listPrice: "1250.00",
+          currency: "JPY",
+          active: false
+        }}
         onClose={callbacks.onClose}
         onSaved={callbacks.onSaved}
       />
     );
     expect(screen.getByRole("combobox", { name: "Product" })).toBeDisabled();
-    expect(screen.getByRole("combobox", { name: "Product" })).toHaveValue("Searchable Widget");
+    expect(screen.getByRole("combobox", { name: "Product" })).toHaveValue("Archived Widget");
+    expect(screen.getByRole("spinbutton", { name: "List Price" })).toHaveValue(1250);
+    expect(screen.getByRole("combobox", { name: "Currency" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Currency" })).toHaveValue("JPY");
+    expect(screen.getByRole("checkbox", { name: "Active" })).not.toBeChecked();
   });
 
   it("uses a searchable Price Book lookup in Stores", async () => {

@@ -54,6 +54,7 @@ export function CampaignEditorModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const snapshot = useMemo(() => JSON.stringify(values), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const missingOwner = values.ownerId && !data.users.some((user) => user.id === values.ownerId);
   function requestClose() {
     if (JSON.stringify(values) === snapshot || window.confirm("Discard unsaved campaign changes?")) onClose();
   }
@@ -120,10 +121,12 @@ export function CampaignEditorModal({
           </Field>
           <Field label="Owner">
             <select
+              aria-label="Owner"
               className={inputClass}
               value={values.ownerId}
               onChange={(event) => setValues({ ...values, ownerId: event.target.value })}
             >
+              {missingOwner && <option value={values.ownerId}>{values.ownerId}</option>}
               {data.users.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.name}
@@ -135,6 +138,7 @@ export function CampaignEditorModal({
             <LookupField
               field={parentCampaignLookupField}
               value={values.parentCampaignId}
+              selectedLabel={text((initial?.parentCampaign as RecordData | undefined)?.name) || undefined}
               data={{ ...data, campaigns: data.campaigns.filter((campaign) => campaign.id !== initial?.id) }}
               inlineSelection
               onChange={(parentCampaignId) => setValues({ ...values, parentCampaignId })}

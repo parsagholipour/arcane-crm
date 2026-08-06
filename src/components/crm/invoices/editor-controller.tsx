@@ -16,6 +16,7 @@ import {
 export type InvoiceLineDraft = {
   key: string;
   productId: string;
+  productLabel: string;
   description: string;
   quantity: string;
   unitPrice: string;
@@ -36,6 +37,7 @@ export function emptyLine(index = 0): InvoiceLineDraft {
   return {
     key: `line-${Date.now()}-${index}-${Math.random().toString(36).slice(2)}`,
     productId: "",
+    productLabel: "",
     description: "",
     quantity: "1",
     unitPrice: "0.00",
@@ -52,6 +54,7 @@ export function invoiceLines(invoice?: RecordData) {
   return lines.map((line, index) => ({
     key: requiredId(line) || `line-existing-${index}`,
     productId: text(line.productId),
+    productLabel: text((line.product as RecordData | undefined)?.name),
     description: text(line.description),
     quantity: text(line.quantity || "1"),
     unitPrice: Number(line.unitPrice ?? 0).toFixed(2),
@@ -171,6 +174,7 @@ export function useInvoiceEditor({
           ? {
               ...item,
               productId,
+              productLabel: text(product?.name),
               description: productId ? text(product?.description || product?.name) : item.description,
               unitPrice: price === undefined || price === null ? item.unitPrice : Number(price).toFixed(2)
             }
@@ -218,8 +222,12 @@ export function useInvoiceEditor({
           body: jsonBody({
             ...header,
             lineItems: lines.map((line, displayOrder) => ({
-              ...line,
-              key: undefined,
+              productId: line.productId,
+              description: line.description,
+              quantity: line.quantity,
+              unitPrice: line.unitPrice,
+              discountAmount: line.discountAmount,
+              taxRate: line.taxRate,
               displayOrder
             }))
           })

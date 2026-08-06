@@ -3,7 +3,7 @@
 import { LayoutDashboard } from "lucide-react";
 import { useMemo, useState } from "react";
 import { OBJECT_DEFINITIONS } from "@/lib/crm-metadata";
-import { type ScopedCrmData, type RecordData } from "@/lib/crm-types";
+import { type CrmObject, type ScopedCrmData, type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { BaseDialog, Button, type ToastState } from "@/components/ui/crm-primitives";
 import { ReportBarChart } from "@/features/crm/analytics";
@@ -13,7 +13,6 @@ import {
   reportBuilderConfigs,
   reportBuilderFieldLabel,
   reportBuilderPreviewReport,
-  reportBuilderRecords,
   reportBuilderTypeFrom,
   reportBuilderTypes
 } from "@/features/crm/analytics-model";
@@ -21,7 +20,17 @@ import { checkboxClass, FieldShell, inputClass, NativeSelect } from "@/features/
 import { resourceApi } from "@/lib/api/resources";
 import { formatCell } from "@/features/crm/form-model";
 import { requiredId } from "@/features/crm/record-model";
-import { type ScopedCrmDataUpdater, type ReportBuilderType } from "@/features/crm/shared-types";
+import {
+  type AnalyticsReportDefinition,
+  type ScopedCrmDataUpdater,
+  type ReportBuilderType
+} from "@/features/crm/shared-types";
+
+function fieldLabel(object: CrmObject | undefined, field: string) {
+  return object
+    ? reportBuilderFieldLabel(object, field)
+    : field.replace(/([A-Z])/g, " $1").replace(/^./, (match) => match.toUpperCase());
+}
 
 export function ReportBuilderModal({
   reportType,
@@ -39,17 +48,22 @@ export function ReportBuilderModal({
   onToast: (toast: ToastState) => void;
 }) {
   const dashboardMode = reportType === "Dashboard";
-  const initialType =
-    !dashboardMode && initial
-      ? (reportBuilderTypes.find((type) => reportBuilderConfigs[type].object === initial.object) ??
-        reportBuilderTypeFrom(reportType))
-      : reportBuilderTypeFrom(reportType);
-  const [builderType, setBuilderType] = useState<ReportBuilderType>(initialType);
+  const persistedObject = String(initial?.object ?? "").trim();
+  const persistedBuilderType = reportBuilderTypes.find((type) => reportBuilderConfigs[type].object === persistedObject);
+  const hasPersistedReportType = Boolean(!dashboardMode && initial && persistedObject && !persistedBuilderType);
+  const persistedCrmObject = (Object.keys(OBJECT_DEFINITIONS) as CrmObject[]).find(
+    (object) => object === persistedObject
+  );
+  const persistedObjectLabel = persistedCrmObject ? OBJECT_DEFINITIONS[persistedCrmObject].label : persistedObject;
+  const initialType = persistedBuilderType ?? reportBuilderTypeFrom(reportType);
+  const [builderType, setBuilderType] = useState<ReportBuilderType | null>(hasPersistedReportType ? null : initialType);
+  const persistedColumns = Array.isArray(initial?.columns) ? initial.columns.map(String) : [];
+  const persistedGroupField = String(initial?.groupField ?? "");
   const [groupField, setGroupField] = useState(
     String(initial?.groupField ?? reportBuilderConfigs[initialType].defaultGroup)
   );
   const [selectedColumns, setSelectedColumns] = useState<string[]>(() =>
-    Array.isArray(initial?.columns) ? initial.columns.map(String) : reportBuilderConfigs[initialType].columns
+    persistedColumns.length ? persistedColumns : reportBuilderConfigs[initialType].columns
   );
   const [reportName, setReportName] = useState(
     String(
@@ -66,12 +80,51 @@ export function ReportBuilderModal({
       ? initial.reportIds.map(String)
       : analyticsReports.slice(0, 4).map((report) => report.id)
   );
-  const config = reportBuilderConfigs[builderType];
-  const records = reportBuilderRecords(data, builderType);
-  const previewReport = useMemo(
-    () => reportBuilderPreviewReport(data, builderType, groupField),
-    [data, builderType, groupField]
+  const standardConfig = reportBuilderConfigs[builderType ?? initialType];
+  const activeObject = builderType === null ? persistedObject : standardConfig.object;
+  const activeCrmObject = (Object.keys(OBJECT_DEFINITIONS) as CrmObject[]).find((object) => object === activeObject);
+  const objectLabel = activeCrmObject ? OBJECT_DEFINITIONS[activeCrmObject].label : activeObject;
+  const persistedFields = [
+    ...new Set([
+      ...persistedColumns,
+      ...(persistedGroupField ? [persistedGroupField] : []),
+      ...(activeCrmObject ? OBJECT_DEFINITIONS[activeCrmObject].columns.map((column) => column.key) : [])
+    ])
+  ];
+  const availableColumns = builderType === null ? persistedFields : standardConfig.columns;
+  const groupOptions =
+    builderType === null
+      ? persistedFields.map((field) => ({ field, label: fieldLabel(activeCrmObject, field) }))
+      : standardConfig.groupOptions;
+  const records = useMemo(
+    () => (activeCrmObject ? (data[OBJECT_DEFINITIONS[activeCrmObject].dataKey] as RecordData[]) : []),
+    [activeCrmObject, data]
   );
+  const previewReport = useMemo<AnalyticsReportDefinition>(() => {
+    if (builderType) return reportBuilderPreviewReport(data, builderType, groupField);
+    const groupLabel = fieldLabel(activeCrmObject, groupField);
+    const counts = new Map<string, number>();
+    for (const record of records) {
+      const label = formatCell(record[groupField]) || "Blank";
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+    return {
+      id: "builder-preview",
+      title: `${objectLabel} by ${groupLabel}`,
+      objectLabel,
+      description: `Preview of the saved ${objectLabel} report configuration.`,
+      rowHeader: groupLabel,
+      valueHeader: "Records",
+      valueKind: "count",
+      emptyMessage: `No ${objectLabel.toLowerCase()} records are loaded for this report.`,
+      metrics: [
+        { label: "Records", value: String(records.length) },
+        { label: "Groups", value: String(counts.size) }
+      ],
+      rows: [...counts].map(([label, count]) => ({ label, count })),
+      href: "#"
+    };
+  }, [activeCrmObject, builderType, data, groupField, objectLabel, records]);
   const previewRows = records.slice(0, 5);
   const selectedDashboardReports = analyticsReports.filter((report) => dashboardReportIds.includes(report.id));
 
@@ -81,6 +134,12 @@ export function ReportBuilderModal({
     setGroupField(nextConfig.defaultGroup);
     setSelectedColumns(nextConfig.columns);
     setReportName(`${type} by ${reportBuilderFieldLabel(nextConfig.object, nextConfig.defaultGroup)}`);
+  }
+
+  function selectPersistedType() {
+    setBuilderType(null);
+    setGroupField(persistedGroupField);
+    setSelectedColumns(persistedColumns);
   }
 
   function toggleColumn(column: string) {
@@ -105,7 +164,7 @@ export function ReportBuilderModal({
     setSaving(true);
     const values = {
       name: reportName.trim(),
-      object: config.object,
+      object: activeObject,
       groupField,
       columns: selectedColumns
     };
@@ -272,6 +331,17 @@ export function ReportBuilderModal({
         <aside className="rounded border border-[#d8dde6] p-3">
           <div className="mb-2 font-semibold">Report Types</div>
           <div className="space-y-1">
+            {hasPersistedReportType && (
+              <button
+                onClick={selectPersistedType}
+                className={cn(
+                  "block w-full rounded px-2 py-2 text-left text-sm hover:bg-brand-50",
+                  builderType === null && "bg-brand-50 font-semibold text-brand-900"
+                )}
+              >
+                {persistedObjectLabel} (Saved)
+              </button>
+            )}
             {reportBuilderTypes.map((type) => (
               <button
                 key={type}
@@ -288,7 +358,7 @@ export function ReportBuilderModal({
           <div className="mt-4 border-t border-[#d8dde6] pt-3">
             <div className="mb-2 text-xs font-semibold uppercase tracking-[0.04em] text-[#706e6b]">Columns</div>
             <div className="space-y-1">
-              {config.columns.map((column) => (
+              {availableColumns.map((column) => (
                 <label
                   key={column}
                   className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-brand-50"
@@ -299,7 +369,7 @@ export function ReportBuilderModal({
                     onChange={() => toggleColumn(column)}
                     className={checkboxClass}
                   />
-                  <span>{reportBuilderFieldLabel(config.object, column)}</span>
+                  <span>{fieldLabel(activeCrmObject, column)}</span>
                 </label>
               ))}
             </div>
@@ -320,12 +390,9 @@ export function ReportBuilderModal({
               </FieldShell>
               <FieldShell label="Group Rows">
                 <NativeSelect
-                  options={config.groupOptions.map((option) => option.label)}
-                  value={reportBuilderFieldLabel(config.object, groupField)}
-                  onChange={(label) => {
-                    const option = config.groupOptions.find((item) => item.label === label);
-                    if (option) setGroupField(option.field);
-                  }}
+                  options={groupOptions.map((option) => ({ value: option.field, label: option.label }))}
+                  value={groupField}
+                  onChange={setGroupField}
                 />
               </FieldShell>
             </div>
@@ -341,7 +408,7 @@ export function ReportBuilderModal({
               <dl className="space-y-3 text-sm">
                 <div>
                   <dt className="text-xs text-[#706e6b]">Object</dt>
-                  <dd>{OBJECT_DEFINITIONS[config.object].label}</dd>
+                  <dd>{objectLabel}</dd>
                 </div>
                 <div>
                   <dt className="text-xs text-[#706e6b]">Rows</dt>
@@ -375,7 +442,7 @@ export function ReportBuilderModal({
                     <tr>
                       {selectedColumns.map((column) => (
                         <th key={column} className="border-b border-[#d8dde6] px-3 py-2">
-                          {reportBuilderFieldLabel(config.object, column)}
+                          {fieldLabel(activeCrmObject, column)}
                         </th>
                       ))}
                     </tr>

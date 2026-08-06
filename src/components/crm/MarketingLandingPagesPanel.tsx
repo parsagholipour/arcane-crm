@@ -269,6 +269,11 @@ function LandingPageEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const dirty = JSON.stringify(values) !== initialSnapshot;
+  const ownerUnavailable = Boolean(values.ownerId && !data.users.some((user) => user.id === values.ownerId));
+  const initialOwner = initial?.owner as RecordData | undefined;
+  const unavailableOwnerLabel = String(initialOwner?.name ?? initial?.ownerName ?? values.ownerId);
+  const initialCampaign = initial?.campaign as RecordData | undefined;
+  const selectedCampaignLabel = String(initialCampaign?.name ?? initial?.campaignName ?? "");
   function close() {
     if (!dirty || window.confirm("Discard unsaved landing-page changes?")) onClose();
   }
@@ -365,6 +370,11 @@ function LandingPageEditor({
             value={values.ownerId}
             onChange={(event) => setValues({ ...values, ownerId: event.target.value })}
           >
+            {ownerUnavailable && (
+              <option value={values.ownerId} disabled>
+                {unavailableOwnerLabel} (Inactive)
+              </option>
+            )}
             {data.users.map((user) => (
               <option key={user.id} value={user.id}>
                 {user.name}
@@ -377,6 +387,7 @@ function LandingPageEditor({
             field={campaignLookupField}
             value={values.campaignId}
             data={{ ...data, campaigns: data.campaigns.filter((campaign) => campaign.status !== "Archived") }}
+            selectedLabel={selectedCampaignLabel}
             inlineSelection
             onChange={(campaignId) => setValues({ ...values, campaignId })}
           />

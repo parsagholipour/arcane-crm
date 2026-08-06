@@ -36,6 +36,14 @@ export function CalendarSourceModal({
     visible: source?.visible !== false
   }));
   const [error, setError] = useState("");
+  const selectedColor = text(values.color);
+  const customColor = Boolean(
+    selectedColor &&
+    !CALENDAR_SOURCE_COLORS.some((option) => option.value.toLowerCase() === selectedColor.toLowerCase())
+  );
+  const colorOptions = customColor
+    ? [{ label: `Saved color ${selectedColor}`, value: selectedColor }, ...CALENDAR_SOURCE_COLORS]
+    : CALENDAR_SOURCE_COLORS;
 
   function save() {
     if (!text(values.name).trim()) {
@@ -85,12 +93,13 @@ export function CalendarSourceModal({
           </select>
         </Field>
         <Field label="Color">
-          <div className="flex flex-wrap gap-2">
-            {CALENDAR_SOURCE_COLORS.map((option) => (
+          <div className="flex flex-wrap items-center gap-2">
+            {colorOptions.map((option) => (
               <button
                 key={option.value}
                 type="button"
                 aria-label={`Use ${option.label}`}
+                title={`${option.label} (${option.value})`}
                 onClick={() => setValues({ ...values, color: option.value })}
                 className={cn(
                   "h-8 w-8 rounded border border-[#c9c9c9] ring-offset-2",
@@ -99,6 +108,7 @@ export function CalendarSourceModal({
                 style={{ backgroundColor: option.value }}
               />
             ))}
+            {customColor && <span className="text-xs text-[#706e6b]">{selectedColor}</span>}
           </div>
         </Field>
         <label className="flex items-center gap-2 text-sm">

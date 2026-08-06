@@ -108,7 +108,9 @@ export function EventModal({
     attendeeIds: record && Array.isArray(record.attendeeIds) ? record.attendeeIds.map(String) : [data.user.id],
     nameObjectType: record ? String(record.nameObjectType ?? nameTypeDefault) : nameTypeDefault,
     nameRecordId: record ? String(record.nameRecordId ?? "") : (nameRecordDefault ?? ""),
-    relatedObjectType: record ? String(record.relatedObjectType ?? relatedTypeDefault) : relatedTypeDefault,
+    relatedObjectType: record
+      ? relatedObjectTypeForForm(record.relatedObjectType, relatedTypeDefault)
+      : relatedTypeDefault,
     relatedRecordId: record ? String(record.relatedRecordId ?? "") : (relatedRecordDefault ?? ""),
     calendarSourceId: record
       ? String(record.calendarSourceId ?? "")
@@ -134,6 +136,10 @@ export function EventModal({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const isDirty = !recordDataShallowEqual(values, initialValues);
   const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
+  const assignedToId = String(values.assignedToId ?? data.user.id);
+  const assignedToName =
+    data.users.find((user) => user.id === assignedToId)?.name ??
+    (assignedToId === data.user.id ? data.user.name : String(record?.assignedToName ?? assignedToId));
 
   const nameLookupField: FieldDefinition = {
     name: "nameRecordId",
@@ -425,7 +431,7 @@ export function EventModal({
           </div>
         </FieldShell>
         <FieldShell label="Assigned To" required error={errors.assignedToId}>
-          <input className={inputClass} value={data.user.name} readOnly />
+          <input className={inputClass} value={assignedToName} readOnly />
         </FieldShell>
         <FieldShell label="Calendar">
           <select
@@ -565,9 +571,15 @@ export const REPEAT_OPTIONS = [
 ];
 export function relatedPluralToCrmObject(plural: string): CrmObject | null {
   const match = (Object.keys(OBJECT_DEFINITIONS) as CrmObject[]).find(
-    (object) => OBJECT_DEFINITIONS[object].plural === plural
+    (object) => object === plural || OBJECT_DEFINITIONS[object].plural === plural
   );
   return match ?? null;
+}
+export function relatedObjectTypeForForm(value: unknown, fallback = "Accounts") {
+  const persistedType = String(value ?? "");
+  if (!persistedType) return fallback;
+  const object = relatedPluralToCrmObject(persistedType);
+  return object ? OBJECT_DEFINITIONS[object].plural : persistedType;
 }
 export function eventQuickTextSnippet(data: ScopedCrmData) {
   const eventQuickText = data.quickTexts.find((item) => {

@@ -11,6 +11,10 @@ import { displayDensityOptions, localeOptions, timezoneOptions } from "@/feature
 import { apiRequest, jsonBody } from "@/lib/api/client";
 import { resourceApi } from "@/lib/api/resources";
 
+export function optionsWithPersistedValue(options: string[], value: string) {
+  return value && !options.includes(value) ? [value, ...options] : options;
+}
+
 export function YourAccountPage({
   data,
   onDataChange,
@@ -329,7 +333,7 @@ export function YourAccountPage({
                   value={density}
                   onChange={(event) => setDensity(event.target.value)}
                 >
-                  {displayDensityOptions.map((option) => (
+                  {optionsWithPersistedValue(displayDensityOptions, density).map((option) => (
                     <option key={option}>{option}</option>
                   ))}
                 </select>
@@ -341,7 +345,7 @@ export function YourAccountPage({
                   value={timezone}
                   onChange={(event) => setTimezone(event.target.value)}
                 >
-                  {timezoneOptions.map((option) => (
+                  {optionsWithPersistedValue(timezoneOptions, timezone).map((option) => (
                     <option key={option}>{option}</option>
                   ))}
                 </select>
@@ -353,7 +357,7 @@ export function YourAccountPage({
                   value={locale}
                   onChange={(event) => setLocale(event.target.value)}
                 >
-                  {localeOptions.map((option) => (
+                  {optionsWithPersistedValue(localeOptions, locale).map((option) => (
                     <option key={option}>{option}</option>
                   ))}
                 </select>

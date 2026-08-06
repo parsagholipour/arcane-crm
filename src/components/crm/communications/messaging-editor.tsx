@@ -41,6 +41,13 @@ const participantContactLookupField: FieldDefinition = {
   type: "lookup",
   lookupObject: "Contact"
 };
+const messagingParticipantRoles = ["Customer", "Agent", "Observer"];
+
+function messagingParticipantRoleOptions(role: string) {
+  return role && !messagingParticipantRoles.includes(role)
+    ? [role, ...messagingParticipantRoles]
+    : messagingParticipantRoles;
+}
 
 export function initialMessagingParticipants(record: RecordData | undefined): ParticipantDraft[] {
   const participants = Array.isArray(record?.participants) ? (record.participants as RecordData[]) : [];
@@ -79,6 +86,12 @@ export function MessagingSessionEditorModal({
   const initialSnapshot = useMemo(() => JSON.stringify({ values, participants }), []); // eslint-disable-line react-hooks/exhaustive-deps
   const dirty = JSON.stringify({ values, participants }) !== initialSnapshot;
   const contacts = data.contacts.filter((contact) => !values.accountId || contact.accountId === values.accountId);
+  const ownerUnavailable = Boolean(values.ownerId && !data.users.some((user) => user.id === values.ownerId));
+  const unavailableOwnerLabel = text(initial?.ownerName) || values.ownerId;
+  const initialAccount = initial?.account as RecordData | undefined;
+  const initialContact = initial?.contact as RecordData | undefined;
+  const selectedAccountLabel = text(initialAccount?.name ?? initial?.accountName);
+  const selectedContactLabel = initialContact ? contactLabel(initialContact) : text(initial?.contactName);
 
   function requestClose() {
     if (!dirty || window.confirm("Discard unsaved messaging-session changes?")) onClose();
@@ -186,6 +199,11 @@ export function MessagingSessionEditorModal({
               value={values.ownerId}
               onChange={(event) => setValues({ ...values, ownerId: event.target.value })}
             >
+              {ownerUnavailable && (
+                <option value={values.ownerId} disabled>
+                  {unavailableOwnerLabel} (Unavailable)
+                </option>
+              )}
               {data.users.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.name}
@@ -198,6 +216,7 @@ export function MessagingSessionEditorModal({
               field={accountLookupField}
               value={values.accountId}
               data={data}
+              selectedLabel={selectedAccountLabel}
               inlineSelection
               onChange={selectAccount}
             />
@@ -207,6 +226,7 @@ export function MessagingSessionEditorModal({
               field={contactLookupField}
               value={values.contactId}
               data={{ ...data, contacts }}
+              selectedLabel={selectedContactLabel}
               inlineSelection
               onChange={(contactId) => setValues({ ...values, contactId })}
             />
@@ -241,6 +261,11 @@ export function MessagingSessionEditorModal({
                   field={{ ...participantContactLookupField, label: `Participant ${index + 1} Contact` }}
                   value={participant.contactId}
                   data={data}
+                  selectedLabel={
+                    participant.contactId
+                      ? `Contact: ${participant.name || participant.address || participant.contactId} (Unavailable)`
+                      : ""
+                  }
                   inlineSelection
                   onChange={(contactId) => selectContact(index, contactId)}
                 />
@@ -257,11 +282,12 @@ export function MessagingSessionEditorModal({
                   onChange={(event) => updateParticipant(index, { address: event.target.value })}
                 />
                 <select
+                  aria-label={`Participant ${index + 1} Role`}
                   className={inputClass}
                   value={participant.role}
                   onChange={(event) => updateParticipant(index, { role: event.target.value })}
                 >
-                  {["Customer", "Agent", "Observer"].map((value) => (
+                  {messagingParticipantRoleOptions(participant.role).map((value) => (
                     <option key={value}>{value}</option>
                   ))}
                 </select>

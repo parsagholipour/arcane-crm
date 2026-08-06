@@ -2,7 +2,7 @@
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useRef, useState } from "react";
-import { type RecordData } from "@/lib/crm-types";
+import { type RecordData, type ScopedCrmData } from "@/lib/crm-types";
 import { cn, slugify } from "@/lib/utils";
 import { BaseDialog, Button } from "@/components/ui/crm-primitives";
 import {
@@ -18,10 +18,12 @@ import { formatWordCount, richTextWordCount, stripRichTextMarkup } from "@/featu
 import { useUnsavedChangesGuard } from "@/features/crm/record-editors";
 
 export function KnowledgeModal({
+  data,
   initial,
   onClose,
   onSave
 }: {
+  data: Pick<ScopedCrmData, "users">;
   initial?: RecordData;
   onClose: () => void;
   onSave: (values: RecordData) => Promise<boolean>;
@@ -42,6 +44,18 @@ export function KnowledgeModal({
   const wordCount = richTextWordCount(bodyRichText);
   const isDirty = !recordDataShallowEqual(values, initialValues);
   const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
+  const userName = (value: unknown) => {
+    const userId = String(value ?? "");
+    return data.users.find((user) => user.id === userId)?.name ?? userId;
+  };
+  const metadataFields = [
+    { label: "Article Created Date", value: values.createdAt },
+    { label: "Created By", value: userName(values.createdById) },
+    { label: "Article Archived Date", value: values.archivedAt },
+    { label: "Last Modified By", value: userName(values.updatedById) },
+    { label: "Article Total View Count", value: values.totalViewCount },
+    { label: "Archived By", value: userName(values.archivedById) }
+  ];
 
   async function submit(stayOpen = false) {
     const nextErrors = validateRequired(values, ["title", "urlName"]);
@@ -247,6 +261,13 @@ export function KnowledgeModal({
             />
           </FieldShell>
         </div>
+        <FieldShell label="Summary">
+          <textarea
+            className={cn(inputClass, "min-h-20")}
+            value={String(values.summary ?? "")}
+            onChange={(event) => setValues({ ...values, summary: event.target.value })}
+          />
+        </FieldShell>
         <div
           className={cn(
             "rounded border border-[#d8dde6] bg-white",
@@ -444,16 +465,9 @@ export function KnowledgeModal({
               onCheckedChange={(value) => setValues({ ...values, visibleToCustomer: Boolean(value) })}
             />
           </FieldShell>
-          {[
-            "Article Created Date",
-            "Created By",
-            "Article Archived Date",
-            "Last Modified By",
-            "Article Total View Count",
-            "Archived By"
-          ].map((label) => (
+          {metadataFields.map(({ label, value }) => (
             <FieldShell key={label} label={label}>
-              <input className={inputClass} readOnly />
+              <input aria-label={label} className={inputClass} value={String(value ?? "")} readOnly />
             </FieldShell>
           ))}
         </div>

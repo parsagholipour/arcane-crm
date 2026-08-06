@@ -163,6 +163,7 @@ export function ModalHost({
   if (modal.type === "knowledge")
     return (
       <KnowledgeModal
+        data={data}
         initial={modal.record}
         onClose={onClose}
         onSave={(values) => onSaveRecord("Knowledge__kav", values, { id: modal.record?.id })}

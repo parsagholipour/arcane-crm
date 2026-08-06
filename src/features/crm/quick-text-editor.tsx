@@ -4,7 +4,7 @@ import { useState } from "react";
 import { type ScopedCrmData, type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { BaseDialog, Button } from "@/components/ui/crm-primitives";
-import { checkboxClass, FieldShell, inputClass, NativeSelect } from "@/features/crm/controls";
+import { FieldShell, inputClass, NativeSelect } from "@/features/crm/controls";
 import { recordDataShallowEqual, validateRequired } from "@/features/crm/form-model";
 import { useUnsavedChangesGuard } from "@/features/crm/record-editors";
 
@@ -21,18 +21,20 @@ export function QuickTextModal({
 }) {
   const [initialValues] = useState<RecordData>(() =>
     initial
-      ? { ...initial, includeInSelectedChannels: true }
-      : { category: "Greetings", channels: ["Email"], mergeFields: [], includeInSelectedChannels: true }
+      ? { ...initial, channels: Array.isArray(initial.channels) ? initial.channels.map(String) : [] }
+      : { category: "Greetings", channels: ["Email"], mergeFields: [] }
   );
   const [values, setValues] = useState<RecordData>(() => initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [previewOpen, setPreviewOpen] = useState(false);
   const [mergeError, setMergeError] = useState("");
+  const [availableChannel, setAvailableChannel] = useState("");
+  const [selectedChannel, setSelectedChannel] = useState("");
   const isDirty = !recordDataShallowEqual(values, initialValues);
   const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
-  const available = ["Event", "Task", "CaseComment", "Knowledge"].filter(
-    (item) => !(values.channels as string[]).includes(item)
-  );
+  const selectedChannels = Array.isArray(values.channels) ? values.channels.map(String) : [];
+  const channelOptions = [...new Set(["Email", "Event", "Task", "CaseComment", "Knowledge", ...selectedChannels])];
+  const available = channelOptions.filter((item) => !selectedChannels.includes(item));
   async function submit(stayOpen = false) {
     const nextErrors = validateRequired(values, ["name", "message"]);
     setErrors(nextErrors);
@@ -61,10 +63,12 @@ export function QuickTextModal({
     });
   }
   function moveChannel(channel: string, selected: boolean) {
-    const channels = new Set(values.channels as string[]);
+    const channels = new Set(selectedChannels);
     if (selected) channels.add(channel);
     else channels.delete(channel);
     setValues({ ...values, channels: Array.from(channels) });
+    setAvailableChannel("");
+    setSelectedChannel("");
   }
   if (discardDialog) return discardDialog;
   return (
@@ -140,40 +144,55 @@ export function QuickTextModal({
         </FieldShell>
         <div>
           <div className="mb-1 text-xs font-semibold text-[#444]">Channel</div>
-          <p className="mb-2 text-xs text-[#706e6b]">Use Ctrl/Cmd plus arrow keys to move items between lists.</p>
+          <p className="mb-2 text-xs text-[#706e6b]">Choose a channel, then move it between the lists.</p>
           <div className="grid grid-cols-[1fr_auto_1fr] gap-2">
-            <select multiple className={cn(inputClass, "h-28 p-2")}>
+            <select
+              aria-label="Available Channels"
+              size={5}
+              className={cn(inputClass, "h-28 p-2")}
+              value={availableChannel}
+              onChange={(event) => setAvailableChannel(event.target.value)}
+            >
               {available.map((item) => (
-                <option key={item}>{item}</option>
+                <option key={item} value={item}>
+                  {item}
+                </option>
               ))}
             </select>
             <div className="flex flex-col justify-center gap-1">
-              {available.map((item) => (
-                <button
-                  key={item}
-                  className="rounded border border-[#c9c9c9] px-2 py-1 text-xs"
-                  onClick={() => moveChannel(item, true)}
-                  aria-label="Move selection to Selected"
-                >
-                  ›
-                </button>
-              ))}
+              <button
+                type="button"
+                className="rounded border border-[#c9c9c9] px-2 py-1 text-xs disabled:opacity-40"
+                disabled={!availableChannel}
+                onClick={() => moveChannel(availableChannel, true)}
+                aria-label="Move selection to Selected"
+              >
+                ›
+              </button>
+              <button
+                type="button"
+                className="rounded border border-[#c9c9c9] px-2 py-1 text-xs disabled:opacity-40"
+                disabled={!selectedChannel}
+                onClick={() => moveChannel(selectedChannel, false)}
+                aria-label="Move selection to Available"
+              >
+                ‹
+              </button>
             </div>
-            <select multiple className={cn(inputClass, "h-28 p-2")}>
-              {(values.channels as string[]).map((item) => (
-                <option key={item}>{item}</option>
+            <select
+              aria-label="Selected Channels"
+              size={5}
+              className={cn(inputClass, "h-28 p-2")}
+              value={selectedChannel}
+              onChange={(event) => setSelectedChannel(event.target.value)}
+            >
+              {selectedChannels.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
               ))}
             </select>
           </div>
-          <label className="mt-2 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              className={checkboxClass}
-              checked={Boolean(values.includeInSelectedChannels)}
-              onChange={(event) => setValues({ ...values, includeInSelectedChannels: event.target.checked })}
-            />{" "}
-            Include in selected channels
-          </label>
         </div>
       </div>
       {previewOpen && (

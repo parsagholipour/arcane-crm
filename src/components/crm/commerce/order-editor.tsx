@@ -26,6 +26,7 @@ import {
 
 export type OrderLineDraft = {
   productId: string;
+  productLabel: string;
   description: string;
   quantity: string;
   unitPrice: string;
@@ -66,6 +67,7 @@ export function OrderEditor({
 }) {
   const initialLines = records(initial?.lines).map((line) => ({
     productId: text(line.productId),
+    productLabel: text((line.product as RecordData | undefined)?.name),
     description: text(line.description),
     quantity: text(line.quantity),
     unitPrice: text(line.unitPrice),
@@ -98,6 +100,11 @@ export function OrderEditor({
   const entries = data.priceBookEntries.filter(
     (entry) => !store?.priceBookId || entry.priceBookId === store.priceBookId
   );
+  const initialAccount = initial?.account as RecordData | undefined;
+  const initialContact = initial?.contact as RecordData | undefined;
+  const initialContactLabel =
+    [text(initialContact?.firstName), text(initialContact?.lastName)].filter(Boolean).join(" ") ||
+    text(initialContact?.name);
   function close() {
     if (snapshot === JSON.stringify({ values, lines }) || window.confirm("Discard unsaved order changes?")) onClose();
   }
@@ -109,6 +116,7 @@ export function OrderEditor({
     const entry = entries.find((item) => item.productId === productId && item.active);
     updateLine(index, {
       productId,
+      productLabel: text(product?.name),
       description: text(product?.description || product?.name),
       unitPrice: text(entry?.listPrice || "0")
     });
@@ -134,7 +142,18 @@ export function OrderEditor({
       const payload = await json(initial ? `/api/commerce/orders/${id(initial)}` : "/api/commerce/orders", {
         method: initial ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...values, currency: store?.currency || "USD", lineItems: lines })
+        body: JSON.stringify({
+          ...values,
+          currency: store?.currency || "USD",
+          lineItems: lines.map((line) => ({
+            productId: line.productId,
+            description: line.description,
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            discountAmount: line.discountAmount,
+            taxRate: line.taxRate
+          }))
+        })
       });
       onSaved(initial ? { order: payload.order as RecordData } : (payload as Mutation));
     } catch (saveError) {
@@ -165,13 +184,14 @@ export function OrderEditor({
         <div className="grid gap-3 md:grid-cols-3">
           <Field label="Store" required>
             <select
+              aria-label="Store"
               className={input}
               value={values.storeId}
               onChange={(event) => setValues({ ...values, storeId: event.target.value })}
             >
               <option value="">Choose Store</option>
               {data.stores
-                .filter((item) => item.status !== "Archived")
+                .filter((item) => item.status !== "Archived" || id(item) === values.storeId)
                 .map((item) => (
                   <option key={id(item)} value={id(item)}>
                     {text(item.name)} ({text(item.status)})
@@ -183,6 +203,7 @@ export function OrderEditor({
             <LookupField
               field={accountLookupField}
               value={values.accountId}
+              selectedLabel={text(initialAccount?.name) || undefined}
               data={data}
               inlineSelection
               onChange={(accountId) => setValues({ ...values, accountId, contactId: "" })}
@@ -192,6 +213,7 @@ export function OrderEditor({
             <LookupField
               field={contactLookupField}
               value={values.contactId}
+              selectedLabel={initialContactLabel || undefined}
               data={{ ...data, contacts }}
               inlineSelection
               onChange={(contactId) => setValues({ ...values, contactId })}
@@ -230,7 +252,15 @@ export function OrderEditor({
               onClick={() =>
                 setLines((current) => [
                   ...current,
-                  { productId: "", description: "", quantity: "1", unitPrice: "0", discountAmount: "0", taxRate: "0" }
+                  {
+                    productId: "",
+                    productLabel: "",
+                    description: "",
+                    quantity: "1",
+                    unitPrice: "0",
+                    discountAmount: "0",
+                    taxRate: "0"
+                  }
                 ])
               }
             >
@@ -248,6 +278,7 @@ export function OrderEditor({
                   <LookupField
                     field={{ ...productLookupField, label: `Line ${index + 1} Product` }}
                     value={line.productId}
+                    selectedLabel={line.productLabel || undefined}
                     data={data}
                     inlineSelection
                     onChange={(productId) => chooseProduct(index, productId)}

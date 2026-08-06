@@ -6,6 +6,7 @@ import { VideoCallEditorModal } from "@/components/crm/communications/video-edit
 import { toDateTimeInput } from "@/components/crm/communications/primitives";
 import { InvoiceEditorModal } from "@/components/crm/invoices/editor";
 import { EventModal } from "@/features/crm/event-editor";
+import { ListEmailWizard } from "@/features/crm/list-email-editor";
 
 const data = {
   user: { id: "user-1", name: "Primary User", alias: "primary" },
@@ -20,6 +21,7 @@ const data = {
   campaigns: [],
   calendarSources: [],
   quickTexts: [],
+  listEmails: [],
   userPreferences: [{ timezone: "UTC" }],
   emailDeliveryConfigured: false
 } as unknown as ScopedCrmData;
@@ -32,7 +34,7 @@ describe("edit-form date hydration", () => {
         initial={{
           id: "campaign-1",
           name: "Autumn Campaign",
-          ownerId: "user-1",
+          ownerId: "inactive-owner",
           startDate: "2026-09-30T00:00:00.000Z",
           endDate: "2026-10-31T00:00:00.000Z"
         }}
@@ -44,21 +46,34 @@ describe("edit-form date hydration", () => {
 
     expect(screen.getByLabelText("Start Date")).toHaveValue("2026-09-30");
     expect(screen.getByLabelText("End Date")).toHaveValue("2026-10-31");
+    expect(screen.getByLabelText("Owner")).toHaveValue("inactive-owner");
   });
 
   it("hydrates Invoice date inputs from serialized API timestamps", () => {
+    const invoiceData = { ...data, products: [] } as unknown as ScopedCrmData;
     render(
       <InvoiceEditorModal
         mode="edit"
-        data={data}
+        data={invoiceData}
         invoice={{
           id: "invoice-1",
           status: "Draft",
           accountId: "account-1",
           issueDate: "2026-09-30T00:00:00.000Z",
           dueDate: "2026-10-30T00:00:00.000Z",
-          currency: "USD",
-          lineItems: []
+          currency: "JPY",
+          lineItems: [
+            {
+              id: "line-1",
+              productId: "product-retired",
+              product: { id: "product-retired", name: "Retired Widget", active: false },
+              description: "Retired Widget",
+              quantity: 1,
+              unitPrice: 100,
+              discountAmount: 0,
+              taxRate: 0
+            }
+          ]
         }}
         onClose={vi.fn()}
         onSaved={vi.fn()}
@@ -68,6 +83,8 @@ describe("edit-form date hydration", () => {
 
     expect(screen.getByLabelText("Issue Date")).toHaveValue("2026-09-30");
     expect(screen.getByLabelText("Due Date")).toHaveValue("2026-10-30");
+    expect(screen.getByLabelText("Currency")).toHaveValue("JPY");
+    expect(screen.getByRole("combobox", { name: "Line 1 Product" })).toHaveValue("Retired Widget");
   });
 
   it("hydrates Video Call local date-time inputs from serialized API timestamps", () => {
@@ -114,5 +131,32 @@ describe("edit-form date hydration", () => {
     expect(screen.getByRole("combobox", { name: /Start Time/ })).toHaveTextContent("08:15");
     expect(screen.getByLabelText(/End Date/)).toHaveValue("2026-09-30");
     expect(screen.getByRole("combobox", { name: /End Time/ })).toHaveTextContent("09:45");
+  });
+
+  it("hydrates a scheduled List Email date and off-grid time from its saved timestamp", () => {
+    render(
+      <ListEmailWizard
+        data={data}
+        startingStep={2}
+        initialValues={{
+          id: "email-1",
+          layoutType: "Sales",
+          subject: "Quarterly update",
+          body: "Hello",
+          status: "Scheduled",
+          scheduledAt: "2026-09-30T08:07:00.000Z",
+          recipientType: "Contacts",
+          recipients: ["contact:outside-page"]
+        }}
+        onClose={vi.fn()}
+        onSave={vi.fn().mockResolvedValue(false)}
+      />
+    );
+
+    const saved = new Date("2026-09-30T08:07:00.000Z");
+    const local = new Date(saved.getTime() - saved.getTimezoneOffset() * 60_000).toISOString();
+    expect(screen.getByLabelText("Schedule Date")).toHaveValue(local.slice(0, 10));
+    expect(screen.getByRole("combobox", { name: "Schedule Time" })).toHaveTextContent(local.slice(11, 16));
+    expect(screen.getByRole("checkbox", { name: /Saved recipient: contact:outside-page/ })).toBeChecked();
   });
 });

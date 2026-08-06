@@ -5,6 +5,7 @@ import { DEFAULT_EVENT_REMINDER_MINUTES } from "@/lib/calendar-reminder-values";
 import { validateEventReminderMinutes } from "@/lib/calendar-events";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 import { prisma } from "@/lib/prisma";
+import { optionalNumberValue, optionalStringValue } from "@/server/records/form-values";
 
 export async function createRecord(object: CrmObject, payload: RecordData, organizationId: string, userId: string) {
   switch (object) {
@@ -20,8 +21,8 @@ export async function createRecord(object: CrmObject, payload: RecordData, organ
           ownerId: String(payload.ownerId ?? userId),
           phone: payload.phone as string | null,
           rating: payload.rating as string | null,
-          numberOfEmployees: payload.numberOfEmployees ? Number(payload.numberOfEmployees) : null,
-          annualRevenue: payload.annualRevenue ? String(payload.annualRevenue) : null,
+          numberOfEmployees: optionalNumberValue(payload.numberOfEmployees),
+          annualRevenue: optionalStringValue(payload.annualRevenue),
           industry: payload.industry as string | null,
           billingCountry: payload.billingCountry as string | null,
           billingStreet: payload.billingStreet as string | null,
@@ -83,8 +84,8 @@ export async function createRecord(object: CrmObject, payload: RecordData, organ
           postalCode: payload.postalCode as string | null,
           city: payload.city as string | null,
           state: payload.state as string | null,
-          numberOfEmployees: payload.numberOfEmployees ? Number(payload.numberOfEmployees) : null,
-          annualRevenue: payload.annualRevenue ? String(payload.annualRevenue) : null,
+          numberOfEmployees: optionalNumberValue(payload.numberOfEmployees),
+          annualRevenue: optionalStringValue(payload.annualRevenue),
           leadSource: payload.leadSource as string | null,
           industry: payload.industry as string | null,
           createdById: userId,
@@ -99,12 +100,11 @@ export async function createRecord(object: CrmObject, payload: RecordData, organ
           accountId: String(payload.accountId),
           contactId: payload.contactId ? String(payload.contactId) : null,
           closeDate: new Date(String(payload.closeDate)),
-          amount: payload.amount === null || payload.amount === undefined ? null : String(payload.amount),
+          amount: optionalStringValue(payload.amount),
           description: payload.description as string | null,
           ownerId: String(payload.ownerId ?? userId),
           stage: String(payload.stage),
-          probability:
-            payload.probability === null || payload.probability === undefined ? null : Number(payload.probability),
+          probability: optionalNumberValue(payload.probability),
           forecastCategory: String(payload.forecastCategory),
           nextStep: payload.nextStep as string | null,
           leadSource: payload.leadSource as string | null,

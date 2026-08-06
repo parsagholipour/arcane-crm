@@ -1,5 +1,6 @@
 import "server-only";
 
+import { invoiceInclude } from "@/lib/invoices";
 import { OBJECT_DEFINITIONS } from "@/lib/crm-metadata";
 import { prisma } from "@/lib/prisma";
 import type { GenericRecord, ListQuery, ListResult } from "@/lib/api/contracts";
@@ -137,7 +138,7 @@ function modelConfig(object: CrmObject): ModelConfig {
         searchFields: ["name", "status", "type", "description"],
         sortFields: ["name", "status", "startDate", "endDate", "updatedAt"],
         defaultSort: "updatedAt",
-        include: { members: true },
+        include: { members: true, parentCampaign: { select: { id: true, name: true } } },
         ownerField: "ownerId"
       };
     case "Invoice":
@@ -146,7 +147,7 @@ function modelConfig(object: CrmObject): ModelConfig {
         searchFields: ["invoiceNumber", "status", "notes"],
         sortFields: ["invoiceNumber", "status", "issueDate", "dueDate", "updatedAt"],
         defaultSort: "updatedAt",
-        include: { account: true, opportunity: true, lineItems: true, payments: true }
+        include: invoiceInclude
       };
     case "VideoCall":
       return {

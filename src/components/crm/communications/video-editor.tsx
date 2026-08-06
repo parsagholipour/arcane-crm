@@ -50,6 +50,11 @@ const participantLookupField: FieldDefinition = {
   type: "lookup",
   lookupObject: "People"
 };
+const videoParticipantRoles = ["Host", "Presenter", "Attendee", "Observer"];
+
+function videoParticipantRoleOptions(role: string) {
+  return role && !videoParticipantRoles.includes(role) ? [role, ...videoParticipantRoles] : videoParticipantRoles;
+}
 
 export function initialVideoParticipants(record: RecordData | undefined): ParticipantDraft[] {
   const participants = Array.isArray(record?.participants) ? (record.participants as RecordData[]) : [];
@@ -106,6 +111,16 @@ export function VideoCallEditorModal({
     })),
     ...data.users.map((user) => ({ id: `user:${user.id}`, label: `User: ${user.name}` }))
   ];
+  const organizerUnavailable = Boolean(
+    values.organizerId && !data.users.some((user) => user.id === values.organizerId)
+  );
+  const unavailableOrganizerLabel = text(initial?.organizerName) || values.organizerId;
+  const initialAccount = initial?.account as RecordData | undefined;
+  const initialContact = initial?.contact as RecordData | undefined;
+  const initialOpportunity = initial?.opportunity as RecordData | undefined;
+  const selectedAccountLabel = text(initialAccount?.name ?? initial?.accountName);
+  const selectedContactLabel = initialContact ? contactLabel(initialContact) : text(initial?.contactName);
+  const selectedOpportunityLabel = text(initialOpportunity?.name ?? initial?.opportunityName);
   function requestClose() {
     if (!dirty || window.confirm("Discard unsaved video-call changes?")) onClose();
   }
@@ -301,6 +316,11 @@ export function VideoCallEditorModal({
               value={values.organizerId}
               onChange={(event) => setValues({ ...values, organizerId: event.target.value })}
             >
+              {organizerUnavailable && (
+                <option value={values.organizerId} disabled>
+                  {unavailableOrganizerLabel} (Unavailable)
+                </option>
+              )}
               {data.users.map((user) => (
                 <option key={user.id} value={user.id}>
                   {user.name}
@@ -313,6 +333,7 @@ export function VideoCallEditorModal({
               field={accountLookupField}
               value={values.accountId}
               data={data}
+              selectedLabel={selectedAccountLabel}
               inlineSelection
               onChange={selectAccount}
             />
@@ -322,6 +343,7 @@ export function VideoCallEditorModal({
               field={contactLookupField}
               value={values.contactId}
               data={{ ...data, contacts }}
+              selectedLabel={selectedContactLabel}
               inlineSelection
               onChange={(contactId) => setValues({ ...values, contactId })}
             />
@@ -331,6 +353,7 @@ export function VideoCallEditorModal({
               field={opportunityLookupField}
               value={values.opportunityId}
               data={{ ...data, opportunities }}
+              selectedLabel={selectedOpportunityLabel}
               inlineSelection
               onChange={(opportunityId) => setValues({ ...values, opportunityId })}
             />
@@ -395,6 +418,13 @@ export function VideoCallEditorModal({
                   }
                   data={data}
                   options={participantOptions}
+                  selectedLabel={
+                    participant.contactId
+                      ? `Contact: ${participant.name || participant.email || participant.contactId} (Unavailable)`
+                      : participant.userId
+                        ? `User: ${participant.name || participant.email || participant.userId} (Unavailable)`
+                        : ""
+                  }
                   inlineSelection
                   onChange={(value) => {
                     const [kind, id] = value.split(":");
@@ -414,11 +444,12 @@ export function VideoCallEditorModal({
                   onChange={(event) => updateParticipant(index, { email: event.target.value })}
                 />
                 <select
+                  aria-label={`Participant ${index + 1} Role`}
                   className={inputClass}
                   value={participant.role}
                   onChange={(event) => updateParticipant(index, { role: event.target.value })}
                 >
-                  {["Host", "Presenter", "Attendee", "Observer"].map((value) => (
+                  {videoParticipantRoleOptions(participant.role).map((value) => (
                     <option key={value}>{value}</option>
                   ))}
                 </select>

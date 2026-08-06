@@ -22,6 +22,7 @@ import { requiredId } from "@/features/crm/record-model";
 import { reportHref } from "@/features/crm/route-model";
 import { apiRequest, jsonBody } from "@/lib/api/client";
 import { type ScopedCrmDataUpdater } from "@/features/crm/shared-types";
+import { quarterlyGoalOrFallback } from "@/features/crm/home-model";
 
 export function HomePage({
   data,
@@ -56,8 +57,13 @@ export function HomePage({
     "amount"
   );
   const suggestedGoal = Math.max(100000, closedWonAmount + openHighProbabilityAmount);
-  const [goalInput, setGoalInput] = useState(String(numberFromRecord(preferences?.quarterlyGoal) || suggestedGoal));
-  const goalAmount = numberFromRecord(preferences?.quarterlyGoal) || numberFromRecord(goalInput) || suggestedGoal;
+  const [goalInput, setGoalInput] = useState(
+    String(quarterlyGoalOrFallback(preferences?.quarterlyGoal, suggestedGoal))
+  );
+  const goalAmount = quarterlyGoalOrFallback(
+    preferences?.quarterlyGoal,
+    quarterlyGoalOrFallback(goalInput, suggestedGoal)
+  );
   const today = new Date();
   const todayEvents = data.events.filter((event) => {
     const startAt = parseReportDate(event.startAt);
@@ -109,7 +115,7 @@ export function HomePage({
   const visibleSuggestions = suggestionCards.filter((card) => !dismissedSuggestions.includes(card.id));
   useEffect(() => {
     setHomeMode(preferredMode);
-    setGoalInput(String(numberFromRecord(preferences?.quarterlyGoal) || suggestedGoal));
+    setGoalInput(String(quarterlyGoalOrFallback(preferences?.quarterlyGoal, suggestedGoal)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preferences?.id, preferences?.homeMode, preferences?.quarterlyGoal]);
 

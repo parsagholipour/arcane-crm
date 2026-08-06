@@ -9,6 +9,11 @@ import {
 import { eventUpdateData } from "@/lib/calendar-events";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 import { prisma } from "@/lib/prisma";
+import {
+  updateOptionalDateValue,
+  updateOptionalNumberValue,
+  updateOptionalStringValue
+} from "@/server/records/form-values";
 
 export async function validateRecordReferences(payload: RecordData, organizationId: string, userId: string) {
   if (payload.ownerId) await assertOrganizationUser(organizationId, String(payload.ownerId));
@@ -75,18 +80,8 @@ export async function updateRecord(object: CrmObject, id: string, payload: Recor
           ownerId: payload.ownerId ? String(payload.ownerId) : undefined,
           phone: payload.phone as string | null | undefined,
           rating: payload.rating as string | null | undefined,
-          numberOfEmployees:
-            payload.numberOfEmployees === undefined
-              ? undefined
-              : payload.numberOfEmployees === null
-                ? null
-                : Number(payload.numberOfEmployees),
-          annualRevenue:
-            payload.annualRevenue === undefined
-              ? undefined
-              : payload.annualRevenue === null
-                ? null
-                : String(payload.annualRevenue),
+          numberOfEmployees: updateOptionalNumberValue(payload.numberOfEmployees),
+          annualRevenue: updateOptionalStringValue(payload.annualRevenue),
           industry: payload.industry as string | null | undefined,
           billingCountry: payload.billingCountry as string | null | undefined,
           billingStreet: payload.billingStreet as string | null | undefined,
@@ -115,12 +110,7 @@ export async function updateRecord(object: CrmObject, id: string, payload: Recor
           ownerId: payload.ownerId ? String(payload.ownerId) : undefined,
           phone: payload.phone as string | null | undefined,
           email: payload.email as string | null | undefined,
-          birthDate:
-            payload.birthDate === undefined
-              ? undefined
-              : payload.birthDate === null
-                ? null
-                : new Date(String(payload.birthDate)),
+          birthDate: updateOptionalDateValue(payload.birthDate),
           leadSource: payload.leadSource as string | null | undefined,
           mailingCountry: payload.mailingCountry as string | null | undefined,
           mailingStreet: payload.mailingStreet as string | null | undefined,
@@ -153,18 +143,8 @@ export async function updateRecord(object: CrmObject, id: string, payload: Recor
           postalCode: payload.postalCode as string | null | undefined,
           city: payload.city as string | null | undefined,
           state: payload.state as string | null | undefined,
-          numberOfEmployees:
-            payload.numberOfEmployees === undefined
-              ? undefined
-              : payload.numberOfEmployees === null
-                ? null
-                : Number(payload.numberOfEmployees),
-          annualRevenue:
-            payload.annualRevenue === undefined
-              ? undefined
-              : payload.annualRevenue === null
-                ? null
-                : String(payload.annualRevenue),
+          numberOfEmployees: updateOptionalNumberValue(payload.numberOfEmployees),
+          annualRevenue: updateOptionalStringValue(payload.annualRevenue),
           leadSource: payload.leadSource as string | null | undefined,
           industry: payload.industry as string | null | undefined,
           updatedById: userId
@@ -178,16 +158,11 @@ export async function updateRecord(object: CrmObject, id: string, payload: Recor
           accountId: payload.accountId ? String(payload.accountId) : undefined,
           contactId: payload.contactId as string | null | undefined,
           closeDate: payload.closeDate ? new Date(String(payload.closeDate)) : undefined,
-          amount: payload.amount === undefined ? undefined : payload.amount === null ? null : String(payload.amount),
+          amount: updateOptionalStringValue(payload.amount),
           description: payload.description as string | null | undefined,
           ownerId: payload.ownerId ? String(payload.ownerId) : undefined,
           stage: payload.stage ? String(payload.stage) : undefined,
-          probability:
-            payload.probability === undefined
-              ? undefined
-              : payload.probability === null
-                ? null
-                : Number(payload.probability),
+          probability: updateOptionalNumberValue(payload.probability),
           forecastCategory: payload.forecastCategory ? String(payload.forecastCategory) : undefined,
           nextStep: payload.nextStep as string | null | undefined,
           leadSource: payload.leadSource as string | null | undefined,

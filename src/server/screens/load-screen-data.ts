@@ -13,6 +13,11 @@ import { attachShipmentTracking, shipmentTrackingBySubject } from "@/lib/shipmen
 import { videoCallInclude } from "@/lib/video-calls";
 import { getRecordDetail } from "@/server/records/get-record-detail";
 import { listRecords } from "@/server/records/list-records";
+import {
+  calendarEditorLookups,
+  editorLookupObjects,
+  mergeScopedRecordCollections
+} from "@/server/screens/screen-data-model";
 
 export type ScopedScreenPayload = {
   descriptor: ScreenDescriptor;
@@ -124,6 +129,13 @@ async function loadLookupCollections(
   ) as Partial<ScopedCrmData>;
 }
 
+async function loadPriceBookEntries(organizationId: string) {
+  return prisma.priceBookEntry.findMany({
+    where: { organizationId },
+    include: { product: true, priceBook: true }
+  });
+}
+
 async function loadHomeData(organizationId: string, userId: string) {
   const eventWindow = bootstrapEventWindow();
   const [opportunities, tasks, events] = await Promise.all([
@@ -148,7 +160,7 @@ async function loadCalendarData(organizationId: string, userId: string) {
   const eventWindow = bootstrapEventWindow();
   const personalWhere = { organizationId, userId };
   const [collections, events, tasks, calendarSources, videoCalls, quickTexts] = await Promise.all([
-    loadLookupCollections(organizationId, userId, ["Account", "Contact", "Lead", "Opportunity", "Case"]),
+    loadLookupCollections(organizationId, userId, [...calendarEditorLookups]),
     loadEventsForWindow(organizationId, userId, eventWindow.start, eventWindow.end),
     prisma.task.findMany({ where: { organizationId }, orderBy: { updatedAt: "desc" }, take: 200 }),
     prisma.calendarSource.findMany({ where: personalWhere, orderBy: { updatedAt: "desc" } }),
@@ -178,7 +190,7 @@ async function loadQuickTextData(organizationId: string, userId: string) {
 async function loadMarketingData(organizationId: string, userId: string) {
   const [collections, listEmails, campaigns, campaignMembers, marketingActivations, marketingLandingPages] =
     await Promise.all([
-      loadLookupCollections(organizationId, userId, ["Contact", "Lead"]),
+      loadLookupCollections(organizationId, userId, ["Account", "Contact", "Lead"]),
       prisma.listEmail.findMany({ where: { organizationId }, orderBy: { createdAt: "desc" } }),
       prisma.campaign
         .findMany({
@@ -293,13 +305,10 @@ async function loadRecordData(organizationId: string, userId: string, object: Cr
     }
   }
 
-  const lookupObjects: CrmObject[] = ["Account", "Contact"];
-  if (object === "Lead") lookupObjects.push("Opportunity");
-  if (["Invoice", "Product2", "Pricebook2"].includes(object)) {
-    lookupObjects.push("Opportunity", "Product2", "Pricebook2");
-  }
-  if (["MessagingSession", "VideoCall"].includes(object)) lookupObjects.push("Opportunity");
-  const lookups = await loadLookupCollections(organizationId, userId, lookupObjects);
+  const [lookups, priceBookEntries] = await Promise.all([
+    loadLookupCollections(organizationId, userId, editorLookupObjects(object, true)),
+    object === "Invoice" ? loadPriceBookEntries(organizationId) : Promise.resolve([])
+  ]);
 
   const relationship = { organizationId, relatedObjectType: object, relatedRecordId: id };
   const [recordLabels, campaignMembers, activities, emailDeliveries] = await Promise.all([
@@ -332,8 +341,8 @@ async function loadRecordData(organizationId: string, userId: string, object: Cr
   ]);
   const [tasks, emailActivities, callActivities, events, files, attachments] = activities;
   return {
-    ...lookups,
-    ...data,
+    ...mergeScopedRecordCollections(lookups, data),
+    ...(object === "Invoice" ? { priceBookEntries } : {}),
     recordLabels,
     campaignMembers,
     tasks,
@@ -377,8 +386,9 @@ export async function loadScopedScreenData({
         view
       });
       const ids = result.items.map((item) => String(item.id)).filter(Boolean);
-      const [lookups, recordLabels, campaignMembers] = await Promise.all([
-        loadLookupCollections(organizationId, userId, ["Account", "Contact"]),
+      const [lookups, priceBookEntries, recordLabels, campaignMembers] = await Promise.all([
+        loadLookupCollections(organizationId, userId, editorLookupObjects(descriptor.object, false)),
+        descriptor.object === "Invoice" ? loadPriceBookEntries(organizationId) : Promise.resolve([]),
         prisma.recordLabel.findMany({
           where: { organizationId, objectType: descriptor.object, recordId: { in: ids } }
         }),
@@ -389,6 +399,7 @@ export async function loadScopedScreenData({
       ]);
       screenData = {
         ...lookups,
+        ...(descriptor.object === "Invoice" ? { priceBookEntries } : {}),
         [dataKeyForObject(descriptor.object)]: result.items,
         recordLabels,
         campaignMembers

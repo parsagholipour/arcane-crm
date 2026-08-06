@@ -379,7 +379,7 @@ export function AttendeePicker({
   const generatedId = useId();
   const listId = `${generatedId}-attendee-results`;
   const options = lookupOptionsForField(field, data);
-  const selected = value.map((id) => options.find((option) => option.id === id)).filter(Boolean) as LookupOption[];
+  const selected = value.map((id) => options.find((option) => option.id === id) ?? { id, label: id });
   const availableOptions = options.filter((option) => !value.includes(option.id));
   const normalizedQuery = query.trim().toLowerCase();
   const filteredOptions = normalizedQuery
@@ -574,6 +574,7 @@ export function lookupOptionsForField(field: FieldDefinition, data: ScopedCrmDat
   if (field.lookupObject === "People") {
     return [
       { id: data.user.id, label: data.user.name },
+      ...data.users.filter((user) => user.id !== data.user.id).map((user) => ({ id: user.id, label: user.name })),
       ...data.contacts.map((contact) => ({ id: requiredId(contact), label: `Contact: ${contactName(contact)}` })),
       ...data.leads.map((lead) => ({
         id: requiredId(lead),

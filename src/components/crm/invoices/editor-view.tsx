@@ -2,7 +2,7 @@
 
 import * as Dialog from "@radix-ui/react-dialog";
 import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
-import { type FieldDefinition } from "@/lib/crm-types";
+import { type FieldDefinition, type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { LookupField } from "@/features/crm/form-controls";
 import { useDialogEnterAction } from "@/components/ui/crm-primitives";
@@ -69,7 +69,13 @@ export function InvoiceEditorView({ model }: { model: InvoiceEditorModalModel })
     save
   } = model;
   const handleEnterAction = useDialogEnterAction(save);
-  const activeProducts = data.products.filter((product) => product.active !== false);
+  const selectedProductIds = new Set(lines.map((line) => line.productId).filter(Boolean));
+  const activeProducts = data.products.filter(
+    (product) => product.active !== false || selectedProductIds.has(String(product.id))
+  );
+  const currencyOptions = [...new Set([header.currency, ...currencies])].filter(Boolean);
+  const invoiceAccount = invoice?.account as RecordData | undefined;
+  const invoiceOpportunity = invoice?.opportunity as RecordData | undefined;
 
   return (
     <Dialog.Root
@@ -124,6 +130,7 @@ export function InvoiceEditorView({ model }: { model: InvoiceEditorModalModel })
                       <LookupField
                         field={accountLookupField}
                         value={header.accountId}
+                        selectedLabel={text(invoiceAccount?.name) || undefined}
                         data={data}
                         error={Boolean(errors.accountId)}
                         inlineSelection
@@ -134,6 +141,7 @@ export function InvoiceEditorView({ model }: { model: InvoiceEditorModalModel })
                       <LookupField
                         field={opportunityLookupField}
                         value={header.opportunityId}
+                        selectedLabel={text(invoiceOpportunity?.name) || undefined}
                         data={{ ...data, opportunities }}
                         inlineSelection
                         onChange={(opportunityId) => updateHeader("opportunityId", opportunityId)}
@@ -164,7 +172,7 @@ export function InvoiceEditorView({ model }: { model: InvoiceEditorModalModel })
                         value={header.currency}
                         onChange={(event) => updateHeader("currency", event.target.value)}
                       >
-                        {currencies.map((currency) => (
+                        {currencyOptions.map((currency) => (
                           <option key={currency}>{currency}</option>
                         ))}
                       </select>
@@ -279,6 +287,7 @@ export function InvoiceEditorView({ model }: { model: InvoiceEditorModalModel })
                               <LookupField
                                 field={{ ...productLookupField, label: `Line ${index + 1} Product` }}
                                 value={line.productId}
+                                selectedLabel={line.productLabel || undefined}
                                 data={{ ...data, products: activeProducts }}
                                 inlineSelection
                                 onChange={(productId) => selectProduct(line, productId)}

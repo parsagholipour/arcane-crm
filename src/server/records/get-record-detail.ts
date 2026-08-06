@@ -1,7 +1,9 @@
 import "server-only";
 
 import { AppAuthorizationError } from "@/lib/authorization-errors";
+import { campaignInclude } from "@/lib/campaigns";
 import type { GenericRecord, RecordDetail } from "@/lib/api/contracts";
+import { invoiceInclude } from "@/lib/invoices";
 import { prisma } from "@/lib/prisma";
 import type { CrmObject } from "@/lib/crm-types";
 
@@ -56,11 +58,11 @@ function recordDelegate(object: CrmObject) {
     case "ListEmail":
       return { delegate: delegate(prisma.listEmail) };
     case "Campaign":
-      return { delegate: delegate(prisma.campaign), include: { members: true } };
+      return { delegate: delegate(prisma.campaign), include: campaignInclude };
     case "Invoice":
       return {
         delegate: delegate(prisma.invoice),
-        include: { account: true, opportunity: true, lineItems: true, payments: true }
+        include: invoiceInclude
       };
     case "VideoCall":
       return {
