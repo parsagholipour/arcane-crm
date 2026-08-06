@@ -88,6 +88,20 @@ describe("custom edit-form hydration", () => {
     expect(screen.getByLabelText("Currency")).toHaveValue("JPY");
   });
 
+  it("allows hyphens while manually typing a Store URL slug", async () => {
+    const user = userEvent.setup();
+    render(<StoreEditor data={data} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    const slug = screen.getByLabelText("URL Slug");
+    await user.type(slug, "-");
+    expect(slug).toHaveValue("-");
+
+    await user.clear(slug);
+    await user.type(slug, "summer-sale");
+
+    expect(slug).toHaveValue("summer-sale");
+  });
+
   it("keeps an archived Store visible on an existing draft order", () => {
     const orderData = {
       ...data,

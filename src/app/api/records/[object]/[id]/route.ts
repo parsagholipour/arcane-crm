@@ -242,8 +242,20 @@ export async function DELETE(request: NextRequest, context: { params: Params }) 
     if (object === "Product2") {
       const usage = await prisma.product.findFirst({
         where: { id, organizationId: authContext.organizationId },
-        select: { _count: { select: { invoiceLineItems: true, commerceOrderLines: true, inventoryItems: true } } }
+        select: {
+          poAppProductId: true,
+          _count: { select: { invoiceLineItems: true, commerceOrderLines: true, inventoryItems: true } }
+        }
       });
+      // Deleting a synced product only makes it reappear on the next sync.
+      if (usage?.poAppProductId)
+        return NextResponse.json(
+          {
+            error:
+              "A Product synced from PO App cannot be deleted here. Deactivate it, or remove it in PO App and run a full resync."
+          },
+          { status: 409 }
+        );
       if (usage && (usage._count.invoiceLineItems || usage._count.commerceOrderLines || usage._count.inventoryItems))
         return NextResponse.json(
           {

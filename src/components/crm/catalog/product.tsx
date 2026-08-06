@@ -33,6 +33,9 @@ export function ProductDetailPage({
   onToast: (toast: Toast) => void;
 }) {
   const [edit, setEdit] = useState(false);
+  const poAppProductId = text(product.poAppProductId);
+  // decorateScopedData surfaces the primary price book entry's currency on the product row.
+  const currency = text(product.currency) || "USD";
   const entries = data.priceBookEntries.filter((entry) => entry.productId === product.id);
   const inventory = data.inventoryItems.filter((item) => item.productId === product.id);
   const orderLines: RecordData[] = data.commerceOrders
@@ -56,18 +59,35 @@ export function ProductDetailPage({
         icon={<Box className="text-brand-600" />}
         eyebrow="Product"
         title={text(product.name)}
-        badge={<Active value={product.active} />}
+        badge={
+          <span className="flex items-center gap-2">
+            <Active value={product.active} />
+            {poAppProductId && (
+              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-800">
+                Synced from PO App
+              </span>
+            )}
+          </span>
+        }
         actions={
           <>
             <button className={secondary} onClick={() => setEdit(true)}>
               Edit
             </button>
-            <button className={secondary} onClick={onDelete}>
-              <Trash2 size={13} /> Delete
-            </button>
+            {!poAppProductId && (
+              <button className={secondary} onClick={onDelete}>
+                <Trash2 size={13} /> Delete
+              </button>
+            )}
           </>
         }
       />
+      {poAppProductId && (
+        <p className="rounded border border-[#9ac3e8] bg-[#eef4ff] px-3 py-2 text-sm">
+          This Product is kept in step with PO App. Name, SKU, pricing, and stock are overwritten on the next sync;
+          Family, Category, and Active stay local. Deleting it upstream deactivates it here.
+        </p>
+      )}
       <div className="grid gap-3 lg:grid-cols-2">
         <Card title="Product Details">
           <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -83,6 +103,28 @@ export function ProductDetailPage({
           <div className="whitespace-pre-wrap text-sm">{text(product.description) || "No description."}</div>
         </Card>
       </div>
+      {poAppProductId && (
+        <Card title="PO App Catalogue">
+          <dl className="grid grid-cols-2 gap-3 text-sm lg:grid-cols-4">
+            <Detail label="UPC / GTIN" value={product.upcGtin} />
+            <Detail label="Cost" value={money(product.cost, currency)} />
+            <Detail label="Price" value={money(product.price, currency)} />
+            <Detail label="MSRP" value={money(product.msrp, currency)} />
+            <Detail label="MAP" value={money(product.mapPrice, currency)} />
+            <Detail label="Stock Count" value={product.stockCount} />
+            <Detail label="Units Per Carton" value={product.quantityPerCarton} />
+            <Detail label="Minimum Order Pieces" value={product.minimumOrderPieces} />
+            <Detail label="Editing Status" value={product.editingStatus} />
+            <Detail label="Verified" value={product.verified ? "Yes" : "No"} />
+            <Detail label="Type" value={product.productType} />
+            <Detail label="Collection" value={product.collectionName} />
+            <Detail label="Manufacturer" value={product.manufacturerName} />
+            <Detail label="Manufacturer Region" value={product.manufacturerRegion} />
+            <Detail label="Order By" value={formatDateTime(text(product.orderByDate))} />
+            <Detail label="Last Synced" value={formatDateTime(text(product.poAppSyncedAt))} />
+          </dl>
+        </Card>
+      )}
       <Card title={`Price Book Entries (${entries.length})`}>
         {entries.length ? (
           <div className="overflow-auto">

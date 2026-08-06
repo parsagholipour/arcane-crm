@@ -138,8 +138,18 @@ export const setupShortcutCatalog: SetupShortcut[] = [
     category: "User",
     href: "/lightning/setup/users",
     tags: ["users", "members", "roles", "organization", "admin"]
+  },
+  {
+    id: "setup-po-app-integration",
+    title: "PO App Product Sync",
+    summary: "Connect a PO App store, schedule the catalogue sync, and register product webhooks.",
+    category: "Integrations",
+    href: "/lightning/setup/integrations/po-app",
+    tags: ["integration", "po app", "products", "catalog", "sync", "webhook", "api token", "admin"]
   }
 ];
+/** Shortcuts whose destination redirects a non-admin, so showing them would only frustrate. */
+export const adminOnlySetupShortcutIds = new Set(["setup-organization-users", "setup-po-app-integration"]);
 export function buildHelpArticleStateMap(states: RecordData[] = []) {
   return states.reduce<Record<string, RecordData>>((accumulator, state) => {
     const articleId = String(state.articleId ?? "");

@@ -144,6 +144,43 @@ export type ScreenKind =
 
 export type RecordScreenObject = Exclude<CrmObject, "Event" | "QuickText">;
 
+/**
+ * PO App integration settings as they leave the server. Credentials are represented only by
+ * `hasToken` and the masked `tokenPreview`; the token itself is never serialized.
+ */
+export type PoAppIntegrationDto = {
+  baseUrl: string;
+  enabled: boolean;
+  hasToken: boolean;
+  tokenPreview: string | null;
+  tokenSource: "organization" | "unreadable" | "none";
+  hasWebhookSecret: boolean;
+  storeId: string | null;
+  syncIntervalMinutes: number;
+  poStoreId: string | null;
+  poStoreName: string | null;
+  poTokenId: string | null;
+  scopes: string[];
+  status: string;
+  lastError: string | null;
+  lastSyncedAt: string | null;
+  lastFullSyncAt: string | null;
+  nextSyncAt: string | null;
+  failureCount: number;
+  productsSynced: number;
+  encryptionConfigured: boolean;
+};
+
+export type PoAppSyncSummary = {
+  organizations: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  deactivated: number;
+  unreadable: number;
+  failed: number;
+};
+
 export type ScreenDescriptor =
   | { kind: "home"; activeApp: AppKey }
   | { kind: "list"; activeApp: AppKey; object: CrmObject }

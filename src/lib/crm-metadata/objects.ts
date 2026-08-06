@@ -112,6 +112,8 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
       { key: "priceBookName", label: "Price Book" },
       { key: "listPrice", label: "List Price" },
       { key: "currency", label: "Currency" },
+      { key: "stockCount", label: "Stock" },
+      { key: "syncSource", label: "Source" },
       { key: "active", label: "Active" }
     ],
     searchInputName: "Product-search-input",

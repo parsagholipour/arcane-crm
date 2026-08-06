@@ -45,5 +45,8 @@ export const resourceApi = {
     mutate("/api/list-views", "PUT", { ...values, ...(pin ? { pin: true } : {}) }),
   deleteListView: (values: RecordData) => mutate("/api/list-views", "DELETE", values),
   saveSearchRecent: (values: RecordData) => mutate("/api/search/recents", "POST", values),
-  clearSearchRecents: () => mutate("/api/search/recents", "DELETE")
+  clearSearchRecents: () => mutate("/api/search/recents", "DELETE"),
+  savePoAppIntegration: (values: RecordData) => mutate("/api/integrations/po-app", "PUT", values),
+  testPoAppIntegration: () => mutate("/api/integrations/po-app/test", "POST"),
+  syncPoAppCatalogue: (values: RecordData) => mutate("/api/integrations/po-app/sync", "POST", values)
 };

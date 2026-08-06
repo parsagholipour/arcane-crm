@@ -116,7 +116,8 @@ export function decorateScopedData(data: ScopedCrmData): ScopedCrmData {
         listPrice: primaryEntry?.listPrice ?? "",
         currency: primaryEntry?.currency ?? "",
         priceBookEntryActive: primaryEntry?.active ?? "",
-        priceBookEntryCount: entries.length
+        priceBookEntryCount: entries.length,
+        syncSource: product.poAppProductId ? "PO App" : "Manual"
       };
     }),
     messagingSessions: data.messagingSessions.map((record) => ({

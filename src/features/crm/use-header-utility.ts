@@ -16,6 +16,7 @@ import {
 } from "@/features/crm/shared-types";
 import { buildGuidanceItems, buildNotificationPreferences } from "@/features/crm/shell-model";
 import {
+  adminOnlySetupShortcutIds,
   buildHelpArticleStateMap,
   buildSetupShortcutStateMap,
   helpArticleCatalog,
@@ -197,7 +198,7 @@ export function useHeaderUtility({ kind, data, pathname, onNavigate, onDataChang
   });
   const setupStateByShortcutId = buildSetupShortcutStateMap(setupShortcutStates);
   const visibleSetupShortcuts = setupShortcutCatalog.filter((shortcut) => {
-    if (shortcut.id === "setup-organization-users" && data.organizationRole !== "ADMIN") return false;
+    if (adminOnlySetupShortcutIds.has(shortcut.id) && data.organizationRole !== "ADMIN") return false;
     const state = setupStateByShortcutId[shortcut.id];
     if (settingsView === "Pinned" && state?.pinned !== true) return false;
     if (settingsView === "Recent" && !state?.lastOpenedAt) return false;

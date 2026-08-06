@@ -104,7 +104,7 @@ export function StoreEditor({
             placeholder="Generated from the name"
             onChange={(event) => {
               setSlugManual(true);
-              setValues({ ...values, slug: slugify(event.target.value) });
+              setValues({ ...values, slug: event.target.value });
             }}
           />
         </Field>

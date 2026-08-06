@@ -71,8 +71,8 @@ function modelConfig(object: CrmObject): ModelConfig {
     case "Product2":
       return {
         delegate: delegate(prisma.product),
-        searchFields: ["name", "productCode", "sku", "family", "category"],
-        sortFields: ["name", "productCode", "family", "updatedAt"],
+        searchFields: ["name", "productCode", "sku", "family", "category", "upcGtin"],
+        sortFields: ["name", "productCode", "family", "updatedAt", "price", "stockCount", "poAppSyncedAt"],
         defaultSort: "updatedAt"
       };
     case "Pricebook2":

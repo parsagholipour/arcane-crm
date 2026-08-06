@@ -275,6 +275,31 @@ model Product {
   category           String?
   active             Boolean             @default(false)
   description        String?
+  // PO App linkage. NULLs are distinct in Postgres, so manually created products never
+  // collide on the unique index below.
+  poAppProductId     String?
+  poAppUpdatedAt     DateTime?
+  poAppSyncedAt      DateTime?
+  poAppDeletedAt     DateTime?
+  // Catalogue attributes carried over from PO App.
+  upcGtin            String?
+  imageLink          String?
+  cost               Decimal?            @db.Decimal(18, 2)
+  price              Decimal?            @db.Decimal(18, 2)
+  mapPrice           Decimal?            @db.Decimal(18, 2)
+  msrp               Decimal?            @db.Decimal(18, 2)
+  minimumOrderPieces Int?
+  quantityPerCarton  Int?
+  stockCount         Int?
+  orderByDate        DateTime?
+  editingStatus      String?
+  verified           Boolean             @default(false)
+  manufacturerName   String?
+  manufacturerRegion String?
+  manufacturerEmail  String?
+  manufacturerPhone  String?
+  productType        String?
+  collectionName     String?
   entries            PriceBookEntry[]
   invoiceLineItems   InvoiceLineItem[]
   commerceOrderLines CommerceOrderLine[]
@@ -282,6 +307,7 @@ model Product {
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
+  @@unique([organizationId, poAppProductId])
   @@index([organizationId])
 }
 
@@ -1336,4 +1362,46 @@ model ShipmentTracking {
   @@unique([organizationId, subjectType, subjectId])
   @@index([carrier, status, nextPollAt])
   @@index([organizationId, subjectType, subjectId])
+}
+
+/// Per-organization connection to a PO App store. Credentials are encrypted at rest and are
+/// never returned to a client; only the masked preview leaves the server.
+model PoAppIntegration {
+  organizationId      String    @id
+  baseUrl             String
+  tokenCiphertext     String?
+  tokenPreview        String?
+  webhookSecretCipher String?
+  enabled             Boolean   @default(false)
+  storeId             String?
+  syncIntervalMinutes Int       @default(60)
+  poStoreId           String?
+  poStoreName         String?
+  poTokenId           String?
+  scopes              String?
+  status              String    @default("Disconnected")
+  lastError           String?
+  /// Lease held by the run in progress; null whenever no sync is running.
+  syncingSince        DateTime?
+  lastSyncedAt        DateTime?
+  lastFullSyncAt      DateTime?
+  nextSyncAt          DateTime?
+  failureCount        Int       @default(0)
+  productsSynced      Int       @default(0)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([enabled, nextSyncAt])
+}
+
+/// Deduplication ledger for at-least-once webhook delivery. The id is the X-PO-Delivery
+/// header, which stays identical across every retry of the same event.
+model PoAppWebhookDelivery {
+  id             String    @id
+  organizationId String
+  event          String
+  processedAt    DateTime?
+  receivedAt     DateTime  @default(now())
+
+  @@index([organizationId, receivedAt])
 }
