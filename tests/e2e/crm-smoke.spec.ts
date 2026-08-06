@@ -4,7 +4,7 @@ import { e2eIds } from "./global-setup";
 test.describe.serial("authenticated CRM smoke", () => {
   test("loads the shell, navigates, and exposes global search", async ({ page }) => {
     await page.goto("/lightning/page/home");
-    await expect(page.locator("header span", { hasText: /^Reloriq$/ })).toBeVisible();
+    await expect(page.locator("header span", { hasText: /^CRM$/ })).toBeVisible();
     await page.getByRole("button", { name: "Search..." }).click();
     await expect(page.getByPlaceholder("Search records, reports, and list views...")).toBeVisible();
 

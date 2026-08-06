@@ -192,9 +192,9 @@ test("organization invitations are branded, role-aware, and HTML escaped", () =>
     activationUrl: "https://crm.example.com/organizations/activate?organizationId=org%201",
     newIdentity: true
   });
-  assert.equal(message.subject, "You've been invited to Research & Development in Reloriq");
+  assert.equal(message.subject, "You've been invited to Research & Development in CRM");
   assert.match(message.text, /administrator access/);
-  assert.match(message.text, /separate Reloriq account setup email/);
+  assert.match(message.text, /separate CRM account setup email/);
   assert.match(message.html, /Ava &lt;Admin&gt;/);
   assert.match(message.html, /Research &amp; Development/);
   assert.doesNotMatch(message.html, /Ava <Admin>/);
@@ -209,5 +209,5 @@ test("organization invitations tell existing identities to use current credentia
     newIdentity: false
   });
   assert.match(message.text, /member access/);
-  assert.match(message.text, /existing Reloriq account/);
+  assert.match(message.text, /existing CRM account/);
 });

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { PoAppIntegrationClient } from "@/components/admin/PoAppIntegrationClient";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { ReloriqLogo } from "@/components/brand/ReloriqLogo";
+import { BRAND } from "@/lib/brand";
 import { AppAuthorizationError, requireOrganizationAdmin } from "@/lib/organization-context";
 import { loadPoAppIntegration, poAppIntegrationDto } from "@/lib/po-app-integration";
 import { prisma } from "@/lib/prisma";
@@ -35,7 +36,7 @@ export default async function PoAppIntegrationPage() {
           </span>
           <div className="ml-auto flex gap-3 text-sm">
             <Link href="/lightning/o/Product2/list">Products</Link>
-            <Link href="/lightning/page/home">Back to Reloriq</Link>
+            <Link href="/lightning/page/home">Back to {BRAND.name}</Link>
             {isSuperAdminEmail(context.user.email) && <Link href="/super-admin">Super admin</Link>}
             <SignOutButton />
           </div>

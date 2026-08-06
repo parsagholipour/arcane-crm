@@ -7,6 +7,7 @@ import { headers } from "next/headers";
 import authConfig from "@/auth.config";
 import { clearForceSignOut, markForceSignOut } from "@/lib/auth-session";
 import { touchAppSession } from "@/lib/app-sessions";
+import { BRAND } from "@/lib/brand";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail, normalizeEmail } from "@/lib/super-admin-constants";
 
@@ -48,7 +49,7 @@ function profileEmail(profile: unknown) {
 }
 
 function profileName(profile: unknown, email: string) {
-  return stringClaim(profile, ["name", "preferred_username"]) ?? email.split("@")[0] ?? "Reloriq User";
+  return stringClaim(profile, ["name", "preferred_username"]) ?? email.split("@")[0] ?? `${BRAND.name} User`;
 }
 
 function aliasFrom(name: string, email: string) {

@@ -24,7 +24,7 @@ import { type ElementType } from "react";
 import { type AppKey, type ScopedCrmData } from "@/lib/crm-types";
 import { type AiEmailDraft } from "@/lib/ai-types";
 import { cn } from "@/lib/utils";
-import { ReloriqLogo, ReloriqMark } from "@/components/brand/ReloriqLogo";
+import { ReloriqLogo } from "@/components/brand/ReloriqLogo";
 import { BRAND } from "@/lib/brand";
 import { type ToastState } from "@/components/ui/crm-primitives";
 import { HeaderUtility } from "@/features/crm/header-utility";
@@ -46,9 +46,6 @@ export const appRail: Array<{ key: AppKey; label: string; href: string; icon: El
 export function LeftAppRail({ activeApp }: { activeApp: AppKey }) {
   return (
     <aside className="flex w-[80px] shrink-0 flex-col items-center bg-shell py-3 text-white">
-      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]">
-        <ReloriqMark className="h-9 w-9" title={BRAND.name} />
-      </div>
       <nav className="flex w-full flex-1 flex-col items-stretch gap-0.5 px-1.5" aria-label="App launcher">
         {appRail.map((item) => {
           const Icon = item.icon;

@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 type ReloriqMarkProps = {
@@ -56,11 +57,11 @@ export function ReloriqMark({ className, title }: ReloriqMarkProps) {
   );
 }
 
-export function ReloriqLogo({ className, title = "Reloriq", wordmarkClassName }: ReloriqLogoProps) {
+export function ReloriqLogo({ className, title = BRAND.name, wordmarkClassName }: ReloriqLogoProps) {
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <ReloriqMark className="h-9 w-9" title={title} />
-      <span className={cn("tracking-[-0.035em]", wordmarkClassName)}>Reloriq</span>
+      <span className={cn("tracking-[-0.035em]", wordmarkClassName)}>{BRAND.name}</span>
     </span>
   );
 }

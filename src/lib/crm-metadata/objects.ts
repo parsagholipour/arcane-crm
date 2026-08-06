@@ -1,3 +1,4 @@
+import { BRAND } from "@/lib/brand";
 import type { CrmObject, ObjectDefinition } from "@/lib/crm-types";
 
 export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
@@ -72,7 +73,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     searchInputName: "Lead-search-input",
     statusWhenEmpty: "0 items - Sorted by Name - Filtered by Lead Status - Updated a few seconds ago",
     emptyTitle: "Focus on the right leads",
-    emptyBody: "Reloriq helps focus sales efforts by keeping prospecting information organized.",
+    emptyBody: `${BRAND.name} helps focus sales efforts by keeping prospecting information organized.`,
     supportsNew: true
   },
   Opportunity: {

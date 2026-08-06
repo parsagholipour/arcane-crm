@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireSuperAdminPage } from "@/lib/super-admin";
 import { ReloriqLogo } from "@/components/brand/ReloriqLogo";
 import { SignOutButton } from "@/components/auth/SignOutButton";
+import { BRAND } from "@/lib/brand";
 
 export default async function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireSuperAdminPage();
@@ -15,7 +16,7 @@ export default async function SuperAdminLayout({ children }: { children: React.R
         <span className="rounded bg-white/15 px-2 py-1 text-xs">{user.email}</span>
         <div className="ml-auto flex gap-3 text-sm">
           <Link className="hover:underline" href="/lightning/page/home">
-            Open Reloriq
+            Open {BRAND.name}
           </Link>
           <SignOutButton className="hover:underline" />
         </div>

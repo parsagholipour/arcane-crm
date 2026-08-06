@@ -1,5 +1,6 @@
 import { authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
 import { parseRecurrenceRule } from "@/lib/calendar-recurrence";
+import { BRAND } from "@/lib/brand";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
@@ -66,9 +67,9 @@ export async function GET() {
     const lines = [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
-      "PRODID:-//Reloriq//Calendar//EN",
+      `PRODID:-//${BRAND.name}//Calendar//EN`,
       "CALSCALE:GREGORIAN",
-      `X-WR-CALNAME:${escapeIcs(context.organization.name)} · Reloriq`
+      `X-WR-CALNAME:${escapeIcs(context.organization.name)} · ${BRAND.name}`
     ];
 
     for (const event of events) {

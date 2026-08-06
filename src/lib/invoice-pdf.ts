@@ -2,6 +2,7 @@ import "server-only";
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { Prisma } from "@prisma/client";
+import { BRAND as APP_BRAND } from "@/lib/brand";
 import { invoiceInclude } from "@/lib/invoices";
 
 type InvoiceDocument = Prisma.InvoiceGetPayload<{ include: typeof invoiceInclude }>;
@@ -78,7 +79,7 @@ export async function generateInvoicePdf(invoice: InvoiceDocument, organizationN
   document.setTitle(invoice.invoiceNumber);
   document.setSubject("Sales invoice");
   document.setAuthor(safeText(organizationName));
-  document.setCreator("Reloriq Sales Invoicing");
+  document.setCreator(`${APP_BRAND.name} Sales Invoicing`);
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
 

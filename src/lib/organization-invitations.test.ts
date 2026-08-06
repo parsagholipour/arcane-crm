@@ -59,7 +59,7 @@ test("organization invitation uses a tenant activation link and records provider
     trackedMessage?.text ?? "",
     /https:\/\/crm\.example\.com\/organizations\/activate\?organizationId=org-1/
   );
-  assert.match(trackedMessage?.html ?? "", /Open Reloriq/);
+  assert.match(trackedMessage?.html ?? "", /Open CRM/);
   assert.deepEqual(trackedContext, {
     organizationId: "org-1",
     userId: "actor-1",
