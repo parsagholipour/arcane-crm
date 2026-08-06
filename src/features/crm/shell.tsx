@@ -24,7 +24,7 @@ import { type ElementType } from "react";
 import { type AppKey, type ScopedCrmData } from "@/lib/crm-types";
 import { type AiEmailDraft } from "@/lib/ai-types";
 import { cn } from "@/lib/utils";
-import { ReloriqLogo } from "@/components/brand/ReloriqLogo";
+import { Logo } from "@/components/brand/Logo";
 import { BRAND } from "@/lib/brand";
 import { type ToastState } from "@/components/ui/crm-primitives";
 import { HeaderUtility } from "@/features/crm/header-utility";
@@ -95,7 +95,7 @@ export function GlobalHeader({
 }) {
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[#d8dde6] bg-white px-3">
-      <ReloriqLogo className="min-w-[112px] text-shell" wordmarkClassName="text-[17px] font-bold" />
+      <Logo className="min-w-[112px] text-shell" wordmarkClassName="text-[17px] font-bold" />
       <SearchOverlay data={data} onNavigate={onNavigate} onDataChange={onDataChange} onToast={onToast} />
       <div className="ml-auto flex items-center gap-1">
         <HeaderUtility

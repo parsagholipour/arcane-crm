@@ -7,7 +7,7 @@ type ReloriqMarkProps = {
   title?: string;
 };
 
-type ReloriqLogoProps = ReloriqMarkProps & {
+type LogoProps = ReloriqMarkProps & {
   wordmarkClassName?: string;
 };
 
@@ -57,7 +57,7 @@ export function ReloriqMark({ className, title }: ReloriqMarkProps) {
   );
 }
 
-export function ReloriqLogo({ className, title = BRAND.name, wordmarkClassName }: ReloriqLogoProps) {
+export function Logo({ className, title = BRAND.name, wordmarkClassName }: LogoProps) {
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <ReloriqMark className="h-9 w-9" title={title} />

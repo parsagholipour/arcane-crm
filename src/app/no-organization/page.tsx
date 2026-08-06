@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { auth } from "@/lib/auth";
-import { ReloriqLogo } from "@/components/brand/ReloriqLogo";
+import { Logo } from "@/components/brand/Logo";
 import { BRAND } from "@/lib/brand";
 
 export default async function NoOrganizationPage() {
@@ -9,7 +9,7 @@ export default async function NoOrganizationPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-slate-50 p-6">
       <section className="w-full max-w-lg rounded-lg border bg-white p-8 text-center shadow-sm">
-        <ReloriqLogo className="mb-6 justify-center" wordmarkClassName="text-xl font-bold text-shell" />
+        <Logo className="mb-6 justify-center" wordmarkClassName="text-xl font-bold text-shell" />
         <h1 className="text-xl font-semibold text-slate-900">No active organization</h1>
         <p className="mt-3 text-sm text-slate-600">
           Your account does not currently have access to an active {BRAND.name} organization.

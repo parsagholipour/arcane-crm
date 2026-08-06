@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PoAppIntegrationClient } from "@/components/admin/PoAppIntegrationClient";
 import { SignOutButton } from "@/components/auth/SignOutButton";
-import { ReloriqLogo } from "@/components/brand/ReloriqLogo";
+import { Logo } from "@/components/brand/Logo";
 import { BRAND } from "@/lib/brand";
 import { AppAuthorizationError, requireOrganizationAdmin } from "@/lib/organization-context";
 import { loadPoAppIntegration, poAppIntegrationDto } from "@/lib/po-app-integration";
@@ -29,7 +29,7 @@ export default async function PoAppIntegrationPage() {
       <div className="min-h-screen bg-[#f3f3f3] text-[#181818]">
         <header className="flex min-h-14 items-center gap-4 border-b border-[#d8dde6] bg-white px-5">
           <Link href="/lightning/page/home">
-            <ReloriqLogo wordmarkClassName="text-lg font-bold text-shell" />
+            <Logo wordmarkClassName="text-lg font-bold text-shell" />
           </Link>
           <span className="rounded bg-brand-50 px-2 py-1 text-xs text-brand-900">
             {context.organization.name} · Organization Admin

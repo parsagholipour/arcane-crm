@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountSessionsClient } from "@/components/admin/AccountSessionsClient";
-import { ReloriqLogo } from "@/components/brand/ReloriqLogo";
+import { Logo } from "@/components/brand/Logo";
 import { AppAuthorizationError, requireAuthenticatedUser } from "@/lib/organization-context";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ export default async function AccountSessionsPage() {
       <div className="min-h-screen bg-[#f3f3f3] text-[#181818]">
         <header className="flex min-h-14 items-center border-b bg-white px-5">
           <Link href="/lightning/page/home">
-            <ReloriqLogo wordmarkClassName="text-lg font-bold text-shell" />
+            <Logo wordmarkClassName="text-lg font-bold text-shell" />
           </Link>
           <span className="ml-auto text-sm text-[#706e6b]">{user.email}</span>
         </header>
