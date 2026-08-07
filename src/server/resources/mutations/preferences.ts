@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { builtInGuidanceItemById } from "@/lib/guidance";
 import { prisma } from "@/lib/prisma";
 import type { ResourceMutationContext } from "@/server/resources/mutations/context";
 
@@ -6,20 +7,36 @@ export async function handlePreferencesMutation(context: ResourceMutationContext
   const { payload, values, organizationId, userId, personalWhere } = context;
 
   if (payload.action === "updateGuidance" && payload.id) {
-    const state = await prisma.userGuidanceState.upsert({
-      where: { organizationId_userId_itemId: { organizationId, userId, itemId: payload.id } },
-      update: {
-        status: String(values.status ?? "ACTIVE"),
-        snoozedUntil: values.snoozedUntil ? new Date(String(values.snoozedUntil)) : null
-      },
-      create: {
-        organizationId,
-        userId,
-        itemId: payload.id,
-        status: String(values.status ?? "ACTIVE"),
-        snoozedUntil: values.snoozedUntil ? new Date(String(values.snoozedUntil)) : null
+    const itemId = payload.id;
+    const builtInItem = builtInGuidanceItemById(itemId);
+    const state = await prisma.$transaction(async (transaction) => {
+      if (builtInItem) {
+        await transaction.guidanceItem.upsert({
+          where: { id: builtInItem.id },
+          update: {},
+          create: builtInItem
+        });
+      } else {
+        const item = await transaction.guidanceItem.findUnique({ where: { id: itemId } });
+        if (!item) return null;
       }
+
+      return transaction.userGuidanceState.upsert({
+        where: { organizationId_userId_itemId: { organizationId, userId, itemId } },
+        update: {
+          status: String(values.status ?? "ACTIVE"),
+          snoozedUntil: values.snoozedUntil ? new Date(String(values.snoozedUntil)) : null
+        },
+        create: {
+          organizationId,
+          userId,
+          itemId,
+          status: String(values.status ?? "ACTIVE"),
+          snoozedUntil: values.snoozedUntil ? new Date(String(values.snoozedUntil)) : null
+        }
+      });
     });
+    if (!state) return NextResponse.json({ error: "Guidance item not found." }, { status: 404 });
     return NextResponse.json({ ok: true, state: JSON.parse(JSON.stringify(state)) });
   }
 

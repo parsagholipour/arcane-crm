@@ -2,6 +2,7 @@ import { APP_NAV, OBJECT_DEFINITIONS } from "@/lib/crm-metadata";
 import { recordTitle } from "@/lib/crm-data";
 import { type AppKey, type AppNavItem, type ScopedCrmData, type CrmObject, type RecordData } from "@/lib/crm-types";
 import { type ScreenDescriptor as ScreenState } from "@/lib/api/contracts";
+import { BUILT_IN_GUIDANCE_ITEMS } from "@/lib/guidance";
 import { isCrmObject, pathnameWithSearch } from "@/features/routing/lightning-route";
 import { isRecordData } from "@/features/crm/data-model";
 import { type ConsoleTab } from "@/features/crm/shared-types";
@@ -90,29 +91,7 @@ export function buildNotificationPreferences(preferences: RecordData[] = []) {
   }, {});
 }
 export function fallbackGuidanceItems(): RecordData[] {
-  return [
-    {
-      id: "lead",
-      title: "Add a lead",
-      body: "First enter and save a few details about the lead. You can add a sample lead, snooze this guidance, drag it, or dismiss it.",
-      href: "/lightning/o/Lead/list?filterName=AllOpenLeads",
-      target: "Lead"
-    },
-    {
-      id: "marketing",
-      title: "Turn on marketing features",
-      body: "Activate marketing, then send your first list email.",
-      href: "/lightning/app/marketing",
-      target: "Marketing"
-    },
-    {
-      id: "deal",
-      title: "Create your first deal",
-      body: "Create an opportunity and update the stage as work progresses.",
-      href: "/lightning/o/Opportunity/list",
-      target: "Opportunity"
-    }
-  ];
+  return BUILT_IN_GUIDANCE_ITEMS.map((item) => ({ ...item }));
 }
 export function buildGuidanceItems(data: ScopedCrmData): RecordData[] {
   const stateByItem = new Map(data.guidanceStates.map((state) => [String(state.itemId), state]));

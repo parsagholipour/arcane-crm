@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { BUILT_IN_GUIDANCE_ITEMS } from "../src/lib/guidance";
 
 const prisma = new PrismaClient();
 
@@ -138,31 +139,7 @@ async function main() {
     }
   });
 
-  const guidance = [
-    {
-      id: "lead",
-      title: "Add a lead",
-      body: "Create a lead, qualify it, then convert it into sales records.",
-      href: "/lightning/o/Lead/list?filterName=AllOpenLeads",
-      target: "Lead"
-    },
-    {
-      id: "marketing",
-      title: "Turn on marketing features",
-      body: "Activate marketing, then send your first list email.",
-      href: "/lightning/app/marketing",
-      target: "Marketing"
-    },
-    {
-      id: "deal",
-      title: "Create your first deal",
-      body: "Create an opportunity and update the stage as work progresses.",
-      href: "/lightning/o/Opportunity/list",
-      target: "Opportunity"
-    }
-  ];
-
-  for (const item of guidance) {
+  for (const item of BUILT_IN_GUIDANCE_ITEMS) {
     await prisma.guidanceItem.upsert({
       where: { id: item.id },
       update: item,
