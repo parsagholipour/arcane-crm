@@ -53,4 +53,22 @@ describe("DataGrid column sorting", () => {
       within(header).getByRole("button", { name: "Opportunity Name" }).querySelector(".lucide-chevrons-up-down")
     ).not.toBeNull();
   });
+
+  it("disables derived columns that cannot be sorted across paginated records", () => {
+    render(
+      <DataGrid
+        definition={OBJECT_DEFINITIONS.Opportunity}
+        records={records}
+        selected={[]}
+        sortableColumns={["name", "accountName", "closeDate", "stage", "amount"]}
+        onSelect={vi.fn()}
+        onSort={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Opportunity Name" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Tracking Status" })).toBeDisabled();
+  });
 });

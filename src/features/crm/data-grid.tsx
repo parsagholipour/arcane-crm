@@ -42,6 +42,7 @@ export function DataGrid({
   records,
   selected,
   sortState,
+  sortableColumns,
   recordLabels = {},
   campaignMembers = {},
   onSelect,
@@ -59,6 +60,7 @@ export function DataGrid({
   records: RecordData[];
   selected: string[];
   sortState?: ListSortState;
+  sortableColumns?: string[];
   recordLabels?: Record<string, string[]>;
   campaignMembers?: Record<string, string[]>;
   onSelect: (selected: string[]) => void;
@@ -73,6 +75,7 @@ export function DataGrid({
   onConvertLead?: (record: RecordData) => void;
 }) {
   const allSelected = records.length > 0 && selected.length === records.length;
+  const canSortColumn = (column: string) => !sortableColumns || sortableColumns.includes(column);
   const [editingCell, setEditingCell] = useState<InlineEditingCell>(null);
   const cancelInlineEditRef = useRef(false);
 
@@ -162,8 +165,10 @@ export function DataGrid({
                   <button
                     className={cn(
                       "flex items-center gap-1 font-semibold hover:text-brand-700",
-                      sortState?.key === column.key && "text-brand-700"
+                      sortState?.key === column.key && "text-brand-700",
+                      !canSortColumn(column.key) && "cursor-not-allowed text-[#a8a8a8] hover:text-[#a8a8a8]"
                     )}
+                    disabled={!canSortColumn(column.key)}
                     onClick={() => onSort(column.key)}
                   >
                     {column.label}
@@ -190,14 +195,16 @@ export function DataGrid({
                       <DropdownMenu.Portal>
                         <DropdownMenu.Content className="z-50 rounded border border-[#d8dde6] bg-white p-1 text-sm shadow-popover">
                           <DropdownMenu.Item
+                            disabled={!canSortColumn(column.key)}
                             onSelect={() => onSort(column.key, "asc")}
-                            className="cursor-pointer rounded px-3 py-2 hover:bg-brand-50"
+                            className="cursor-pointer rounded px-3 py-2 hover:bg-brand-50 data-[disabled]:cursor-not-allowed data-[disabled]:text-[#a8a8a8]"
                           >
                             Sort Ascending
                           </DropdownMenu.Item>
                           <DropdownMenu.Item
+                            disabled={!canSortColumn(column.key)}
                             onSelect={() => onSort(column.key, "desc")}
-                            className="cursor-pointer rounded px-3 py-2 hover:bg-brand-50"
+                            className="cursor-pointer rounded px-3 py-2 hover:bg-brand-50 data-[disabled]:cursor-not-allowed data-[disabled]:text-[#a8a8a8]"
                           >
                             Sort Descending
                           </DropdownMenu.Item>

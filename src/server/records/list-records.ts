@@ -3,6 +3,7 @@ import "server-only";
 import { invoiceInclude } from "@/lib/invoices";
 import { OBJECT_DEFINITIONS } from "@/lib/crm-metadata";
 import { prisma } from "@/lib/prisma";
+import { isServerSortableListColumn } from "@/lib/record-list-sorting";
 import { shipmentTrackingBySubject } from "@/lib/shipment-tracking-sync";
 import type { GenericRecord, ListQuery, ListResult } from "@/lib/api/contracts";
 import type { CrmObject } from "@/lib/crm-types";
@@ -57,7 +58,7 @@ function modelConfig(object: CrmObject): ModelConfig {
         delegate: delegate(prisma.lead),
         searchFields: ["firstName", "lastName", "company", "email", "phone"],
         sortFields: ["firstName", "lastName", "company", "status", "updatedAt"],
-        defaultSort: "updatedAt",
+        defaultSort: "displayName",
         ownerField: "ownerId"
       };
     case "Opportunity":
@@ -181,6 +182,9 @@ function viewWhere(object: CrmObject, view: string, userId: string, ownerField?:
   }
 
   if (requested.startsWith("my") && ownerField) return { [ownerField]: userId };
+  if (requested.includes("open") && object === "Lead") {
+    return { convertedAt: null, status: { not: "Unqualified" } };
+  }
   if (requested.includes("open") && object === "Case") return { status: { not: "Closed" } };
   if (requested.includes("open") && object === "Opportunity") {
     return { stage: { notIn: ["Closed Won", "Closed Lost"] } };
@@ -205,6 +209,24 @@ function searchWhere(fields: string[], search: string) {
 
 function serializeRecords(records: GenericRecord[]) {
   return JSON.parse(JSON.stringify(records)) as GenericRecord[];
+}
+
+function orderByForList(object: CrmObject, sort: string, direction: "asc" | "desc") {
+  const stableId = { id: direction };
+  if ((object === "Contact" || object === "Lead") && sort === "displayName") {
+    return [{ lastName: direction }, { firstName: direction }, stableId];
+  }
+  if (object === "Contact" && sort === "accountName") return [{ account: { name: direction } }, stableId];
+  if (object === "Opportunity" && sort === "accountName") return [{ account: { name: direction } }, stableId];
+  if (object === "Case" && sort === "contactName") {
+    return [{ contact: { lastName: direction } }, { contact: { firstName: direction } }, stableId];
+  }
+  if (object === "Product2" && sort === "syncSource") return [{ poAppProductId: direction }, stableId];
+  if (object === "Invoice" && sort === "accountName") return [{ account: { name: direction } }, stableId];
+  if (object === "Invoice" && sort === "opportunityName") {
+    return [{ opportunity: { name: direction } }, stableId];
+  }
+  return [{ [sort]: direction }, stableId];
 }
 
 export async function listRecords(
@@ -240,14 +262,14 @@ export async function listRecords(
     ...searchWhere(config.searchFields, query.search)
   };
   const sort = query.sort || config.defaultSort;
-  if (!config.sortFields.includes(sort)) {
+  if (!config.sortFields.includes(sort) && !isServerSortableListColumn(object, sort)) {
     throw new RecordListQueryError(`Unsupported sort field for ${OBJECT_DEFINITIONS[object].plural}.`);
   }
 
   const [records, total] = await Promise.all([
     config.delegate.findMany({
       where,
-      orderBy: { [sort]: query.direction },
+      orderBy: orderByForList(object, sort, query.direction),
       take: query.limit + 1,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
       ...(config.include ? { include: config.include } : {})

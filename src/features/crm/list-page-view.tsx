@@ -49,6 +49,7 @@ export function ListView({ model }: { model: ListViewPageModel }) {
     controlDialog,
     setControlDialog,
     activeColumns,
+    sortableColumns,
     activeColumnWidths,
     activeFilters,
     activeSharing,
@@ -61,7 +62,16 @@ export function ListView({ model }: { model: ListViewPageModel }) {
     isCustomListView,
     isPinned,
     visibleRecords,
+    listLoading,
+    pageSize,
+    currentPage,
+    totalPages,
+    canGoPrevious,
+    canGoNext,
     refreshList,
+    previousPage,
+    nextPage,
+    changePageSize,
     recentListViews,
     otherListViews,
     status,
@@ -206,10 +216,10 @@ export function ListView({ model }: { model: ListViewPageModel }) {
             <ToolbarButton
               label="Column sort"
               icon={ChevronsUpDown}
-              disabled={visibleRecords.length < 1 || activeColumns.length < 2}
+              disabled={visibleRecords.length < 1 || sortableColumns.length < 1}
               disabledReason={columnSortDisabledReason}
               onDisabled={() => setDisabledMessage(columnSortDisabledReason)}
-              onClick={() => sortColumn(activeColumns[0]?.key ?? "name")}
+              onClick={() => sortColumn(sortableColumns[0] ?? "name")}
             />
             <ToolbarButton
               label="Edit List"
@@ -252,6 +262,7 @@ export function ListView({ model }: { model: ListViewPageModel }) {
             campaignMembers={campaignMembers}
             onSelect={setSelected}
             sortState={sortState}
+            sortableColumns={sortableColumns}
             onSort={sortColumn}
             onHideColumn={(columnKey) => void hideColumn(columnKey)}
             onResizeColumn={(columnKey, width) => void resizeColumn(columnKey, width)}
@@ -265,6 +276,35 @@ export function ListView({ model }: { model: ListViewPageModel }) {
             onConvertLead={(record) => onListAction("Convert Lead", object, [record], [requiredId(record)])}
           />
         )}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#d8dde6] bg-[#f8f9fb] p-3">
+          <label className="flex items-center gap-2 text-xs text-[#706e6b]">
+            Rows per page
+            <select
+              aria-label="Rows per page"
+              className="h-8 rounded border border-[#c9c9c9] bg-white px-2 text-xs text-[#181818]"
+              disabled={listLoading}
+              value={pageSize}
+              onChange={(event) => changePageSize(Number(event.target.value))}
+            >
+              {[50, 100, 200].map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="text-xs text-[#706e6b]">
+            Page {currentPage} of {totalPages}
+          </div>
+          <div className="flex gap-2">
+            <Button disabled={!canGoPrevious || listLoading} onClick={previousPage}>
+              Previous
+            </Button>
+            <Button disabled={!canGoNext || listLoading} onClick={nextPage}>
+              {listLoading ? "Loading…" : "Next"}
+            </Button>
+          </div>
+        </div>
       </div>
       {visibleRecords.length === 0 && <EmptyState definition={definition} onCreate={() => onCreate(object)} />}
       {showContextualGuidance && (

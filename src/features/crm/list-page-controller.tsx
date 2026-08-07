@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { OBJECT_DEFINITIONS } from "@/lib/crm-metadata";
 import { type ScopedCrmData, type CrmObject, type RecordData } from "@/lib/crm-types";
 import { dataKeyForObject } from "@/lib/crm-data";
@@ -23,6 +23,7 @@ import { type ScopedCrmDataUpdater, type ListSortState, type SaveRecordHandler }
 import { type ToastState } from "@/components/ui/crm-primitives";
 import { guidanceItemForObject, isContextualGuidanceVisible } from "@/features/crm/shell-model";
 import { useShipmentTrackingSweep } from "@/features/crm/use-shipment-tracking-sweep";
+import { isServerSortableListColumn } from "@/lib/record-list-sorting";
 
 export function useListViewController({
   object,
@@ -71,6 +72,13 @@ export function useListViewController({
   const [selected, setSelected] = useState<string[]>([]);
   const [sortState, setSortState] = useState<ListSortState>(null);
   const [controlDialog, setControlDialog] = useState<string | null>(null);
+  const [serverTotal, setServerTotal] = useState(records.length);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [listLoading, setListLoading] = useState(false);
+  const [pageSize, setPageSize] = useState(200);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
+  const listRequestIdRef = useRef(0);
   useShipmentTrackingSweep(object === "Opportunity", onDataChange);
   const listViews = useMemo(
     () =>
@@ -85,6 +93,9 @@ export function useListViewController({
   );
   const activePreference = objectPreferences.find((item) => item.viewName === listView);
   const activeColumns = columnsForListView(definition, activePreference);
+  const sortableColumns = activeColumns
+    .filter((column) => isServerSortableListColumn(object, column.key))
+    .map((column) => column.key);
   const activeColumnWidths = columnWidthsForListView(activePreference);
   const activeFilters = filtersForListView(definition, activePreference);
   const activeSharing = normalizeListViewSharing(activePreference?.sharing);
@@ -101,6 +112,7 @@ export function useListViewController({
     isContextualGuidanceVisible(contextualGuidance);
   const isCustomListView = Boolean(activePreference?.isCustom);
   const isPinned = Boolean(activePreference?.pinned);
+  const serverSortState = sortState && sortableColumns.includes(sortState.key) ? sortState : null;
   useEffect(() => {
     setListView(String(initialListView || pinnedPreference?.viewName || definition.defaultList));
     setQuery(initialQuery);
@@ -108,8 +120,26 @@ export function useListViewController({
     setSelected([]);
     setSortState(null);
     setControlDialog(null);
+    setServerTotal(records.length);
+    setNextCursor(null);
+    setPageIndex(0);
+    setPageCursors([null]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [object, initialQuery, initialListView]);
+  useEffect(() => {
+    setPageIndex(0);
+    setPageCursors([null]);
+    setNextCursor(null);
+    const delay = query === initialQuery ? 0 : 250;
+    const timer = window.setTimeout(() => void requestListPage(null, 0), delay);
+    return () => {
+      window.clearTimeout(timer);
+      listRequestIdRef.current += 1;
+    };
+    // Fetching is intentionally keyed to the active server query. Parent callbacks are
+    // omitted because their identities change when the scoped data collection changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [object, listView, pageSize, query, serverSortState?.key, serverSortState?.direction]);
   const visibleRecords = useMemo(() => {
     const filteredByStandardView = records.filter((record) =>
       recordMatchesStandardListView(object, listView, record, data.globalSearchRecents, data.user.id)
@@ -120,27 +150,78 @@ export function useListViewController({
     const filtered = filteredBySavedFilters.filter((record) =>
       Object.values(record).join(" ").toLowerCase().includes(query.toLowerCase())
     );
-    if (!sortState) return filtered;
+    if (!sortState || serverSortState) return filtered;
     return [...filtered].sort((a, b) => {
       const comparison = compareRecordValues(a[sortState.key], b[sortState.key]);
       return sortState.direction === "asc" ? comparison : -comparison;
     });
-  }, [activeFilters, data.globalSearchRecents, data.user.id, listView, object, query, records, sortState]);
-  async function refreshList() {
-    try {
-      const result = await apiRequest<ListResult<GenericRecord>>(`/api/records/${object}?limit=200`);
-      const key = dataKeyForObject(object);
-      onDataChange(
-        (previous) =>
-          ({
-            ...previous,
-            [key]: result.items
-          }) as ScopedCrmData
-      );
-      onToast({ tone: "success", message: "List refreshed from the CRM." });
-    } catch (error) {
-      onToast({ tone: "error", message: error instanceof Error ? error.message : "The list could not be refreshed." });
+  }, [
+    activeFilters,
+    data.globalSearchRecents,
+    data.user.id,
+    listView,
+    object,
+    query,
+    records,
+    serverSortState,
+    sortState
+  ]);
+  function listRequestUrl(cursor?: string | null) {
+    const parameters = new URLSearchParams({ limit: String(pageSize), view: listView, search: query });
+    if (cursor) parameters.set("cursor", cursor);
+    if (serverSortState) {
+      parameters.set("sort", serverSortState.key);
+      parameters.set("direction", serverSortState.direction);
     }
+    return `/api/records/${object}?${parameters.toString()}`;
+  }
+  async function requestListPage(cursor: string | null, targetPageIndex: number) {
+    const requestId = ++listRequestIdRef.current;
+    setListLoading(true);
+    try {
+      const result = await apiRequest<ListResult<GenericRecord>>(listRequestUrl(cursor));
+      if (requestId !== listRequestIdRef.current) return false;
+      const key = dataKeyForObject(object);
+      onDataChange((previous) => {
+        const incoming = result.items as RecordData[];
+        return { ...previous, [key]: incoming } as ScopedCrmData;
+      });
+      setServerTotal(result.total);
+      setNextCursor(result.nextCursor);
+      setPageIndex(targetPageIndex);
+      setPageCursors((current) => {
+        const next = targetPageIndex === 0 ? [null] : current.slice(0, targetPageIndex + 1);
+        next[targetPageIndex] = cursor;
+        return next;
+      });
+      setSelected([]);
+      return true;
+    } catch (error) {
+      if (requestId === listRequestIdRef.current) {
+        onToast({ tone: "error", message: error instanceof Error ? error.message : "The list could not be loaded." });
+      }
+      return false;
+    } finally {
+      if (requestId === listRequestIdRef.current) setListLoading(false);
+    }
+  }
+  async function refreshList() {
+    if (await requestListPage(pageCursors[pageIndex] ?? null, pageIndex)) {
+      onToast({ tone: "success", message: "List refreshed from the CRM." });
+    }
+  }
+  async function nextPage() {
+    if (!nextCursor || listLoading) return;
+    await requestListPage(nextCursor, pageIndex + 1);
+  }
+  async function previousPage() {
+    if (pageIndex < 1 || listLoading) return;
+    const targetPageIndex = pageIndex - 1;
+    await requestListPage(pageCursors[targetPageIndex] ?? null, targetPageIndex);
+  }
+  function changePageSize(value: number) {
+    if (![50, 100, 200].includes(value) || value === pageSize) return;
+    setPageSize(value);
   }
   const recentListViews = useMemo(
     () => listViews.slice(0, 2).filter((view) => listViewMatchesSearch(view, listViewSearch)),
@@ -154,7 +235,11 @@ export function useListViewController({
     ? (activeColumns.find((column) => column.key === sortState.key) ??
       definition.columns.find((column) => column.key === sortState.key))
     : activeColumns[0];
-  const status = `${visibleRecords.length} ${visibleRecords.length === 1 ? "item" : "items"} - Sorted by ${sortedColumn?.label ?? "Name"}${sortState ? ` ${sortState.direction === "asc" ? "Ascending" : "Descending"}` : ""}${activeFilters.length ? ` - Filtered by ${activeFilters.map((filter) => fieldLabel(String(filter.field))).join(", ")}` : ""} - Updated a few seconds ago`;
+  const pageStart = serverTotal === 0 ? 0 : pageIndex * pageSize + 1;
+  const pageEnd = serverTotal === 0 ? 0 : Math.min(pageStart + records.length - 1, serverTotal);
+  const filteredStatus = visibleRecords.length === records.length ? "" : ` - ${visibleRecords.length} shown`;
+  const status = `${pageStart}-${pageEnd} of ${serverTotal} items${filteredStatus} - Sorted by ${sortedColumn?.label ?? "Name"}${sortState ? ` ${sortState.direction === "asc" ? "Ascending" : "Descending"}` : ""}${activeFilters.length ? ` - Filtered by ${activeFilters.map((filter) => fieldLabel(String(filter.field))).join(", ")}` : ""} - Updated a few seconds ago`;
+  const totalPages = Math.max(1, Math.ceil(serverTotal / pageSize));
   function applyListViewPreferences(nextPreferences: RecordData[]) {
     onDataChange((previous) => ({
       ...previous,
@@ -173,10 +258,12 @@ export function useListViewController({
     else onListAction(action, object, visibleRecords, selected);
   }
   function sortColumn(column: string, direction?: "asc" | "desc") {
-    if (visibleRecords.length < 1 || definition.columns.length < 2) {
-      setDisabledMessage(
-        "Column sort is disabled. To sort columns, a list view needs at least one row and two columns."
-      );
+    if (visibleRecords.length < 1) {
+      setDisabledMessage("Column sort is disabled until the list has at least one row.");
+      return;
+    }
+    if (!sortableColumns.includes(column)) {
+      setDisabledMessage("This derived column cannot be sorted across the complete list.");
       return;
     }
     setDisabledMessage("");
@@ -311,7 +398,9 @@ export function useListViewController({
     return onSaveRecord(object, { [kanbanConfig.field]: value }, { id, stayOpen: true });
   }
   const columnSortDisabledReason =
-    "Column sort is disabled. To sort columns, a list view needs at least one row and two columns.";
+    visibleRecords.length < 1
+      ? "Column sort is disabled until the list has at least one row."
+      : "None of the displayed columns can be sorted across the complete list.";
   async function updateContextualGuidance(status: string, snoozedUntil?: string | null) {
     if (!contextualGuidance?.id) return false;
     const response = await resourceApi.updateGuidance(String(contextualGuidance.id), {
@@ -381,6 +470,7 @@ export function useListViewController({
     controlDialog,
     setControlDialog,
     activeColumns,
+    sortableColumns,
     activeColumnWidths,
     activeFilters,
     activeSharing,
@@ -393,7 +483,18 @@ export function useListViewController({
     isCustomListView,
     isPinned,
     visibleRecords,
+    serverTotal,
+    nextCursor,
+    listLoading,
+    pageSize,
+    currentPage: pageIndex + 1,
+    totalPages,
+    canGoPrevious: pageIndex > 0,
+    canGoNext: Boolean(nextCursor),
     refreshList,
+    previousPage,
+    nextPage,
+    changePageSize,
     recentListViews,
     otherListViews,
     status,
