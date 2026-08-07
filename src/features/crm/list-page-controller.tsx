@@ -15,6 +15,7 @@ import {
   compareRecordValues,
   filtersForListView,
   kanbanConfigForObject,
+  recordMatchesCountryFilter,
   recordMatchesListFilter,
   recordMatchesStandardListView
 } from "@/features/crm/list-model";
@@ -67,6 +68,7 @@ export function useListViewController({
   );
   const [display, setDisplay] = useState<"Table" | "Kanban">("Table");
   const [query, setQuery] = useState(initialQuery);
+  const [country, setCountry] = useState("");
   const [listViewSearch, setListViewSearch] = useState("");
   const [disabledMessage, setDisabledMessage] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
@@ -116,6 +118,7 @@ export function useListViewController({
   useEffect(() => {
     setListView(String(initialListView || pinnedPreference?.viewName || definition.defaultList));
     setQuery(initialQuery);
+    setCountry("");
     setListViewSearch("");
     setSelected([]);
     setSortState(null);
@@ -139,9 +142,12 @@ export function useListViewController({
     // Fetching is intentionally keyed to the active server query. Parent callbacks are
     // omitted because their identities change when the scoped data collection changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [object, listView, pageSize, query, serverSortState?.key, serverSortState?.direction]);
+  }, [country, object, listView, pageSize, query, serverSortState?.key, serverSortState?.direction]);
   const visibleRecords = useMemo(() => {
-    const filteredByStandardView = records.filter((record) =>
+    const filteredByCountry = records.filter(
+      (record) => object !== "Lead" || recordMatchesCountryFilter(record, country)
+    );
+    const filteredByStandardView = filteredByCountry.filter((record) =>
       recordMatchesStandardListView(object, listView, record, data.globalSearchRecents, data.user.id)
     );
     const filteredBySavedFilters = filteredByStandardView.filter((record) =>
@@ -157,6 +163,7 @@ export function useListViewController({
     });
   }, [
     activeFilters,
+    country,
     data.globalSearchRecents,
     data.user.id,
     listView,
@@ -168,6 +175,7 @@ export function useListViewController({
   ]);
   function listRequestUrl(cursor?: string | null) {
     const parameters = new URLSearchParams({ limit: String(pageSize), view: listView, search: query });
+    if (object === "Lead" && country) parameters.set("country", country);
     if (cursor) parameters.set("cursor", cursor);
     if (serverSortState) {
       parameters.set("sort", serverSortState.key);
@@ -238,7 +246,7 @@ export function useListViewController({
   const pageStart = serverTotal === 0 ? 0 : pageIndex * pageSize + 1;
   const pageEnd = serverTotal === 0 ? 0 : Math.min(pageStart + records.length - 1, serverTotal);
   const filteredStatus = visibleRecords.length === records.length ? "" : ` - ${visibleRecords.length} shown`;
-  const status = `${pageStart}-${pageEnd} of ${serverTotal} items${filteredStatus} - Sorted by ${sortedColumn?.label ?? "Name"}${sortState ? ` ${sortState.direction === "asc" ? "Ascending" : "Descending"}` : ""}${activeFilters.length ? ` - Filtered by ${activeFilters.map((filter) => fieldLabel(String(filter.field))).join(", ")}` : ""} - Updated a few seconds ago`;
+  const status = `${pageStart}-${pageEnd} of ${serverTotal} items${filteredStatus} - Sorted by ${sortedColumn?.label ?? "Name"}${sortState ? ` ${sortState.direction === "asc" ? "Ascending" : "Descending"}` : ""}${country ? " - Filtered by Country" : ""}${activeFilters.length ? ` - Filtered by ${activeFilters.map((filter) => fieldLabel(String(filter.field))).join(", ")}` : ""} - Updated a few seconds ago`;
   const totalPages = Math.max(1, Math.ceil(serverTotal / pageSize));
   function applyListViewPreferences(nextPreferences: RecordData[]) {
     onDataChange((previous) => ({
@@ -460,6 +468,8 @@ export function useListViewController({
     setDisplay,
     query,
     setQuery,
+    country,
+    setCountry,
     listViewSearch,
     setListViewSearch,
     disabledMessage,

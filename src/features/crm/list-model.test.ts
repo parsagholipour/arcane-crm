@@ -4,6 +4,7 @@ import {
   chartDataForRecords,
   compareRecordValues,
   normalizeColumnWidth,
+  recordMatchesCountryFilter,
   recordMatchesListFilter,
   recordMatchesStandardListView
 } from "./list-model";
@@ -28,6 +29,12 @@ test("list filters and standard views reject non-matching records", () => {
     ),
     true
   );
+});
+
+test("country filters match leads case-insensitively and allow the all-countries state", () => {
+  assert.equal(recordMatchesCountryFilter({ country: "Canada" }, "canada"), true);
+  assert.equal(recordMatchesCountryFilter({ country: "United States" }, "Canada"), false);
+  assert.equal(recordMatchesCountryFilter({ country: "Canada" }, ""), true);
 });
 
 test("list sorting, chart grouping, and widths are deterministic", () => {

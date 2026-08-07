@@ -6,11 +6,13 @@ test("listQuerySchema supplies bounded defaults and validates direction", () => 
   assert.deepEqual(listQuerySchema.parse({}), {
     limit: 50,
     search: "",
+    country: "",
     view: "",
     sort: "",
     direction: "asc"
   });
   assert.equal(listQuerySchema.parse({ limit: "200", direction: "desc" }).limit, 200);
+  assert.equal(listQuerySchema.parse({ country: "  Canada  " }).country, "Canada");
   assert.throws(() => listQuerySchema.parse({ limit: 201 }));
 });
 

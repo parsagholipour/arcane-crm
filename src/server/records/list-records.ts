@@ -207,6 +207,11 @@ function searchWhere(fields: string[], search: string) {
   };
 }
 
+function countryWhere(object: CrmObject, country: string) {
+  if (object !== "Lead" || !country) return {};
+  return { country: { equals: country, mode: "insensitive" } };
+}
+
 function serializeRecords(records: GenericRecord[]) {
   return JSON.parse(JSON.stringify(records)) as GenericRecord[];
 }
@@ -259,7 +264,8 @@ export async function listRecords(
   const where = {
     organizationId,
     ...viewWhere(object, query.view, userId, config.ownerField, Boolean(customView)),
-    ...searchWhere(config.searchFields, query.search)
+    ...searchWhere(config.searchFields, query.search),
+    ...countryWhere(object, query.country)
   };
   const sort = query.sort || config.defaultSort;
   if (!config.sortFields.includes(sort) && !isServerSortableListColumn(object, sort)) {

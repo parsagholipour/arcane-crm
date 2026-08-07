@@ -183,6 +183,9 @@ export function recordMatchesListFilter(record: RecordData, filter: RecordData) 
       return value.includes(target);
   }
 }
+export function recordMatchesCountryFilter(record: RecordData, country: string) {
+  return !country || String(record.country ?? "").localeCompare(country, undefined, { sensitivity: "base" }) === 0;
+}
 export function chartDataForRecords(records: RecordData[], field: string) {
   const counts = records.reduce<Record<string, number>>((accumulator, record) => {
     const label = formatCell(record[field]) || "Blank";
