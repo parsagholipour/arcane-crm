@@ -237,6 +237,7 @@ export function useListViewController({
   }
   function changePageSize(value: number) {
     if (![50, 100, 200].includes(value) || value === pageSize) return;
+    setListLoading(true);
     setPageSize(value);
   }
   const recentListViews = useMemo(
@@ -255,6 +256,16 @@ export function useListViewController({
   const pageEnd = serverTotal === 0 ? 0 : Math.min(pageStart + records.length - 1, serverTotal);
   const filteredStatus = visibleRecords.length === records.length ? "" : ` - ${visibleRecords.length} shown`;
   const status = `${pageStart}-${pageEnd} of ${serverTotal} items${filteredStatus} - Sorted by ${sortedColumn?.label ?? "Name"}${sortState ? ` ${sortState.direction === "asc" ? "Ascending" : "Descending"}` : ""}${country ? " - Filtered by Country" : ""}${state ? " - Filtered by State" : ""}${activeFilters.length ? ` - Filtered by ${activeFilters.map((filter) => fieldLabel(String(filter.field))).join(", ")}` : ""} - Updated a few seconds ago`;
+  function changeListView(value: string) {
+    if (value === listView) return;
+    setListLoading(true);
+    setListView(value);
+  }
+  function changeQuery(value: string) {
+    if (value === query) return;
+    setListLoading(true);
+    setQuery(value);
+  }
   function changeCountry(value: string) {
     if (value === country) return;
     setListLoading(true);
@@ -294,12 +305,16 @@ export function useListViewController({
       return;
     }
     setDisabledMessage("");
-    setSortState((current) => {
-      if (direction) return { key: column, direction };
-      if (!current || current.key !== column) return { key: column, direction: "asc" };
-      if (current.direction === "asc") return { key: column, direction: "desc" };
-      return null;
-    });
+    const nextSortState = direction
+      ? { key: column, direction }
+      : !sortState || sortState.key !== column
+        ? { key: column, direction: "asc" as const }
+        : sortState.direction === "asc"
+          ? { key: column, direction: "desc" as const }
+          : null;
+    if (nextSortState?.key === sortState?.key && nextSortState?.direction === sortState?.direction) return;
+    setListLoading(true);
+    setSortState(nextSortState);
   }
   async function saveListViewPreference(values: {
     viewName: string;
@@ -328,7 +343,7 @@ export function useListViewController({
       return false;
     }
     applyListViewPreferences(response.listViewPreferences as RecordData[]);
-    setListView(values.viewName);
+    changeListView(values.viewName);
     setControlDialog(null);
     onToast({ tone: "success", message: `List view "${values.viewName}" saved.` });
     return true;
@@ -361,13 +376,14 @@ export function useListViewController({
       return false;
     }
     applyListViewPreferences(response.listViewPreferences as RecordData[]);
-    setListView(definition.defaultList);
+    changeListView(definition.defaultList);
     setControlDialog(null);
     onToast({ tone: "success", message: `List view "${listView}" deleted.` });
     return true;
   }
   function handleListViewControl(action: string) {
     if (action === "Reset Column Sorting") {
+      if (sortState) setListLoading(true);
       setSortState(null);
       onToast({ tone: "success", message: "Column sorting reset." });
       return;
@@ -482,11 +498,11 @@ export function useListViewController({
     onSaveRecord,
     definition,
     listView,
-    setListView,
+    setListView: changeListView,
     display,
     setDisplay,
     query,
-    setQuery,
+    setQuery: changeQuery,
     country,
     setCountry: changeCountry,
     state,
