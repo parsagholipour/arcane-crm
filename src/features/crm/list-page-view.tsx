@@ -18,7 +18,7 @@ import { Button, ToolbarButton } from "@/components/ui/crm-primitives";
 import { GuidanceCard, inputBareClass, inputClass, ListViewControlsMenu, ObjectIcon } from "@/features/crm/controls";
 import { DataGrid, EmptyState } from "@/features/crm/data-grid";
 import { KanbanBoard, KanbanUnavailable } from "@/features/crm/kanban";
-import { LeadCountryFilter } from "@/features/crm/lead-country-filter";
+import { LeadLocationFilters } from "@/features/crm/lead-country-filter";
 import { ListViewPreferenceModal } from "@/features/crm/list-preferences";
 import { requiredId } from "@/features/crm/record-model";
 import { type ListViewPageModel } from "@/features/crm/list-page-controller";
@@ -42,6 +42,8 @@ export function ListView({ model }: { model: ListViewPageModel }) {
     setQuery,
     country,
     setCountry,
+    state,
+    setState,
     listViewSearch,
     setListViewSearch,
     disabledMessage,
@@ -175,7 +177,14 @@ export function ListView({ model }: { model: ListViewPageModel }) {
         <div className="flex flex-wrap items-center justify-between gap-2 p-3">
           <div className="text-xs text-[#706e6b]">{status}</div>
           <div className="flex items-center gap-2">
-            {object === "Lead" && <LeadCountryFilter value={country} onChange={setCountry} />}
+            {object === "Lead" && (
+              <LeadLocationFilters
+                country={country}
+                state={state}
+                onCountryChange={setCountry}
+                onStateChange={setState}
+              />
+            )}
             <div className="flex h-8 items-center rounded border border-[#c9c9c9] bg-white px-2">
               <Search size={14} className="text-[#706e6b]" />
               <input

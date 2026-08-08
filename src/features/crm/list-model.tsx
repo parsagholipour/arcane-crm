@@ -4,6 +4,7 @@ import { type CrmObject, type ObjectDefinition, type RecordData } from "@/lib/cr
 import { isRecordData } from "@/features/crm/data-model";
 import { formatCell } from "@/features/crm/form-model";
 import { type KanbanConfig } from "@/features/crm/shared-types";
+import { usStateFilterValues } from "@/lib/crm-metadata/geographic";
 
 export const listViewSharingOptions = [
   "Only I can see this list view",
@@ -185,6 +186,13 @@ export function recordMatchesListFilter(record: RecordData, filter: RecordData) 
 }
 export function recordMatchesCountryFilter(record: RecordData, country: string) {
   return !country || String(record.country ?? "").localeCompare(country, undefined, { sensitivity: "base" }) === 0;
+}
+export function recordMatchesStateFilter(record: RecordData, state: string) {
+  if (!state) return true;
+  const recordState = String(record.state ?? "");
+  return usStateFilterValues(state).some(
+    (candidate) => recordState.localeCompare(candidate, undefined, { sensitivity: "base" }) === 0
+  );
 }
 export function chartDataForRecords(records: RecordData[], field: string) {
   const counts = records.reduce<Record<string, number>>((accumulator, record) => {

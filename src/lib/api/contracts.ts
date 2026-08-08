@@ -96,6 +96,7 @@ export const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   search: z.string().trim().max(200).default(""),
   country: z.string().trim().max(120).default(""),
+  state: z.string().trim().max(120).default(""),
   view: z.string().trim().max(120).default(""),
   sort: z.string().trim().max(80).default(""),
   direction: z.enum(["asc", "desc"]).default("asc")

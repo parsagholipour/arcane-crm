@@ -7,6 +7,7 @@ import { isServerSortableListColumn } from "@/lib/record-list-sorting";
 import { shipmentTrackingBySubject } from "@/lib/shipment-tracking-sync";
 import type { GenericRecord, ListQuery, ListResult } from "@/lib/api/contracts";
 import type { CrmObject } from "@/lib/crm-types";
+import { usStateFilterValues } from "@/lib/crm-metadata/geographic";
 
 type QueryArguments = Record<string, unknown>;
 type RecordDelegate = {
@@ -212,6 +213,11 @@ function countryWhere(object: CrmObject, country: string) {
   return { country: { equals: country, mode: "insensitive" } };
 }
 
+function stateWhere(object: CrmObject, country: string, state: string) {
+  if (object !== "Lead" || country !== "United States" || !state) return {};
+  return { state: { in: usStateFilterValues(state), mode: "insensitive" } };
+}
+
 function serializeRecords(records: GenericRecord[]) {
   return JSON.parse(JSON.stringify(records)) as GenericRecord[];
 }
@@ -265,7 +271,8 @@ export async function listRecords(
     organizationId,
     ...viewWhere(object, query.view, userId, config.ownerField, Boolean(customView)),
     ...searchWhere(config.searchFields, query.search),
-    ...countryWhere(object, query.country)
+    ...countryWhere(object, query.country),
+    ...stateWhere(object, query.country, query.state)
   };
   const sort = query.sort || config.defaultSort;
   if (!config.sortFields.includes(sort) && !isServerSortableListColumn(object, sort)) {

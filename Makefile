@@ -8,3 +8,4 @@ down:
 
 dbmigration-up:
 	npm run prisma:migrate
+Wh	

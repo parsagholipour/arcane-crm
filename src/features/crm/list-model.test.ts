@@ -6,6 +6,7 @@ import {
   normalizeColumnWidth,
   recordMatchesCountryFilter,
   recordMatchesListFilter,
+  recordMatchesStateFilter,
   recordMatchesStandardListView
 } from "./list-model";
 
@@ -35,6 +36,13 @@ test("country filters match leads case-insensitively and allow the all-countries
   assert.equal(recordMatchesCountryFilter({ country: "Canada" }, "canada"), true);
   assert.equal(recordMatchesCountryFilter({ country: "United States" }, "Canada"), false);
   assert.equal(recordMatchesCountryFilter({ country: "Canada" }, ""), true);
+});
+
+test("state filters match US state names and abbreviations case-insensitively", () => {
+  assert.equal(recordMatchesStateFilter({ state: "California" }, "california"), true);
+  assert.equal(recordMatchesStateFilter({ state: "CA" }, "California"), true);
+  assert.equal(recordMatchesStateFilter({ state: "Nevada" }, "California"), false);
+  assert.equal(recordMatchesStateFilter({ state: "Nevada" }, ""), true);
 });
 
 test("list sorting, chart grouping, and widths are deterministic", () => {

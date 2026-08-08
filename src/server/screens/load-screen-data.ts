@@ -33,6 +33,7 @@ const defaultListQuery: ListQuery = {
   limit: 200,
   search: "",
   country: "",
+  state: "",
   view: "",
   sort: "",
   direction: "asc"
