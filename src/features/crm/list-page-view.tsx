@@ -14,7 +14,7 @@ import {
   Search
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button, ToolbarButton } from "@/components/ui/crm-primitives";
+import { Button, LoadingPanel, ToolbarButton } from "@/components/ui/crm-primitives";
 import { GuidanceCard, inputBareClass, inputClass, ListViewControlsMenu, ObjectIcon } from "@/features/crm/controls";
 import { DataGrid, EmptyState } from "@/features/crm/data-grid";
 import { KanbanBoard, KanbanUnavailable } from "@/features/crm/kanban";
@@ -253,7 +253,9 @@ export function ListView({ model }: { model: ListViewPageModel }) {
             {definition.disabledInlineEditMessage}
           </div>
         )}
-        {display === "Kanban" && kanbanConfig ? (
+        {listLoading ? (
+          <LoadingPanel label={`Loading ${definition.plural.toLowerCase()}…`} />
+        ) : display === "Kanban" && kanbanConfig ? (
           <KanbanBoard
             definition={activeDefinition}
             records={visibleRecords}
@@ -319,7 +321,9 @@ export function ListView({ model }: { model: ListViewPageModel }) {
           </div>
         </div>
       </div>
-      {visibleRecords.length === 0 && <EmptyState definition={definition} onCreate={() => onCreate(object)} />}
+      {!listLoading && visibleRecords.length === 0 && (
+        <EmptyState definition={definition} onCreate={() => onCreate(object)} />
+      )}
       {showContextualGuidance && (
         <GuidanceCard
           title={String(contextualGuidance?.title ?? "Add a lead")}

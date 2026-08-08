@@ -256,8 +256,15 @@ export function useListViewController({
   const filteredStatus = visibleRecords.length === records.length ? "" : ` - ${visibleRecords.length} shown`;
   const status = `${pageStart}-${pageEnd} of ${serverTotal} items${filteredStatus} - Sorted by ${sortedColumn?.label ?? "Name"}${sortState ? ` ${sortState.direction === "asc" ? "Ascending" : "Descending"}` : ""}${country ? " - Filtered by Country" : ""}${state ? " - Filtered by State" : ""}${activeFilters.length ? ` - Filtered by ${activeFilters.map((filter) => fieldLabel(String(filter.field))).join(", ")}` : ""} - Updated a few seconds ago`;
   function changeCountry(value: string) {
+    if (value === country) return;
+    setListLoading(true);
     setCountry(value);
     setState("");
+  }
+  function changeState(value: string) {
+    if (value === state) return;
+    setListLoading(true);
+    setState(value);
   }
   const totalPages = Math.max(1, Math.ceil(serverTotal / pageSize));
   function applyListViewPreferences(nextPreferences: RecordData[]) {
@@ -483,7 +490,7 @@ export function useListViewController({
     country,
     setCountry: changeCountry,
     state,
-    setState,
+    setState: changeState,
     listViewSearch,
     setListViewSearch,
     disabledMessage,
