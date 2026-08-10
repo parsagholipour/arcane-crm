@@ -144,11 +144,13 @@ export async function updateKeycloakIdentity(id: string, input: { email: string;
   const email = normalizeEmail(input.email);
   const { firstName, lastName } = splitDisplayName(input.name);
   const currentResponse = await adminFetch(`/users/${encodeURIComponent(id)}`);
-  const current = (await currentResponse.json()) as KeycloakUser;
+  const current = (await currentResponse.json()) as KeycloakUser & { access?: unknown };
+  const { access: _access, ...writable } = current;
+  void _access;
   await adminFetch(`/users/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify({
-      ...current,
+      ...writable,
       email,
       firstName,
       lastName
