@@ -33,7 +33,10 @@ export async function syncShipmentTracking(client: TrackingClient, subject: Ship
   // Only USPS is polled today. Anything else stores its number on the subject record and
   // renders a carrier link, so a tracking row would just be dead weight.
   if (!isUspsCarrier(carrier) || !trackingNumber) {
-    await client.shipmentTracking.deleteMany({ where });
+    const deleted = await client.shipmentTracking.deleteMany({ where });
+    // Drop the denormalized Opportunity delivery date when its USPS tracking goes away,
+    // otherwise lists/shipping UI keep showing a date with no active shipment.
+    if (deleted.count > 0) await clearOpportunityDeliveryDate(client, subject);
     return null;
   }
 
@@ -76,7 +79,7 @@ export async function syncShipmentTracking(client: TrackingClient, subject: Ship
   });
 }
 
-/** Drop a stale Opportunity delivery date when its USPS tracking row is created or replaced. */
+/** Drop a stale Opportunity delivery date when its USPS tracking row is created, replaced, or removed. */
 async function clearOpportunityDeliveryDate(client: TrackingClient, subject: ShipmentSubject) {
   if (subject.subjectType !== "Opportunity") return;
   await client.opportunity.updateMany({

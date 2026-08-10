@@ -6,6 +6,7 @@ import {
   OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS,
   opportunityPostDeliveryFollowUpIsDue
 } from "@/lib/shipment-notifications";
+import { syncShipmentTracking } from "@/lib/shipment-tracking-sync";
 
 test("shipment tracking cron authorization requires an exact bearer secret", () => {
   assert.equal(validBearerSecret("Bearer correct", "correct"), true);
@@ -140,4 +141,68 @@ test("Opportunity post-delivery follow-ups become due exactly 7 days after deliv
     ),
     true
   );
+});
+
+function mockTrackingClient(deletedCount: number) {
+  const calls: { deleteMany: unknown; opportunityUpdateMany: unknown } = {
+    deleteMany: null,
+    opportunityUpdateMany: null
+  };
+  return {
+    calls,
+    client: {
+      shipmentTracking: {
+        deleteMany: async (args: unknown) => {
+          calls.deleteMany = args;
+          return { count: deletedCount };
+        },
+        findUnique: async () => null,
+        create: async () => {
+          throw new Error("create should not run");
+        },
+        update: async () => {
+          throw new Error("update should not run");
+        }
+      },
+      opportunity: {
+        updateMany: async (args: unknown) => {
+          calls.opportunityUpdateMany = args;
+          return { count: 1 };
+        }
+      }
+    }
+  };
+}
+
+test("clearing USPS tracking deletes the shipment row and clears Opportunity.deliveryDate", async () => {
+  const { client, calls } = mockTrackingClient(1);
+  const result = await syncShipmentTracking(client as never, {
+    organizationId: "org",
+    subjectType: "Opportunity",
+    subjectId: "opp",
+    carrier: "USPS",
+    trackingNumber: null
+  });
+
+  assert.equal(result, null);
+  assert.deepEqual(calls.deleteMany, {
+    where: { organizationId: "org", subjectType: "Opportunity", subjectId: "opp" }
+  });
+  assert.deepEqual(calls.opportunityUpdateMany, {
+    where: { id: "opp", organizationId: "org" },
+    data: { deliveryDate: null }
+  });
+});
+
+test("saving an Opportunity with no USPS tracking leaves a manual deliveryDate alone", async () => {
+  const { client, calls } = mockTrackingClient(0);
+  await syncShipmentTracking(client as never, {
+    organizationId: "org",
+    subjectType: "Opportunity",
+    subjectId: "opp",
+    carrier: null,
+    trackingNumber: null
+  });
+
+  assert.equal(calls.opportunityUpdateMany, null);
 });

@@ -244,7 +244,14 @@ export async function DELETE(request: NextRequest, context: { params: Params }) 
         where: { id, organizationId: authContext.organizationId },
         select: {
           poAppProductId: true,
-          _count: { select: { invoiceLineItems: true, commerceOrderLines: true, inventoryItems: true } }
+          _count: {
+            select: {
+              invoiceLineItems: true,
+              commerceOrderLines: true,
+              inventoryItems: true,
+              opportunityProducts: true
+            }
+          }
         }
       });
       // Deleting a synced product only makes it reappear on the next sync.
@@ -256,10 +263,17 @@ export async function DELETE(request: NextRequest, context: { params: Params }) 
           },
           { status: 409 }
         );
-      if (usage && (usage._count.invoiceLineItems || usage._count.commerceOrderLines || usage._count.inventoryItems))
+      if (
+        usage &&
+        (usage._count.invoiceLineItems ||
+          usage._count.commerceOrderLines ||
+          usage._count.inventoryItems ||
+          usage._count.opportunityProducts)
+      )
         return NextResponse.json(
           {
-            error: "A Product used by an invoice, order, or inventory record cannot be deleted. Deactivate it instead."
+            error:
+              "A Product used by an invoice, order, inventory, or opportunity record cannot be deleted. Deactivate it instead."
           },
           { status: 409 }
         );
