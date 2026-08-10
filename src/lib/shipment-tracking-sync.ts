@@ -6,7 +6,7 @@ import { isUspsCarrier, normalizeCarrier, normalizeTrackingNumber, USPS_CARRIER 
 
 export type ShipmentSubjectType = "Opportunity" | "CommerceFulfillment";
 
-type TrackingClient = Pick<Prisma.TransactionClient, "shipmentTracking"> | typeof prisma;
+type TrackingClient = Pick<Prisma.TransactionClient, "shipmentTracking" | "opportunity"> | typeof prisma;
 
 export type ShipmentSubject = {
   organizationId: string;
@@ -43,6 +43,8 @@ export async function syncShipmentTracking(client: TrackingClient, subject: Ship
   if (existing && existing.trackingNumber === trackingNumber && existing.carrier === USPS_CARRIER) return existing;
 
   if (!existing) {
+    // A fresh tracking row means this subject is waiting on a new shipment.
+    await clearOpportunityDeliveryDate(client, subject);
     return client.shipmentTracking.create({
       data: { ...where, carrier: USPS_CARRIER, trackingNumber, status: "Pending", nextPollAt: now }
     });
@@ -50,6 +52,7 @@ export async function syncShipmentTracking(client: TrackingClient, subject: Ship
 
   // A new tracking number is a new shipment: clear the status, the retry counters, and the
   // one-time notification guards so the replacement can notify on its own delivery.
+  await clearOpportunityDeliveryDate(client, subject);
   return client.shipmentTracking.update({
     where: { id: existing.id },
     data: {
@@ -70,6 +73,31 @@ export async function syncShipmentTracking(client: TrackingClient, subject: Ship
       nextPollAt: now,
       lastError: null
     }
+  });
+}
+
+/** Drop a stale Opportunity delivery date when its USPS tracking row is created or replaced. */
+async function clearOpportunityDeliveryDate(client: TrackingClient, subject: ShipmentSubject) {
+  if (subject.subjectType !== "Opportunity") return;
+  await client.opportunity.updateMany({
+    where: { id: subject.subjectId, organizationId: subject.organizationId },
+    data: { deliveryDate: null }
+  });
+}
+
+/**
+ * Copy the carrier delivery timestamp onto the Opportunity so lists and forms can show it
+ * without joining ShipmentTracking. No-op for commerce fulfillments (they keep their own column).
+ */
+export async function persistOpportunityDeliveryDate(
+  client: TrackingClient,
+  tracking: Pick<ShipmentTracking, "organizationId" | "subjectType" | "subjectId" | "status">,
+  deliveredAt: Date | null
+) {
+  if (tracking.subjectType !== "Opportunity" || tracking.status !== "Delivered" || !deliveredAt) return;
+  await client.opportunity.updateMany({
+    where: { id: tracking.subjectId, organizationId: tracking.organizationId },
+    data: { deliveryDate: deliveredAt }
   });
 }
 

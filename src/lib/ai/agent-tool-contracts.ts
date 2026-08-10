@@ -83,6 +83,9 @@ export const objectFields: Record<ToolObject, Record<string, "string" | "number"
     forecastCategory: "string",
     closeDate: "date",
     amount: "number",
+    courier: "string",
+    trackingNumber: "string",
+    deliveryDate: "date",
     ownerId: "string",
     createdAt: "date",
     updatedAt: "date"

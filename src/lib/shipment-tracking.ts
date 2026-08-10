@@ -11,6 +11,7 @@ import {
   type ShipmentNotificationDependencies
 } from "@/lib/shipment-notifications";
 import { fetchUspsTracking, UspsError, uspsTrackingConfigured } from "@/lib/usps-client";
+import { persistOpportunityDeliveryDate } from "@/lib/shipment-tracking-sync";
 import {
   isExceptionShipmentStatus,
   isTerminalShipmentStatus,
@@ -157,9 +158,7 @@ async function announceDuePostDeliveryFollowUps(
   summary: ShipmentPollSummary,
   dependencies: ShipmentNotificationDependencies
 ) {
-  const dueBefore = new Date(
-    now.getTime() - OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000
-  );
+  const dueBefore = new Date(now.getTime() - OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000);
   const candidates = await prisma.shipmentTracking.findMany({
     where: {
       subjectType: "Opportunity",
@@ -192,6 +191,7 @@ async function refreshShipment(
 ) {
   const mapped = mapUspsTracking(await fetchUspsTracking(tracking.trackingNumber));
   const delay = uspsPollDelayMinutes(mapped.status);
+  const deliveredAt = mapped.deliveredAt ?? tracking.deliveredAt;
   const updated = await prisma.shipmentTracking.update({
     where: { id: tracking.id },
     data: {
@@ -200,12 +200,13 @@ async function refreshShipment(
       expectedDeliveryAt: mapped.expectedDeliveryAt,
       lastEventAt: mapped.lastEventAt,
       lastEventDescription: mapped.lastEventDescription,
-      deliveredAt: mapped.deliveredAt ?? tracking.deliveredAt,
+      deliveredAt,
       nextPollAt: delay === null ? null : minutesFrom(now, delay),
       failureCount: 0,
       lastError: null
     }
   });
+  await persistOpportunityDeliveryDate(prisma, updated, deliveredAt);
   summary.updated += 1;
   await announceIfNeeded(updated, summary, dependencies);
 }

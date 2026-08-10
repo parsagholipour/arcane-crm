@@ -64,7 +64,8 @@ export const opportunityDtoSchema = entityRecordSchema.extend({
   nextStep: z.string().nullable().optional(),
   leadSource: z.string().nullable().optional(),
   courier: z.string().nullable().optional(),
-  trackingNumber: z.string().nullable().optional()
+  trackingNumber: z.string().nullable().optional(),
+  deliveryDate: z.coerce.date().or(z.string()).nullable().optional()
 });
 
 export const caseDtoSchema = entityRecordSchema.extend({

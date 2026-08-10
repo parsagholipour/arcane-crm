@@ -278,6 +278,65 @@ export async function runRecordsScenarios(context, state) {
     assert(birthdayView.includes(contact.lastName), "Birthdays This Month did not include the matching Contact");
   });
 
+  await check("opportunity product assignment", async () => {
+    const base = `/api/opportunities/${opportunity.id}/products`;
+    const added = await request(base, { method: "POST", body: { productId: product.id }, expected: [201] });
+    const line = added.product;
+    assert(Number(line.quantity) === 1, "assigning a Product did not default the quantity to one");
+    assert(Number(line.unitPrice) === 49.99, "assigning a Product did not adopt the active Price Book list price");
+    assert(Number(line.totalPrice) === 49.99, "assigning a Product did not derive the line total");
+    assert(line.product?.id === product.id, "the assigned line did not return its Product");
+
+    const duplicate = await request(base, {
+      method: "POST",
+      body: { productId: product.id },
+      expected: [409]
+    });
+    assert(duplicate.error?.includes("already assigned"), "the same Product was assigned twice");
+
+    const updated = await request(`${base}/${line.id}`, {
+      method: "PATCH",
+      body: { quantity: "3", unitPrice: "20", description: `${tag} bundled install` }
+    });
+    assert(Number(updated.product.totalPrice) === 60, "editing a line did not recalculate its total");
+    assert(updated.product.description.includes("bundled install"), "line description did not persist");
+
+    const invalid = await request(`${base}/${line.id}`, { method: "PATCH", body: { quantity: "0" }, expected: [400] });
+    assert(invalid.error?.includes("greater than zero"), "a zero quantity was accepted");
+
+    const listed = await request(base);
+    assert(listed.products.length === 1, "the Opportunity Products list did not return the assigned line");
+
+    const detail = await request(`/lightning/r/Opportunity/${opportunity.id}/view`);
+    assert(detail.includes("bundled install"), "the Opportunity detail payload did not carry its assigned Product");
+
+    await request(`${base}/${line.id}`, { method: "DELETE" });
+    const emptied = await request(base);
+    assert(emptied.products.length === 0, "removing an Opportunity Product did not delete the line");
+    await request(`${base}/${line.id}`, { method: "DELETE", expected: [404] });
+
+    const blankPrice = await request(base, {
+      method: "POST",
+      body: { productId: product.id, unitPrice: "" },
+      expected: [400]
+    });
+    assert(blankPrice.error?.includes("Sales price"), "an explicit blank sales price was treated as a default");
+
+    const blankDescription = await request(base, {
+      method: "POST",
+      body: { productId: product.id, description: "" },
+      expected: [201]
+    });
+    assert(
+      blankDescription.product.description === null,
+      "an explicit blank description was replaced with the Product catalogue description"
+    );
+    await request(`${base}/${blankDescription.product.id}`, { method: "DELETE" });
+
+    const foreign = await request(`/api/opportunities/${caseA.id}/products`, { expected: [404] });
+    assert(foreign.error?.includes("Opportunity not found"), "products were listed for a non-Opportunity id");
+  });
+
   Object.assign(state, {
     account,
     contact,

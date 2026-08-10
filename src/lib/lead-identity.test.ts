@@ -18,9 +18,6 @@ test("leadHasIdentity accepts any one of the identity fields", () => {
 
 test("leadIdentityFieldErrors marks all identity fields when none are set", () => {
   const errors = leadIdentityFieldErrors({});
-  assert.deepEqual(
-    errors,
-    Object.fromEntries(LEAD_IDENTITY_FIELDS.map((field) => [field, LEAD_IDENTITY_ERROR]))
-  );
+  assert.deepEqual(errors, Object.fromEntries(LEAD_IDENTITY_FIELDS.map((field) => [field, LEAD_IDENTITY_ERROR])));
   assert.deepEqual(leadIdentityFieldErrors({ company: "Acme" }), {});
 });

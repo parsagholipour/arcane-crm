@@ -46,7 +46,8 @@ test("opportunity DTO covers every editable field and requires persisted relatio
     nextStep: "Send the revised proposal",
     leadSource: "Partner",
     courier: "FedEx",
-    trackingNumber: "TRACK-123"
+    trackingNumber: "TRACK-123",
+    deliveryDate: "2026-08-01T14:30:00.000Z"
   };
 
   const parsed = opportunityDtoSchema.parse(opportunity);
@@ -57,6 +58,10 @@ test("opportunity DTO covers every editable field and requires persisted relatio
   assert.equal(parsed.forecastCategory, opportunity.forecastCategory);
   assert.equal(parsed.nextStep, opportunity.nextStep);
   assert.equal(parsed.leadSource, opportunity.leadSource);
+  assert.equal(
+    parsed.deliveryDate instanceof Date ? parsed.deliveryDate.toISOString() : String(parsed.deliveryDate),
+    "2026-08-01T14:30:00.000Z"
+  );
   assert.throws(() => opportunityDtoSchema.parse({ ...opportunity, closeDate: undefined }));
   assert.throws(() => opportunityDtoSchema.parse({ ...opportunity, accountId: null }));
 });

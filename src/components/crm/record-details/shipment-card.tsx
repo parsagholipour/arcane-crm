@@ -17,9 +17,7 @@ export function TrackingStatusBadge({ status }: { status: string }) {
   if (!status) return null;
   const tone = TONES[status] ?? "bg-[#f3f3f3] text-[#514f4d] border-[#d8dde6]";
   return (
-    <span className={`rounded border px-2 py-0.5 text-xs font-semibold ${tone}`}>
-      {shipmentStatusLabel(status)}
-    </span>
+    <span className={`rounded border px-2 py-0.5 text-xs font-semibold ${tone}`}>{shipmentStatusLabel(status)}</span>
   );
 }
 

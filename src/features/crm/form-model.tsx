@@ -203,6 +203,9 @@ export function formatListCell(object: CrmObject, record: RecordData, key: strin
   if (object === "Opportunity" && key === "trackingStatus" && record[key]) {
     return shipmentStatusLabel(String(record[key]));
   }
+  if (object === "Opportunity" && key === "deliveryDate" && record[key]) {
+    return formatDate(String(record[key]));
+  }
   return formatCell(record[key]);
 }
 export function fieldLabel(field: string) {

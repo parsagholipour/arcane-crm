@@ -13,11 +13,7 @@ import { attachTrackedDeliveries } from "@/lib/email/tracking";
 import { DEFAULT_EVENT_REMINDER_MINUTES } from "@/lib/calendar-reminder-values";
 import { calendarErrorResponse, validateEventReminderMinutes } from "@/lib/calendar-events";
 import { prisma } from "@/lib/prisma";
-import {
-  assertLeadIdentityFields,
-  RecordPayloadValidationError,
-  validateRecordPayload
-} from "@/lib/record-validation";
+import { assertLeadIdentityFields, RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
 import { syncOpportunityShipment } from "@/lib/shipment-tracking-sync";
 import type { CrmObject, RecordData } from "@/lib/crm-types";
 import { NextRequest, NextResponse } from "next/server";

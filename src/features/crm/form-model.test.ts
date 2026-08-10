@@ -38,6 +38,7 @@ test("every metadata date field hydrates serialized API timestamps for its form 
   assert.deepEqual(hydratedFields, [
     "Contact.birthDate",
     "Opportunity.closeDate",
+    "Opportunity.deliveryDate",
     "Pricebook2.validFrom",
     "Pricebook2.validTo"
   ]);

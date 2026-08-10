@@ -183,9 +183,7 @@ export function LeadConversionDialog({
 }) {
   const targetCount = leads.length;
   const firstLead = leads[0] ?? {};
-  const [form, setForm] = useState<LeadConversionForm>(() =>
-    initialLeadConversionForm(firstLead, data.user.id)
-  );
+  const [form, setForm] = useState<LeadConversionForm>(() => initialLeadConversionForm(firstLead, data.user.id));
 
   const update = (patch: Partial<LeadConversionForm>) => setForm((current) => ({ ...current, ...patch }));
   const setAccountField = (name: string, value: unknown) =>
@@ -465,10 +463,9 @@ export function LeadConversionDialog({
               single-lead convert (Qualify / Pipeline / +30 days / conversion next step).
             */}
             <p className="text-sm text-[#706e6b]">
-              Bulk convert is a reduced flow: each lead uses its Company value for the account and creates
-              a matching contact from lead fields. Opportunity fields use the same system defaults as a
-              single convert (Qualify, Pipeline, close date +30 days). Open a single lead to edit full
-              Account, Contact, or Opportunity forms.
+              Bulk convert is a reduced flow: each lead uses its Company value for the account and creates a matching
+              contact from lead fields. Opportunity fields use the same system defaults as a single convert (Qualify,
+              Pipeline, close date +30 days). Open a single lead to edit full Account, Contact, or Opportunity forms.
             </p>
             <FieldShell label="Create Opportunity">
               <RadixCheckbox

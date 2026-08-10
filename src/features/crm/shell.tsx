@@ -96,11 +96,7 @@ export function GlobalHeader({
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-[#d8dde6] bg-white px-3">
       <div className="flex min-w-0 shrink-0 items-center gap-1.5">
-        <OrganizationLogo
-          name={data.organization.name}
-          logoUrl={data.organization.logoUrl}
-          className="min-w-0"
-        />
+        <OrganizationLogo name={data.organization.name} logoUrl={data.organization.logoUrl} className="min-w-0" />
         <span className="max-w-[14rem] truncate text-[15px] font-semibold tracking-[-0.02em] text-[#181818]">
           {data.organization.name}
         </span>

@@ -18,6 +18,9 @@ import {
   Detail
 } from "@/components/crm/record-details/primitives";
 import { ShipmentCard } from "@/components/crm/record-details/shipment-card";
+import { OpportunityProductsCard } from "@/components/crm/opportunities/products";
+import { type ToastState } from "@/components/ui/crm-primitives";
+import { type ScopedCrmDataUpdater } from "@/features/crm/shared-types";
 
 export function SalesRecordDetailPage({
   object,
@@ -26,7 +29,9 @@ export function SalesRecordDetailPage({
   onEdit,
   onDelete,
   onChangeOwner,
-  onWorkflow
+  onWorkflow,
+  onDataChange,
+  onToast
 }: {
   object: "Lead" | "Opportunity" | "Case";
   record: RecordData;
@@ -35,6 +40,8 @@ export function SalesRecordDetailPage({
   onDelete: () => void;
   onChangeOwner: () => void;
   onWorkflow: (action: string) => void;
+  onDataChange: ScopedCrmDataUpdater;
+  onToast: (toast: ToastState) => void;
 }) {
   const account = data.accounts.find((item) => item.id === record.accountId);
   const contact = data.contacts.find((item) => item.id === record.contactId);
@@ -173,6 +180,9 @@ export function SalesRecordDetailPage({
             </div>
           )}
         </Card>
+        {object === "Opportunity" && (
+          <OpportunityProductsCard opportunity={record} data={data} onDataChange={onDataChange} onToast={onToast} />
+        )}
         {object === "Opportunity" && (
           <ShipmentCard
             courier={record.courier}

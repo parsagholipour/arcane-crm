@@ -41,10 +41,13 @@ export function plain(value: unknown) {
     .trim();
 }
 export const json = apiRequest<Record<string, unknown>>;
-export function Card({ title, children }: { title: string; children: ReactNode }) {
+export function Card({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
   return (
     <section className="rounded-lg border border-[#e4e7ec] bg-white shadow-card">
-      <div className="border-b border-[#d8dde6] px-4 py-3 font-semibold">{title}</div>
+      <div className="flex items-center justify-between gap-2 border-b border-[#d8dde6] px-4 py-3 font-semibold">
+        {title}
+        {action}
+      </div>
       <div className="p-4">{children}</div>
     </section>
   );

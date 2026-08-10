@@ -8,11 +8,7 @@ import authConfig from "@/auth.config";
 import { clearForceSignOut, markForceSignOut } from "@/lib/auth-session";
 import { touchAppSession } from "@/lib/app-sessions";
 import { BRAND } from "@/lib/brand";
-import {
-  profileDisplayName,
-  resolveSyncedDisplayName,
-  stringClaim
-} from "@/lib/auth-display-name";
+import { profileDisplayName, resolveSyncedDisplayName, stringClaim } from "@/lib/auth-display-name";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail, normalizeEmail } from "@/lib/super-admin-constants";
 

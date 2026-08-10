@@ -4,6 +4,7 @@ import { AppAuthorizationError } from "@/lib/authorization-errors";
 import { campaignInclude } from "@/lib/campaigns";
 import type { GenericRecord, RecordDetail } from "@/lib/api/contracts";
 import { invoiceInclude } from "@/lib/invoices";
+import { opportunityProductInclude, opportunityProductOrder } from "@/lib/opportunity-products";
 import { prisma } from "@/lib/prisma";
 import type { CrmObject } from "@/lib/crm-types";
 
@@ -37,7 +38,14 @@ function recordDelegate(object: CrmObject) {
     case "Lead":
       return { delegate: delegate(prisma.lead) };
     case "Opportunity":
-      return { delegate: delegate(prisma.opportunity), include: { account: true, contact: true } };
+      return {
+        delegate: delegate(prisma.opportunity),
+        include: {
+          account: true,
+          contact: true,
+          products: { include: opportunityProductInclude, orderBy: opportunityProductOrder }
+        }
+      };
     case "Product2":
       return { delegate: delegate(prisma.product), include: { entries: { include: { priceBook: true } } } };
     case "Pricebook2":

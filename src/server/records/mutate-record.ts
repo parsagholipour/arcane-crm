@@ -168,6 +168,7 @@ export async function updateRecord(object: CrmObject, id: string, payload: Recor
           leadSource: payload.leadSource as string | null | undefined,
           courier: payload.courier as string | null | undefined,
           trackingNumber: payload.trackingNumber as string | null | undefined,
+          deliveryDate: updateOptionalDateValue(payload.deliveryDate),
           updatedById: userId
         }
       });

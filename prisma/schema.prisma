@@ -222,16 +222,42 @@ model Opportunity {
   leadSource       String?
   courier          String?
   trackingNumber   String?
+  /// Set from USPS when the tracked package is delivered (also editable for other couriers).
+  deliveryDate     DateTime?
   createdById      String
   updatedById      String
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
-  account          Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  contact          Contact?    @relation(fields: [contactId], references: [id])
+  account          Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  contact          Contact?             @relation(fields: [contactId], references: [id])
   invoices         Invoice[]
   videoCalls       VideoCall[]
+  products         OpportunityProduct[]
 
   @@index([organizationId])
+}
+
+/// A Product assigned to an Opportunity with its negotiated quantity and sales price.
+/// totalPrice is derived server-side so the stored figure always matches quantity * unitPrice.
+model OpportunityProduct {
+  id             String      @id @default(cuid())
+  organizationId String
+  opportunityId  String
+  productId      String
+  quantity       Decimal     @db.Decimal(18, 4)
+  unitPrice      Decimal     @db.Decimal(18, 2)
+  totalPrice     Decimal     @db.Decimal(18, 2)
+  description    String?
+  displayOrder   Int         @default(0)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  opportunity    Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  product        Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([opportunityId, productId])
+  @@index([organizationId])
+  @@index([opportunityId, displayOrder])
+  @@index([productId])
 }
 
 model CaseRecord {
@@ -302,10 +328,11 @@ model Product {
   manufacturerPhone  String?
   productType        String?
   collectionName     String?
-  entries            PriceBookEntry[]
-  invoiceLineItems   InvoiceLineItem[]
-  commerceOrderLines CommerceOrderLine[]
-  inventoryItems     InventoryItem[]
+  entries             PriceBookEntry[]
+  invoiceLineItems    InvoiceLineItem[]
+  commerceOrderLines  CommerceOrderLine[]
+  inventoryItems      InventoryItem[]
+  opportunityProducts OpportunityProduct[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 

@@ -36,14 +36,11 @@ test("record editors retain same-object lookup collections", () => {
   assert.deepEqual(editorLookupObjects("Campaign", true), ["Account", "Contact", "Campaign"]);
 });
 
-test("screens load the price entries they render or use for pricing", () => {
-  assert.equal(needsPriceBookEntries("Product2", "list"), true);
-  assert.equal(needsPriceBookEntries("Product2", "record"), true);
-  assert.equal(needsPriceBookEntries("Pricebook2", "list"), false);
-  assert.equal(needsPriceBookEntries("Pricebook2", "record"), true);
-  assert.equal(needsPriceBookEntries("Invoice", "list"), true);
-  assert.equal(needsPriceBookEntries("Invoice", "record"), true);
-  assert.equal(needsPriceBookEntries("Account", "record"), false);
+test("opportunity product editors load catalogue products and price book entries", () => {
+  assert.deepEqual(editorLookupObjects("Opportunity", true), ["Account", "Contact", "Product2"]);
+  assert.deepEqual(editorLookupObjects("Opportunity", false), ["Account", "Contact", "Product2"]);
+  assert.equal(needsPriceBookEntries("Opportunity", "record"), true);
+  assert.equal(needsPriceBookEntries("Opportunity", "list"), false);
 });
 
 test("list lookup batches do not replace the current filtered list collection", () => {

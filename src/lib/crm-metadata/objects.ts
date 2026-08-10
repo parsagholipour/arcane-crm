@@ -92,6 +92,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
       { key: "stage", label: "Stage" },
       { key: "amount", label: "Amount" },
       { key: "trackingStatus", label: "Tracking Status" },
+      { key: "deliveryDate", label: "Delivery Date" },
       { key: "ownerAlias", label: "Owner Alias" }
     ],
     searchInputName: "Opportunity-search-input",

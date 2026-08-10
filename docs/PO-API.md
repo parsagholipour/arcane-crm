@@ -3,13 +3,13 @@
 **Integration guide for external services.** Everything you need to read product data
 out of PO App and receive change notifications in real time.
 
-| | |
-| --- | --- |
-| **API version** | `v1` |
-| **Base URL** | `https://<your-po-app-host>/api/v1` |
-| **Auth** | `Authorization: Bearer <token>` |
-| **Transport** | HTTPS, server-to-server |
-| **Format** | JSON (UTF-8) |
+|                 |                                     |
+| --------------- | ----------------------------------- |
+| **API version** | `v1`                                |
+| **Base URL**    | `https://<your-po-app-host>/api/v1` |
+| **Auth**        | `Authorization: Bearer <token>`     |
+| **Transport**   | HTTPS, server-to-server             |
+| **Format**      | JSON (UTF-8)                        |
 
 ---
 
@@ -45,13 +45,13 @@ that store's data; there is no cross-store access and no account-wide token.
 
 ### What you can do today
 
-| Capability | Status |
-| ---------- | ------ |
-| Read products (list, filter, paginate, search) | ✅ Available |
-| Read a product's manufacturer, category, type, collection | ✅ Embedded in every product |
-| Receive `product.created` / `product.updated` / `product.deleted` webhooks | ✅ Available |
-| Create, update, or delete products through the API | ❌ Not exposed — the API is read-only |
-| Read purchase orders, manufacturing orders, shipments, invoices | ❌ Not exposed |
+| Capability                                                                 | Status                                |
+| -------------------------------------------------------------------------- | ------------------------------------- |
+| Read products (list, filter, paginate, search)                             | ✅ Available                          |
+| Read a product's manufacturer, category, type, collection                  | ✅ Embedded in every product          |
+| Receive `product.created` / `product.updated` / `product.deleted` webhooks | ✅ Available                          |
+| Create, update, or delete products through the API                         | ❌ Not exposed — the API is read-only |
+| Read purchase orders, manufacturing orders, shipments, invoices            | ❌ Not exposed                        |
 
 If you need one of the unavailable capabilities, talk to the PO App team — the surface is
 designed to grow without breaking existing consumers.
@@ -126,8 +126,8 @@ read the value back after creation. A lost token must be revoked and replaced.
 A token grants only the scopes selected when it was created. A request that needs a
 scope the token lacks is rejected with `403 insufficient_scope`.
 
-| Scope | Grants |
-| ----- | ------ |
+| Scope           | Grants                                                                                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `products:read` | Read access to products and their embedded relations. Required by every endpoint currently published, including `/me`. |
 
 ### Expiry and revocation
@@ -158,18 +158,18 @@ scope the token lacks is rejected with `403 insufficient_scope`.
 
 ## 4. Conventions
 
-| Topic | Rule |
-| ----- | ---- |
-| **HTTP methods** | All published endpoints are `GET`. Other methods are rejected. |
-| **Content type** | Responses are `application/json`, encoded UTF-8. |
-| **Success envelope** | Single resource: `{ "data": { … } }`. Collection: `{ "data": [ … ], "pagination": { … } }`. |
-| **Error envelope** | `{ "error": { "code": "…", "message": "…" } }` — see [Errors](#5-errors). |
-| **Identifiers** | All ids are UUID v4 strings. |
-| **Timestamps** | ISO 8601 with milliseconds, always UTC: `2026-07-30T08:09:10.000Z`. |
-| **Money** | JSON numbers with two decimal places (`19.99`). Stored as exact decimals server-side, so no floating-point drift. Currency is the store's own; the API does not return a currency code. |
-| **Nulls** | `null` means "not set". Fields are never omitted — every documented field is present on every response. |
-| **Unknown query params** | Ignored, not rejected. |
-| **New fields** | May be added to any response at any time. Parse defensively and ignore what you don't recognise. |
+| Topic                    | Rule                                                                                                                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **HTTP methods**         | All published endpoints are `GET`. Other methods are rejected.                                                                                                                          |
+| **Content type**         | Responses are `application/json`, encoded UTF-8.                                                                                                                                        |
+| **Success envelope**     | Single resource: `{ "data": { … } }`. Collection: `{ "data": [ … ], "pagination": { … } }`.                                                                                             |
+| **Error envelope**       | `{ "error": { "code": "…", "message": "…" } }` — see [Errors](#5-errors).                                                                                                               |
+| **Identifiers**          | All ids are UUID v4 strings.                                                                                                                                                            |
+| **Timestamps**           | ISO 8601 with milliseconds, always UTC: `2026-07-30T08:09:10.000Z`.                                                                                                                     |
+| **Money**                | JSON numbers with two decimal places (`19.99`). Stored as exact decimals server-side, so no floating-point drift. Currency is the store's own; the API does not return a currency code. |
+| **Nulls**                | `null` means "not set". Fields are never omitted — every documented field is present on every response.                                                                                 |
+| **Unknown query params** | Ignored, not rejected.                                                                                                                                                                  |
+| **New fields**           | May be added to any response at any time. Parse defensively and ignore what you don't recognise.                                                                                        |
 
 ---
 
@@ -189,15 +189,15 @@ Every non-2xx response uses the same envelope:
 `code` is stable and safe to branch on. `message` is human-readable and may be reworded
 between releases — don't parse it.
 
-| Status | `code` | Meaning | What to do |
-| ------ | ------ | ------- | ---------- |
-| `400` | `invalid_request` | A query parameter was malformed (bad UUID, bad timestamp, unknown sort field). | Fix the request. Retrying unchanged will fail again. |
-| `401` | `unauthorized` | Missing, malformed, unknown, or revoked token. | Check the header format. If the token was revoked, obtain a new one. Do not retry. |
-| `401` | `token_expired` | The token passed its expiry date. | Obtain a new token. Do not retry. |
-| `403` | `insufficient_scope` | Valid token, but it lacks the required scope. | Ask an admin to issue a token with the right scope. Do not retry. |
-| `404` | `not_found` | No such record **in this store**. | Treat as "does not exist". Note that an id belonging to a different store also returns `404`, never `403`. |
-| `429` | `rate_limited` | Too many requests. | Back off — see [Rate limits](#6-rate-limits). |
-| `5xx` | — | Server-side fault. The body may not be JSON. | Retry with exponential backoff. |
+| Status | `code`               | Meaning                                                                        | What to do                                                                                                 |
+| ------ | -------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `400`  | `invalid_request`    | A query parameter was malformed (bad UUID, bad timestamp, unknown sort field). | Fix the request. Retrying unchanged will fail again.                                                       |
+| `401`  | `unauthorized`       | Missing, malformed, unknown, or revoked token.                                 | Check the header format. If the token was revoked, obtain a new one. Do not retry.                         |
+| `401`  | `token_expired`      | The token passed its expiry date.                                              | Obtain a new token. Do not retry.                                                                          |
+| `403`  | `insufficient_scope` | Valid token, but it lacks the required scope.                                  | Ask an admin to issue a token with the right scope. Do not retry.                                          |
+| `404`  | `not_found`          | No such record **in this store**.                                              | Treat as "does not exist". Note that an id belonging to a different store also returns `404`, never `403`. |
+| `429`  | `rate_limited`       | Too many requests.                                                             | Back off — see [Rate limits](#6-rate-limits).                                                              |
+| `5xx`  | —                    | Server-side fault. The body may not be JSON.                                   | Retry with exponential backoff.                                                                            |
 
 A `401` caused by a missing token also carries a `WWW-Authenticate: Bearer realm="po-app"`
 header.
@@ -212,11 +212,11 @@ The default limit is **120 requests per minute per token**, applied as a sliding
 
 When you exceed it you get `429` with these headers:
 
-| Header | Meaning |
-| ------ | ------- |
-| `Retry-After` | Seconds to wait before retrying. |
-| `RateLimit-Limit` | The configured ceiling. |
-| `RateLimit-Remaining` | Always `0` on a `429`. |
+| Header                | Meaning                          |
+| --------------------- | -------------------------------- |
+| `Retry-After`         | Seconds to wait before retrying. |
+| `RateLimit-Limit`     | The configured ceiling.          |
+| `RateLimit-Remaining` | Always `0` on a `429`.           |
 
 > These headers appear **only on `429` responses**. Successful responses carry no
 > rate-limit headers, so you cannot track your remaining budget proactively — handle
@@ -281,13 +281,13 @@ during setup and as a health probe afterwards. Requires `products:read`.
 }
 ```
 
-| Field | Type | Description |
-| ----- | ---- | ----------- |
-| `tokenId` | string (uuid) | Identifies the token itself — useful when reporting a problem. Not the token value. |
-| `scopes` | string[] | Scopes granted to this token. |
-| `store.id` | string (uuid) | The store this token reads. Matches `storeId` in webhook payloads. |
-| `store.name` | string | Display name. |
-| `store.slug` | string | URL-safe identifier. |
+| Field        | Type          | Description                                                                         |
+| ------------ | ------------- | ----------------------------------------------------------------------------------- |
+| `tokenId`    | string (uuid) | Identifies the token itself — useful when reporting a problem. Not the token value. |
+| `scopes`     | string[]      | Scopes granted to this token.                                                       |
+| `store.id`   | string (uuid) | The store this token reads. Matches `storeId` in webhook payloads.                  |
+| `store.name` | string        | Display name.                                                                       |
+| `store.slug` | string        | URL-safe identifier.                                                                |
 
 ---
 
@@ -299,21 +299,21 @@ Lists products in the store. Requires `products:read`.
 
 All parameters are optional.
 
-| Parameter | Type | Default | Description |
-| --------- | ---- | ------- | ----------- |
-| `q` | string | — | Case-insensitive substring search across **name, SKU, UPC/GTIN, and description**. Does not search manufacturer or category names. |
-| `sku` | string | — | Exact, case-sensitive SKU match. SKUs are unique within a store, so this returns at most one product. |
-| `upcGtin` | string | — | Exact UPC/GTIN match. |
-| `categoryId` | uuid \| `none` | — | Filter by category. `none` matches products with no category. |
-| `typeId` | uuid \| `none` | — | Filter by product type. `none` matches products with no type. |
-| `collectionId` | uuid \| `none` | — | Filter by collection. `none` matches products with no collection. |
-| `manufacturerId` | uuid | — | Filter by default manufacturer. **Does not accept `none`** — every product has a manufacturer. |
-| `verified` | `true` \| `false` | — | Filter by the verification flag. Any other value is ignored rather than rejected. |
-| `updatedSince` | ISO 8601 | — | Only products whose `updatedAt` is **at or after** this instant. The comparison is inclusive. |
-| `sort` | `name` \| `sku` \| `createdAt` \| `updatedAt` | `name` | Sort field. Any other value returns `400`. |
-| `order` | `asc` \| `desc` | `asc` | Sort direction. Any value other than `desc` is treated as `asc`. |
-| `page` | integer ≥ 1 | `1` | 1-based page number. Non-numeric or non-positive values fall back to the default. |
-| `pageSize` | integer ≥ 1 | `50` | Results per page. Values above `200` are silently capped at `200`. |
+| Parameter        | Type                                          | Default | Description                                                                                                                        |
+| ---------------- | --------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `q`              | string                                        | —       | Case-insensitive substring search across **name, SKU, UPC/GTIN, and description**. Does not search manufacturer or category names. |
+| `sku`            | string                                        | —       | Exact, case-sensitive SKU match. SKUs are unique within a store, so this returns at most one product.                              |
+| `upcGtin`        | string                                        | —       | Exact UPC/GTIN match.                                                                                                              |
+| `categoryId`     | uuid \| `none`                                | —       | Filter by category. `none` matches products with no category.                                                                      |
+| `typeId`         | uuid \| `none`                                | —       | Filter by product type. `none` matches products with no type.                                                                      |
+| `collectionId`   | uuid \| `none`                                | —       | Filter by collection. `none` matches products with no collection.                                                                  |
+| `manufacturerId` | uuid                                          | —       | Filter by default manufacturer. **Does not accept `none`** — every product has a manufacturer.                                     |
+| `verified`       | `true` \| `false`                             | —       | Filter by the verification flag. Any other value is ignored rather than rejected.                                                  |
+| `updatedSince`   | ISO 8601                                      | —       | Only products whose `updatedAt` is **at or after** this instant. The comparison is inclusive.                                      |
+| `sort`           | `name` \| `sku` \| `createdAt` \| `updatedAt` | `name`  | Sort field. Any other value returns `400`.                                                                                         |
+| `order`          | `asc` \| `desc`                               | `asc`   | Sort direction. Any value other than `desc` is treated as `asc`.                                                                   |
+| `page`           | integer ≥ 1                                   | `1`     | 1-based page number. Non-numeric or non-positive values fall back to the default.                                                  |
+| `pageSize`       | integer ≥ 1                                   | `50`    | Results per page. Values above `200` are silently capped at `200`.                                                                 |
 
 Filters combine with AND. Passing several is fine:
 
@@ -326,7 +326,7 @@ curl -s "$PO_BASE/products?verified=true&categoryId=none&sort=updatedAt&order=de
 
 ```json
 {
-  "data": [ { "…": "product object" } ],
+  "data": [{ "…": "product object" }],
   "pagination": {
     "page": 1,
     "pageSize": 50,
@@ -337,14 +337,14 @@ curl -s "$PO_BASE/products?verified=true&categoryId=none&sort=updatedAt&order=de
 }
 ```
 
-| Field | Type | Description |
-| ----- | ---- | ----------- |
-| `data` | Product[] | The page of results. Empty array if nothing matches — never `null`. |
-| `pagination.page` | integer | The page returned (echoes the effective value after fallbacks). |
-| `pagination.pageSize` | integer | Results per page (echoes the effective value after capping). |
-| `pagination.total` | integer | Total products matching the filters, across all pages. |
-| `pagination.totalPages` | integer | Total pages. At least `1`, even when `total` is `0`. |
-| `pagination.hasMore` | boolean | `true` when another page exists. **Use this to terminate a pagination loop.** |
+| Field                   | Type      | Description                                                                   |
+| ----------------------- | --------- | ----------------------------------------------------------------------------- |
+| `data`                  | Product[] | The page of results. Empty array if nothing matches — never `null`.           |
+| `pagination.page`       | integer   | The page returned (echoes the effective value after fallbacks).               |
+| `pagination.pageSize`   | integer   | Results per page (echoes the effective value after capping).                  |
+| `pagination.total`      | integer   | Total products matching the filters, across all pages.                        |
+| `pagination.totalPages` | integer   | Total pages. At least `1`, even when `total` is `0`.                          |
+| `pagination.hasMore`    | boolean   | `true` when another page exists. **Use this to terminate a pagination loop.** |
 
 Requesting a page beyond the end returns `200` with an empty `data` array, not `404`.
 
@@ -356,10 +356,10 @@ Fetches one product. Requires `products:read`.
 
 The path segment accepts **either** form:
 
-| Form | Example | Notes |
-| ---- | ------- | ----- |
-| Product UUID | `/api/v1/products/c0000001-0000-4000-8000-00000000001f` | |
-| `sku:<sku>` | `/api/v1/products/sku:BF-MS-OB100` | Lets you look up by your own key without storing PO App ids. URL-encode the SKU if it contains `/`, `?`, `#`, or spaces. |
+| Form         | Example                                                 | Notes                                                                                                                    |
+| ------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Product UUID | `/api/v1/products/c0000001-0000-4000-8000-00000000001f` |                                                                                                                          |
+| `sku:<sku>`  | `/api/v1/products/sku:BF-MS-OB100`                      | Lets you look up by your own key without storing PO App ids. URL-encode the SKU if it contains `/`, `?`, `#`, or spaces. |
 
 ```bash
 curl -s "$PO_BASE/products/sku:BF-MS-OB100" -H "Authorization: Bearer $PO_TOKEN"
@@ -373,10 +373,10 @@ curl -s "$PO_BASE/products/sku:BF-MS-OB100" -H "Authorization: Bearer $PO_TOKEN"
 
 **Errors**
 
-| Status | `code` | Cause |
-| ------ | ------ | ----- |
-| `400` | `invalid_request` | The segment is neither a UUID nor `sku:<value>`, or the SKU part is empty. |
-| `404` | `not_found` | No product with that id/SKU in this store. |
+| Status | `code`            | Cause                                                                      |
+| ------ | ----------------- | -------------------------------------------------------------------------- |
+| `400`  | `invalid_request` | The segment is neither a UUID nor `sku:<value>`, or the SKU part is empty. |
+| `404`  | `not_found`       | No product with that id/SKU in this store.                                 |
 
 ---
 
@@ -420,35 +420,35 @@ and the `product.created` / `product.updated` webhook payloads.
 
 ### Fields
 
-| Field | Type | Nullable | Description |
-| ----- | ---- | :------: | ----------- |
-| `id` | string (uuid) | no | Stable primary identifier. Never reused. |
-| `name` | string | no | Display name. Not unique. |
-| `sku` | string | no | **Unique within the store.** The natural key for matching against your own catalogue. |
-| `upcGtin` | string | yes | UPC or GTIN barcode number. Not guaranteed unique. |
-| `description` | string | yes | Free text. May contain newlines. |
-| `imageLink` | string | **no** | External image URL. Defaults to an **empty string**, not `null`, when unset — check for `""`. |
-| `cost` | number | yes | Unit cost to the store. Commercially sensitive. |
-| `price` | number | yes | Selling price. |
-| `map` | number | yes | Minimum advertised price. |
-| `msrp` | number | yes | Manufacturer's suggested retail price. |
-| `mop` | integer | yes | Minimum order pieces. |
-| `quantityPerCarton` | integer | yes | Units per shipping carton. |
-| `stockCount` | integer | yes | Last known stock on hand. See the caveat below. |
-| `orderByDate` | string (ISO 8601) | yes | Cut-off date for reordering. Carries a time component but is meaningful only as a calendar date — read the date part and ignore the time. |
-| `editingStatus` | enum | no | Lifecycle state — see the table below. |
-| `verified` | boolean | no | Whether store staff have confirmed the product's data. |
-| `defaultManufacturer` | object | no | Always present — every product has a manufacturer. |
-| `defaultManufacturer.id` | string (uuid) | no | |
-| `defaultManufacturer.name` | string | no | |
-| `defaultManufacturer.region` | string | no | Free-text region, e.g. `"United States"`. Not an ISO country code. |
-| `defaultManufacturer.email` | string | yes | |
-| `defaultManufacturer.contactNumber` | string | yes | Free-text phone number, format not normalised. |
-| `category` | object \| null | yes | `{ id, name }` or `null` when uncategorised. |
-| `type` | object \| null | yes | `{ id, name }` or `null`. |
-| `collection` | object \| null | yes | `{ id, name }` or `null`. |
-| `createdAt` | string (ISO 8601) | no | |
-| `updatedAt` | string (ISO 8601) | no | Changes on every write. Use it for incremental sync and for ordering concurrent webhook events. |
+| Field                               | Type              | Nullable | Description                                                                                                                               |
+| ----------------------------------- | ----------------- | :------: | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                                | string (uuid)     |    no    | Stable primary identifier. Never reused.                                                                                                  |
+| `name`                              | string            |    no    | Display name. Not unique.                                                                                                                 |
+| `sku`                               | string            |    no    | **Unique within the store.** The natural key for matching against your own catalogue.                                                     |
+| `upcGtin`                           | string            |   yes    | UPC or GTIN barcode number. Not guaranteed unique.                                                                                        |
+| `description`                       | string            |   yes    | Free text. May contain newlines.                                                                                                          |
+| `imageLink`                         | string            |  **no**  | External image URL. Defaults to an **empty string**, not `null`, when unset — check for `""`.                                             |
+| `cost`                              | number            |   yes    | Unit cost to the store. Commercially sensitive.                                                                                           |
+| `price`                             | number            |   yes    | Selling price.                                                                                                                            |
+| `map`                               | number            |   yes    | Minimum advertised price.                                                                                                                 |
+| `msrp`                              | number            |   yes    | Manufacturer's suggested retail price.                                                                                                    |
+| `mop`                               | integer           |   yes    | Minimum order pieces.                                                                                                                     |
+| `quantityPerCarton`                 | integer           |   yes    | Units per shipping carton.                                                                                                                |
+| `stockCount`                        | integer           |   yes    | Last known stock on hand. See the caveat below.                                                                                           |
+| `orderByDate`                       | string (ISO 8601) |   yes    | Cut-off date for reordering. Carries a time component but is meaningful only as a calendar date — read the date part and ignore the time. |
+| `editingStatus`                     | enum              |    no    | Lifecycle state — see the table below.                                                                                                    |
+| `verified`                          | boolean           |    no    | Whether store staff have confirmed the product's data.                                                                                    |
+| `defaultManufacturer`               | object            |    no    | Always present — every product has a manufacturer.                                                                                        |
+| `defaultManufacturer.id`            | string (uuid)     |    no    |                                                                                                                                           |
+| `defaultManufacturer.name`          | string            |    no    |                                                                                                                                           |
+| `defaultManufacturer.region`        | string            |    no    | Free-text region, e.g. `"United States"`. Not an ISO country code.                                                                        |
+| `defaultManufacturer.email`         | string            |   yes    |                                                                                                                                           |
+| `defaultManufacturer.contactNumber` | string            |   yes    | Free-text phone number, format not normalised.                                                                                            |
+| `category`                          | object \| null    |   yes    | `{ id, name }` or `null` when uncategorised.                                                                                              |
+| `type`                              | object \| null    |   yes    | `{ id, name }` or `null`.                                                                                                                 |
+| `collection`                        | object \| null    |   yes    | `{ id, name }` or `null`.                                                                                                                 |
+| `createdAt`                         | string (ISO 8601) |    no    |                                                                                                                                           |
+| `updatedAt`                         | string (ISO 8601) |    no    | Changes on every write. Use it for incremental sync and for ordering concurrent webhook events.                                           |
 
 > **`stockCount` caveat.** Stock is written by PO App's inventory sync jobs (Shopify,
 > CJdropshipping) as well as by staff edits. Those sync jobs do **not** emit
@@ -457,12 +457,12 @@ and the `product.created` / `product.updated` webhook payloads.
 
 ### `editingStatus` values
 
-| Value | Meaning |
-| ----- | ------- |
-| `standard` | Normal, actively maintained product. |
-| `final_stock` | Selling through remaining inventory; will not be reordered. |
-| `one_print_only` | Single production run, no reprint planned. |
-| `discontinued` | No longer sold. |
+| Value            | Meaning                                                     |
+| ---------------- | ----------------------------------------------------------- |
+| `standard`       | Normal, actively maintained product.                        |
+| `final_stock`    | Selling through remaining inventory; will not be reordered. |
+| `one_print_only` | Single production run, no reprint planned.                  |
+| `discontinued`   | No longer sold.                                             |
 
 New values may be added. Treat an unrecognised value as `standard` rather than failing.
 
@@ -493,11 +493,11 @@ async function* allProducts(token, filters = {}) {
       sort: "createdAt",
       order: "asc",
       pageSize: "200",
-      page: String(page),
+      page: String(page)
     });
 
     const res = await fetch(`${BASE}/products?${qs}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}` }
     });
 
     if (res.status === 429) {
@@ -570,12 +570,12 @@ over `GET /products?sku=…` when you want exactly one result.
 
 ### Choosing between polling and webhooks
 
-| Need | Approach |
-| ---- | -------- |
-| React within seconds to catalogue edits | Webhooks |
-| Keep a warehouse/BI copy fresh hourly | Incremental sync (`updatedSince`) |
-| Track stock levels | Incremental sync — stock changes don't emit webhooks |
-| Guarantee eventual consistency | Webhooks **plus** a nightly incremental sync as a safety net |
+| Need                                    | Approach                                                     |
+| --------------------------------------- | ------------------------------------------------------------ |
+| React within seconds to catalogue edits | Webhooks                                                     |
+| Keep a warehouse/BI copy fresh hourly   | Incremental sync (`updatedSince`)                            |
+| Track stock levels                      | Incremental sync — stock changes don't emit webhooks         |
+| Guarantee eventual consistency          | Webhooks **plus** a nightly incremental sync as a safety net |
 
 The last row is the recommended production setup: webhooks for latency, a periodic sync
 to repair anything a webhook failed to deliver.
@@ -598,26 +598,26 @@ broken receiver never delays anyone else's deliveries.
 
 ### Endpoint requirements
 
-| Requirement | Detail |
-| ----------- | ------ |
-| Method | `POST` — your route must accept it. |
-| Scheme | **HTTPS in production.** Plain HTTP, `localhost`, and private/loopback IP ranges (`10.x`, `192.168.x`, `172.16–31.x`, `127.x`, `169.254.x`) are rejected at registration time. |
-| Response | Any `2xx`. |
-| Timeout | **10 seconds.** Slower responses are aborted and treated as failures. |
-| Redirects | **Not followed.** A `3xx` counts as a failure — register the final URL. |
-| Body | Read the **raw bytes** before parsing; you need them to verify the signature. |
+| Requirement | Detail                                                                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Method      | `POST` — your route must accept it.                                                                                                                                            |
+| Scheme      | **HTTPS in production.** Plain HTTP, `localhost`, and private/loopback IP ranges (`10.x`, `192.168.x`, `172.16–31.x`, `127.x`, `169.254.x`) are rejected at registration time. |
+| Response    | Any `2xx`.                                                                                                                                                                     |
+| Timeout     | **10 seconds.** Slower responses are aborted and treated as failures.                                                                                                          |
+| Redirects   | **Not followed.** A `3xx` counts as a failure — register the final URL.                                                                                                        |
+| Body        | Read the **raw bytes** before parsing; you need them to verify the signature.                                                                                                  |
 
 ### Request headers
 
-| Header | Example | Purpose |
-| ------ | ------- | ------- |
-| `Content-Type` | `application/json` | |
-| `User-Agent` | `PO-App-Webhooks/1.0` | Identifies the sender. |
-| `X-PO-Event` | `product.updated` | Event name. Also present in the body. |
-| `X-PO-Delivery` | `fd4cfedc-a53b-…` | **Delivery id — identical across every retry of the same event.** Use it to deduplicate. |
-| `X-PO-Webhook-Id` | `1a0d75dd-be0c-…` | Which registered endpoint this was sent to. Useful when one service backs several endpoints. |
-| `X-PO-Timestamp` | `1785657600` | Unix seconds when the signature was computed. |
-| `X-PO-Signature` | `t=1785657600,v1=9f86d0…` | HMAC signature — see below. |
+| Header            | Example                   | Purpose                                                                                      |
+| ----------------- | ------------------------- | -------------------------------------------------------------------------------------------- |
+| `Content-Type`    | `application/json`        |                                                                                              |
+| `User-Agent`      | `PO-App-Webhooks/1.0`     | Identifies the sender.                                                                       |
+| `X-PO-Event`      | `product.updated`         | Event name. Also present in the body.                                                        |
+| `X-PO-Delivery`   | `fd4cfedc-a53b-…`         | **Delivery id — identical across every retry of the same event.** Use it to deduplicate.     |
+| `X-PO-Webhook-Id` | `1a0d75dd-be0c-…`         | Which registered endpoint this was sent to. Useful when one service backs several endpoints. |
+| `X-PO-Timestamp`  | `1785657600`              | Unix seconds when the signature was computed.                                                |
+| `X-PO-Signature`  | `t=1785657600,v1=9f86d0…` | HMAC signature — see below.                                                                  |
 
 ### Verifying the signature
 
@@ -658,7 +658,7 @@ export function verifyWebhook(
   rawBody: string,
   signatureHeader: string | null,
   secret: string,
-  toleranceSeconds = 300,
+  toleranceSeconds = 300
 ): boolean {
   if (!signatureHeader) return false;
 
@@ -666,7 +666,7 @@ export function verifyWebhook(
     signatureHeader.split(",").map((part) => {
       const [key, ...rest] = part.trim().split("=");
       return [key, rest.join("=")] as const;
-    }),
+    })
   );
 
   const timestamp = Number(parts.get("t"));
@@ -675,9 +675,7 @@ export function verifyWebhook(
 
   if (Math.abs(Date.now() / 1000 - timestamp) > toleranceSeconds) return false;
 
-  const expected = createHmac("sha256", secret)
-    .update(`${timestamp}.${rawBody}`, "utf8")
-    .digest("hex");
+  const expected = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`, "utf8").digest("hex");
 
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(provided, "utf8");
@@ -765,17 +763,17 @@ Every delivery has the same outer shape:
   "event": "product.updated",
   "createdAt": "2026-08-01T23:07:51.633Z",
   "storeId": "4e5db5c0-0cc8-4e6a-8d40-cc5ce5131c13",
-  "data": { }
+  "data": {}
 }
 ```
 
-| Field | Type | Description |
-| ----- | ---- | ----------- |
-| `id` | string (uuid) | Delivery id — same value as `X-PO-Delivery`, stable across retries. |
-| `event` | string | Event name — same value as `X-PO-Event`. |
-| `createdAt` | string (ISO 8601) | When the event was queued, **not** when this attempt was sent. |
-| `storeId` | string (uuid) | The store the event belongs to. Matches `store.id` from `/api/v1/me`. |
-| `data` | object | Event-specific body — see below. |
+| Field       | Type              | Description                                                           |
+| ----------- | ----------------- | --------------------------------------------------------------------- |
+| `id`        | string (uuid)     | Delivery id — same value as `X-PO-Delivery`, stable across retries.   |
+| `event`     | string            | Event name — same value as `X-PO-Event`.                              |
+| `createdAt` | string (ISO 8601) | When the event was queued, **not** when this attempt was sent.        |
+| `storeId`   | string (uuid)     | The store the event belongs to. Matches `store.id` from `/api/v1/me`. |
+| `data`      | object            | Event-specific body — see below.                                      |
 
 > **JSON key order is not stable.** The payload round-trips through the database, so keys
 > may arrive in a different order than shown here. Parse by name; never rely on ordering
@@ -783,12 +781,12 @@ Every delivery has the same outer shape:
 
 ### Events
 
-| Event | `data` |
-| ----- | ------ |
-| `product.created` | The complete [Product object](#8-the-product-object). |
-| `product.updated` | The complete Product object **after** the change. Previous values are not included. |
-| `product.deleted` | `{ "id", "sku", "name", "deletedAt" }` — identifiers only, since the product no longer exists. |
-| `webhook.test` | `{ "message", "sentAt" }`. Sent only by the **Test** button in Settings; never emitted by real activity. Ignore it in production logic, but do return `2xx` so the test reports success. |
+| Event             | `data`                                                                                                                                                                                   |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `product.created` | The complete [Product object](#8-the-product-object).                                                                                                                                    |
+| `product.updated` | The complete Product object **after** the change. Previous values are not included.                                                                                                      |
+| `product.deleted` | `{ "id", "sku", "name", "deletedAt" }` — identifiers only, since the product no longer exists.                                                                                           |
+| `webhook.test`    | `{ "message", "sentAt" }`. Sent only by the **Test** button in Settings; never emitted by real activity. Ignore it in production logic, but do return `2xx` so the test reports success. |
 
 `product.deleted` example:
 
@@ -807,7 +805,7 @@ Every delivery has the same outer shape:
 }
 ```
 
-#### What does *not* emit an event
+#### What does _not_ emit an event
 
 Product events fire on writes made through PO App's product endpoints — the UI and the
 internal API. Two things are deliberately excluded:
@@ -837,14 +835,14 @@ internal API. Two things are deliberately excluded:
 A delivery that fails — non-2xx, redirect, timeout, connection error, or TLS failure — is
 retried on this schedule:
 
-| Attempt | Sent after the previous failure |
-| :-----: | ------------------------------- |
-| 1 | immediately when the event occurs |
-| 2 | ~1 minute |
-| 3 | ~5 minutes |
-| 4 | ~30 minutes |
-| 5 | ~2 hours |
-| 6 | ~6 hours |
+| Attempt | Sent after the previous failure   |
+| :-----: | --------------------------------- |
+|    1    | immediately when the event occurs |
+|    2    | ~1 minute                         |
+|    3    | ~5 minutes                        |
+|    4    | ~30 minutes                       |
+|    5    | ~2 hours                          |
+|    6    | ~6 hours                          |
 
 Six attempts spanning roughly **nine hours**. After the last one the delivery is marked
 `failed` and stops automatically. A store admin can still replay it by hand from
@@ -943,7 +941,7 @@ function verify(rawBody, header, secret) {
     header.split(",").map((part) => {
       const [key, ...rest] = part.trim().split("=");
       return [key, rest.join("=")];
-    }),
+    })
   );
 
   const timestamp = Number(parts.get("t"));
@@ -951,9 +949,7 @@ function verify(rawBody, header, secret) {
   if (!Number.isFinite(timestamp) || !provided) return false;
   if (Math.abs(Date.now() / 1000 - timestamp) > TOLERANCE_SECONDS) return false;
 
-  const expected = createHmac("sha256", secret)
-    .update(`${timestamp}.${rawBody}`, "utf8")
-    .digest("hex");
+  const expected = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`, "utf8").digest("hex");
 
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(provided, "utf8");
@@ -967,22 +963,22 @@ app.listen(3000);
 
 ## 12. Troubleshooting
 
-| Symptom | Likely cause |
-| ------- | ------------ |
-| `401 unauthorized` on every request | Header isn't exactly `Authorization: Bearer <token>`, the token was revoked, or a newline/quote was copied with the value. Confirm with `GET /api/v1/me`. |
-| `401 token_expired` | The token hit its expiry date. Ask for a new one. |
-| `403 insufficient_scope` | Token was created without `products:read`. Scopes cannot be edited — issue a new token. |
-| `404` for a product you can see in the UI | The token belongs to a **different store**. Check `store.id` from `/api/v1/me`. |
-| `400 invalid_request` on a filter | A UUID parameter got a non-UUID value, or `manufacturerId=none` was used (only category/type/collection accept `none`). |
-| Frequent `429` | Requesting small pages in a tight loop. Raise `pageSize` to `200` and honour `Retry-After`. |
-| Browser request fails with a CORS error | Expected — the API is server-to-server only and sends no CORS headers. Proxy it through your own backend; never expose the token to a browser. |
-| Signature never verifies | You're hashing a re-serialised body instead of the raw bytes; or hashing the body alone instead of `<timestamp>.<body>`; or comparing against `t` instead of `v1`. |
-| Signature verifies locally but fails in production | A body-parser middleware is consuming the stream before your handler. Mount the raw parser on the webhook route specifically. |
-| Webhooks stopped arriving | The endpoint was auto-disabled after 20 consecutive failures. Check **Settings → Developers**, fix the receiver, then re-enable. |
-| Duplicate events | Normal — delivery is at-least-once. Deduplicate on `X-PO-Delivery`. |
-| Events arrive out of order | Normal and not guaranteed. Resolve with `data.updatedAt`. |
-| Stock changes never arrive as webhooks | By design — inventory sync writes don't emit events. Poll `updatedSince`. |
-| `product.updated` with no visible change | An edit touched a field you don't consume, or a save re-wrote identical values. Compare `updatedAt` and skip if unchanged. |
+| Symptom                                            | Likely cause                                                                                                                                                       |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `401 unauthorized` on every request                | Header isn't exactly `Authorization: Bearer <token>`, the token was revoked, or a newline/quote was copied with the value. Confirm with `GET /api/v1/me`.          |
+| `401 token_expired`                                | The token hit its expiry date. Ask for a new one.                                                                                                                  |
+| `403 insufficient_scope`                           | Token was created without `products:read`. Scopes cannot be edited — issue a new token.                                                                            |
+| `404` for a product you can see in the UI          | The token belongs to a **different store**. Check `store.id` from `/api/v1/me`.                                                                                    |
+| `400 invalid_request` on a filter                  | A UUID parameter got a non-UUID value, or `manufacturerId=none` was used (only category/type/collection accept `none`).                                            |
+| Frequent `429`                                     | Requesting small pages in a tight loop. Raise `pageSize` to `200` and honour `Retry-After`.                                                                        |
+| Browser request fails with a CORS error            | Expected — the API is server-to-server only and sends no CORS headers. Proxy it through your own backend; never expose the token to a browser.                     |
+| Signature never verifies                           | You're hashing a re-serialised body instead of the raw bytes; or hashing the body alone instead of `<timestamp>.<body>`; or comparing against `t` instead of `v1`. |
+| Signature verifies locally but fails in production | A body-parser middleware is consuming the stream before your handler. Mount the raw parser on the webhook route specifically.                                      |
+| Webhooks stopped arriving                          | The endpoint was auto-disabled after 20 consecutive failures. Check **Settings → Developers**, fix the receiver, then re-enable.                                   |
+| Duplicate events                                   | Normal — delivery is at-least-once. Deduplicate on `X-PO-Delivery`.                                                                                                |
+| Events arrive out of order                         | Normal and not guaranteed. Resolve with `data.updatedAt`.                                                                                                          |
+| Stock changes never arrive as webhooks             | By design — inventory sync writes don't emit events. Poll `updatedSince`.                                                                                          |
+| `product.updated` with no visible change           | An edit touched a field you don't consume, or a save re-wrote identical values. Compare `updatedAt` and skip if unchanged.                                         |
 
 When reporting a problem to the PO App team, include the **`tokenId`** from
 `GET /api/v1/me` and, for webhook issues, the **`X-PO-Delivery`** id. Both are safe to
@@ -992,17 +988,17 @@ share — neither reveals a secret.
 
 ## 13. Operations
 
-*This section is for the team running PO App, not for external consumers.*
+_This section is for the team running PO App, not for external consumers._
 
 ### Environment variables
 
-| Variable | Required | Purpose |
-| -------- | :------: | ------- |
-| `WEBHOOK_SIGNING_ENCRYPTION_KEY` | recommended | pgcrypto passphrase for per-endpoint signing secrets. **Keep stable** — changing it makes existing secrets undecryptable and every delivery will fail until secrets are rotated. Falls back to `PAYMENT_PROVIDER_ENCRYPTION_KEY` when unset. |
-| `WEBHOOK_INTERNAL_DISPATCH_ENABLED` | no | Defaults to enabled. Set to `false` to stop the in-process retry sweep — do this if you drive retries from an external scheduler, or when running multiple instances and want only one dispatching. |
-| `WEBHOOK_DISPATCH_TOKEN` | no | Bearer token authorising `POST /api/webhook-deliveries/dispatch` without a session. |
-| `PUBLIC_API_RATE_LIMIT_MAX` | no | Requests per window per token. Default `120`. |
-| `PUBLIC_API_RATE_LIMIT_WINDOW_MS` | no | Window length in ms. Default `60000`. |
+| Variable                            |  Required   | Purpose                                                                                                                                                                                                                                      |
+| ----------------------------------- | :---------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WEBHOOK_SIGNING_ENCRYPTION_KEY`    | recommended | pgcrypto passphrase for per-endpoint signing secrets. **Keep stable** — changing it makes existing secrets undecryptable and every delivery will fail until secrets are rotated. Falls back to `PAYMENT_PROVIDER_ENCRYPTION_KEY` when unset. |
+| `WEBHOOK_INTERNAL_DISPATCH_ENABLED` |     no      | Defaults to enabled. Set to `false` to stop the in-process retry sweep — do this if you drive retries from an external scheduler, or when running multiple instances and want only one dispatching.                                          |
+| `WEBHOOK_DISPATCH_TOKEN`            |     no      | Bearer token authorising `POST /api/webhook-deliveries/dispatch` without a session.                                                                                                                                                          |
+| `PUBLIC_API_RATE_LIMIT_MAX`         |     no      | Requests per window per token. Default `120`.                                                                                                                                                                                                |
+| `PUBLIC_API_RATE_LIMIT_WINDOW_MS`   |     no      | Window length in ms. Default `60000`.                                                                                                                                                                                                        |
 
 ### Retry worker
 
@@ -1028,33 +1024,33 @@ with internal store access can also call this endpoint without the token.
 Session-authenticated, used by the Settings UI. Store-scoped and closed to distributor
 accounts.
 
-| Endpoint | Purpose |
-| -------- | ------- |
-| `GET`/`POST` `/api/api-tokens` | List / create tokens. Plaintext returned only on create. |
-| `PATCH`/`DELETE` `/api/api-tokens/{id}` | Rename / revoke (soft delete, preserves the audit trail). |
-| `GET`/`POST` `/api/webhook-endpoints` | List / create endpoints. Secret returned only on create. |
-| `PATCH`/`DELETE` `/api/webhook-endpoints/{id}` | Update / delete. Re-enabling clears `consecutiveFailures`. |
-| `POST` `/api/webhook-endpoints/{id}/rotate-secret` | Issue a new signing secret. |
-| `POST` `/api/webhook-endpoints/{id}/test` | Send a `webhook.test` event synchronously. |
-| `GET` `/api/webhook-deliveries` | Delivery log, filterable by status and endpoint. |
-| `POST` `/api/webhook-deliveries/{id}/retry` | Manual replay. |
-| `POST` `/api/webhook-deliveries/dispatch` | Worker trigger (see above). |
+| Endpoint                                           | Purpose                                                    |
+| -------------------------------------------------- | ---------------------------------------------------------- |
+| `GET`/`POST` `/api/api-tokens`                     | List / create tokens. Plaintext returned only on create.   |
+| `PATCH`/`DELETE` `/api/api-tokens/{id}`            | Rename / revoke (soft delete, preserves the audit trail).  |
+| `GET`/`POST` `/api/webhook-endpoints`              | List / create endpoints. Secret returned only on create.   |
+| `PATCH`/`DELETE` `/api/webhook-endpoints/{id}`     | Update / delete. Re-enabling clears `consecutiveFailures`. |
+| `POST` `/api/webhook-endpoints/{id}/rotate-secret` | Issue a new signing secret.                                |
+| `POST` `/api/webhook-endpoints/{id}/test`          | Send a `webhook.test` event synchronously.                 |
+| `GET` `/api/webhook-deliveries`                    | Delivery log, filterable by status and endpoint.           |
+| `POST` `/api/webhook-deliveries/{id}/retry`        | Manual replay.                                             |
+| `POST` `/api/webhook-deliveries/dispatch`          | Worker trigger (see above).                                |
 
 ### Where the code lives
 
-| Path | Responsibility |
-| ---- | -------------- |
-| `app/api/v1/` | Public API route handlers. |
-| `lib/api-tokens.ts` | Token generation, hashing, `requireApiToken`, rate limiting. |
-| `lib/public-api/product.ts` | The public product shape — **the contract**. Removing a field here is a breaking change. |
-| `lib/developer-api-constants.ts` | Scope and event vocabulary shared by server and UI. |
-| `lib/webhooks/delivery.ts` | Outbox: enqueue, claim, send, backoff, auto-disable. |
-| `lib/webhooks/signature.ts` | Signing and verification. |
-| `lib/webhooks/encryption.ts` | pgcrypto wrapper for endpoint secrets. |
-| `lib/webhooks/product-events.ts` | Emitters called from the product routes. |
-| `lib/webhooks/scheduler.ts` | The per-minute retry sweep. |
-| `app/settings/developers-settings-view.tsx` | The Settings → Developers UI. |
-| `prisma/schema.prisma` | `ApiToken`, `WebhookEndpoint`, `WebhookDelivery`. |
+| Path                                        | Responsibility                                                                           |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `app/api/v1/`                               | Public API route handlers.                                                               |
+| `lib/api-tokens.ts`                         | Token generation, hashing, `requireApiToken`, rate limiting.                             |
+| `lib/public-api/product.ts`                 | The public product shape — **the contract**. Removing a field here is a breaking change. |
+| `lib/developer-api-constants.ts`            | Scope and event vocabulary shared by server and UI.                                      |
+| `lib/webhooks/delivery.ts`                  | Outbox: enqueue, claim, send, backoff, auto-disable.                                     |
+| `lib/webhooks/signature.ts`                 | Signing and verification.                                                                |
+| `lib/webhooks/encryption.ts`                | pgcrypto wrapper for endpoint secrets.                                                   |
+| `lib/webhooks/product-events.ts`            | Emitters called from the product routes.                                                 |
+| `lib/webhooks/scheduler.ts`                 | The per-minute retry sweep.                                                              |
+| `app/settings/developers-settings-view.tsx` | The Settings → Developers UI.                                                            |
+| `prisma/schema.prisma`                      | `ApiToken`, `WebhookEndpoint`, `WebhookDelivery`.                                        |
 
 ### Data retention
 
@@ -1089,6 +1085,6 @@ To stay compatible: ignore unknown fields, don't depend on JSON key order, branc
 
 ### Changelog
 
-| Version | Date | Change |
-| ------- | ---- | ------ |
-| `v1` | 2026-08-02 | Initial release: read-only products with embedded relations, scoped API tokens, `product.created` / `product.updated` / `product.deleted` webhooks. |
+| Version | Date       | Change                                                                                                                                              |
+| ------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `v1`    | 2026-08-02 | Initial release: read-only products with embedded relations, scoped API tokens, `product.created` / `product.updated` / `product.deleted` webhooks. |

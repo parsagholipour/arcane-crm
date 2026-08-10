@@ -34,17 +34,11 @@ const SHIPMENT_NOTIFICATION_PENDING = "pending";
 
 export function opportunityPostDeliveryFollowUpIsDue(deliveredAt: Date | null, now: Date) {
   if (!deliveredAt) return false;
-  const dueAt = new Date(
-    deliveredAt.getTime() + OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000
-  );
+  const dueAt = new Date(deliveredAt.getTime() + OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000);
   return dueAt <= now;
 }
 
-function notificationCopy(
-  tracking: ShipmentTracking,
-  recipient: ShipmentRecipient,
-  kind: ShipmentNotificationKind
-) {
+function notificationCopy(tracking: ShipmentTracking, recipient: ShipmentRecipient, kind: ShipmentNotificationKind) {
   if (kind === "postDeliveryFollowUp") {
     return {
       title: "Follow up after delivery",

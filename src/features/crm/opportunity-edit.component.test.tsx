@@ -19,7 +19,8 @@ const opportunity = {
   nextStep: "Send the revised proposal",
   leadSource: "Partner",
   courier: "FedEx",
-  trackingNumber: "TRACK-123"
+  trackingNumber: "TRACK-123",
+  deliveryDate: null
 };
 
 const data = {
@@ -60,6 +61,7 @@ describe("Opportunity edit modal", () => {
     expect(screen.getByRole("combobox", { name: /Lead Source/ })).toHaveTextContent("Partner");
     expect(screen.getByRole("combobox", { name: /Courier/ })).toHaveTextContent("FedEx");
     expect(screen.getByRole("textbox", { name: /Tracking Number/ })).toHaveValue("TRACK-123");
+    expect(screen.getByLabelText(/Delivery Date/)).toHaveValue("");
 
     await user.click(screen.getByRole("button", { name: "Save" }));
 

@@ -209,8 +209,7 @@ export function ProductWizardModal({
         </div>
       </div>
       <div className="mb-4 text-xs text-[#706e6b]">
-        Progress: {step === 1 ? "0%" : "50%"}. Price book entries can also be added later from a Price Book detail
-        page.
+        Progress: {step === 1 ? "0%" : "50%"}. Price book entries can also be added later from a Price Book detail page.
       </div>
       {step === 1 ? (
         <FormFields

@@ -76,10 +76,7 @@ test("normalizeConversionValues defaults createOpportunity to false unless expli
 
 test("normalizeConversionValues rejects invalid picklist values", () => {
   expectValidationError(() => normalizeConversionValues({ convertedStatus: "Banana" }, 1), "convertedStatus");
-  expectValidationError(
-    () => normalizeConversionValues({ createOpportunity: true, stage: "Banana" }, 1),
-    "stage"
-  );
+  expectValidationError(() => normalizeConversionValues({ createOpportunity: true, stage: "Banana" }, 1), "stage");
   expectValidationError(
     () => normalizeConversionValues({ createOpportunity: true, forecastCategory: "Banana" }, 1),
     "forecastCategory"
@@ -309,10 +306,7 @@ test("normalizeConversionValues rejects invalid opportunity extras", () => {
     () => normalizeConversionValues({ createOpportunity: true, leadSource: "Banana" }, 1),
     "leadSource"
   );
-  expectValidationError(
-    () => normalizeConversionValues({ createOpportunity: true, courier: "Banana" }, 1),
-    "courier"
-  );
+  expectValidationError(() => normalizeConversionValues({ createOpportunity: true, courier: "Banana" }, 1), "courier");
   expectValidationError(
     () => normalizeConversionValues({ createOpportunity: true, courier: "USPS", trackingNumber: "not-valid" }, 1),
     "trackingNumber"

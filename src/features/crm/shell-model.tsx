@@ -16,8 +16,7 @@ export function screenToTab(
 ): ConsoleTab {
   const href = pathnameWithSearch(pathname, searchParams);
   if (screen.kind === "record") {
-    const title =
-      (record ? recordTitle(screen.object, record) : "").trim() || OBJECT_DEFINITIONS[screen.object].label;
+    const title = (record ? recordTitle(screen.object, record) : "").trim() || OBJECT_DEFINITIONS[screen.object].label;
     return { href, label: `${title} | ${screen.object}` };
   }
   if (screen.kind === "list")

@@ -286,6 +286,8 @@ export function FeatureScreen({
           onDelete={() => onDelete(screen.object, record)}
           onChangeOwner={() => onListAction("Change Owner", screen.object, [record], [requiredId(record)])}
           onWorkflow={(action) => onListAction(action, screen.object, [record], [requiredId(record)])}
+          onDataChange={onDataChange}
+          onToast={onToast}
         />
       );
     }

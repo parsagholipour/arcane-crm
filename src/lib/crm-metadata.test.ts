@@ -41,6 +41,9 @@ test("lead identity fields stay individually optional; create requires any one o
   const fields = FORM_DEFINITIONS.Lead?.fields ?? [];
   for (const name of ["firstName", "lastName", "company", "title"] as const) {
     assert.equal(fields.find((field) => field.name === name)?.required, undefined);
-    assert.ok(fields.some((field) => field.name === name), `Lead form should include ${name}`);
+    assert.ok(
+      fields.some((field) => field.name === name),
+      `Lead form should include ${name}`
+    );
   }
 });

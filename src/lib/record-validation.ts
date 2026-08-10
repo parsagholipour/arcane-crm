@@ -52,6 +52,7 @@ export function validateRecordPayload(object: CrmObject, payload: RecordData) {
   }
   if (object === "Opportunity") {
     optionalDate(payload.closeDate, "Choose a valid Close Date.", "closeDate");
+    optionalDate(payload.deliveryDate, "Choose a valid Delivery Date.", "deliveryDate");
     optionalChoice(payload.stage, OPPORTUNITY_STAGES, "Choose a valid Stage.", "stage");
     optionalChoice(
       payload.forecastCategory,

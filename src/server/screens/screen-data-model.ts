@@ -4,6 +4,7 @@ const baseEditorLookups: readonly CrmObject[] = ["Account", "Contact"];
 
 const objectEditorLookups: Partial<Record<CrmObject, readonly CrmObject[]>> = {
   Lead: ["Opportunity"],
+  Opportunity: ["Product2"],
   Product2: ["Opportunity", "Product2", "Pricebook2"],
   Pricebook2: ["Opportunity", "Product2", "Pricebook2"],
   MessagingSession: ["Opportunity"],
@@ -32,10 +33,15 @@ export function editorLookupObjects(object: CrmObject, includeCurrentObject: boo
 
 /**
  * Product rows are decorated with their primary list price, while Product and Price Book detail
- * pages render their entries directly. Invoice editors also need the entries for line pricing.
+ * pages render their entries directly. Invoice editors also need the entries for line pricing,
+ * as does the Opportunity Products card when it suggests a sales price.
  */
 export function needsPriceBookEntries(object: CrmObject, screenKind: "list" | "record") {
-  return object === "Invoice" || object === "Product2" || (object === "Pricebook2" && screenKind === "record");
+  return (
+    object === "Invoice" ||
+    object === "Product2" ||
+    ((object === "Pricebook2" || object === "Opportunity") && screenKind === "record")
+  );
 }
 
 function mergeRecordsById(primary: RecordData[], lookups: RecordData[]) {

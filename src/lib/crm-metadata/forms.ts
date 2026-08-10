@@ -264,7 +264,8 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
         options: COURIER,
         defaultValue: "--None--"
       },
-      { name: "trackingNumber", label: "Tracking Number", section: "Shipping", type: "text" }
+      { name: "trackingNumber", label: "Tracking Number", section: "Shipping", type: "text" },
+      { name: "deliveryDate", label: "Delivery Date", section: "Shipping", type: "date" }
     ]
   },
   Case: {

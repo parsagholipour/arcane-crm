@@ -94,13 +94,31 @@ test("shipping fields stay optional", () => {
     null
   );
   assert.equal(
-    fields(() => validateRecordPayload("Opportunity", { ...base, courier: null, trackingNumber: null })),
+    fields(() =>
+      validateRecordPayload("Opportunity", {
+        ...base,
+        courier: null,
+        trackingNumber: null,
+        deliveryDate: null
+      })
+    ),
     null
   );
   assert.equal(
     fields(() => validateRecordPayload("Opportunity", { ...base, courier: "USPS", trackingNumber: "  " })),
     null,
     "a courier without a number yet is a legitimate half-filled form"
+  );
+  assert.equal(
+    fields(() => validateRecordPayload("Opportunity", { ...base, deliveryDate: "2026-08-01" })),
+    null
+  );
+});
+
+test("a malformed Opportunity delivery date is rejected", () => {
+  assert.deepEqual(
+    fields(() => validateRecordPayload("Opportunity", { ...base, deliveryDate: "not-a-date" })),
+    ["deliveryDate"]
   );
 });
 

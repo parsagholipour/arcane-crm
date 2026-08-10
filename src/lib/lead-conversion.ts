@@ -266,7 +266,11 @@ function normalizeProbability(value: unknown): number | null {
   if (value === null || value === undefined || String(value).trim() === "") return null;
   const probability = Number(value);
   if (!Number.isInteger(probability) || probability < 0 || probability > 100) {
-    throw new LeadConversionValidationError("Probability must be a whole number from 0 through 100.", 400, "probability");
+    throw new LeadConversionValidationError(
+      "Probability must be a whole number from 0 through 100.",
+      400,
+      "probability"
+    );
   }
   return probability;
 }
@@ -392,11 +396,7 @@ function normalizeAccountOverrides(value: unknown): AccountOverrides {
     else {
       const revenue = Number(raw);
       if (!Number.isFinite(revenue) || revenue < 0) {
-        throw new LeadConversionValidationError(
-          "Enter a non-negative annual revenue.",
-          400,
-          "account.annualRevenue"
-        );
+        throw new LeadConversionValidationError("Enter a non-negative annual revenue.", 400, "account.annualRevenue");
       }
       overrides.annualRevenue = raw;
     }
@@ -436,16 +436,14 @@ export function buildAccountData(lead: ConvertibleLead, accountName: string, ove
     website: override(overrides.website, lead.website),
     // Align with Account form default (--None-- → null); convert UI may still override.
     type: overrides.type !== undefined ? overrides.type : null,
-    description:
-      overrides.description !== undefined ? overrides.description : (lead.description ?? null),
+    description: overrides.description !== undefined ? overrides.description : (lead.description ?? null),
     parentAccountId: overrides.parentAccountId !== undefined ? overrides.parentAccountId : null,
     ownerId: override(overrides.ownerId, lead.ownerId) || lead.ownerId,
     phone: override(overrides.phone, lead.phone),
     rating: override(overrides.rating, lead.rating),
     numberOfEmployees:
       overrides.numberOfEmployees !== undefined ? overrides.numberOfEmployees : (lead.numberOfEmployees ?? null),
-    annualRevenue:
-      overrides.annualRevenue !== undefined ? overrides.annualRevenue : decimalString(lead.annualRevenue),
+    annualRevenue: overrides.annualRevenue !== undefined ? overrides.annualRevenue : decimalString(lead.annualRevenue),
     industry: override(overrides.industry, lead.industry),
     billingCountry: override(overrides.billingCountry, lead.country),
     billingStreet: override(overrides.billingStreet, lead.street),
@@ -490,8 +488,11 @@ export function buildAccountMergeData(
   lead: ConvertibleLead,
   overrides: AccountOverrides = {}
 ) {
-  const gap = <T>(overrideValue: T | null | undefined, current: T | null | undefined, fromLead: T | null | undefined) =>
-    overrideValue !== undefined ? overrideValue : (current ?? fromLead ?? null);
+  const gap = <T>(
+    overrideValue: T | null | undefined,
+    current: T | null | undefined,
+    fromLead: T | null | undefined
+  ) => (overrideValue !== undefined ? overrideValue : (current ?? fromLead ?? null));
 
   return {
     website: gap(overrides.website, existing.website, lead.website),
@@ -576,10 +577,7 @@ export function buildContactMergeData(existing: ExistingContact, lead: Convertib
     accountId,
     salutation: existing.salutation ?? lead.salutation ?? null,
     firstName: existing.firstName ?? lead.firstName ?? null,
-    lastName:
-      String(existing.lastName ?? "").trim() ||
-      String(lead.lastName ?? "").trim() ||
-      "Converted Lead",
+    lastName: String(existing.lastName ?? "").trim() || String(lead.lastName ?? "").trim() || "Converted Lead",
     title: existing.title ?? lead.title ?? null,
     description: existing.description ?? lead.description ?? null,
     phone: existing.phone ?? lead.phone ?? null,

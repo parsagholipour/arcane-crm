@@ -17,11 +17,7 @@ describe("profileDisplayName", () => {
   });
 
   it("ignores name when it is only preferred_username", () => {
-    const result = profileDisplayName(
-      { name: "admin", preferred_username: "admin" },
-      "12parsa@gmail.com",
-      "CRM User"
-    );
+    const result = profileDisplayName({ name: "admin", preferred_username: "admin" }, "12parsa@gmail.com", "CRM User");
     assert.deepEqual(result, { name: "12parsa", quality: "fallback" });
   });
 });
