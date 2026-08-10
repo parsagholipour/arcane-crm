@@ -21,13 +21,16 @@ export type ShipmentNotificationDependencies = {
   publicAppUrl?: string;
 };
 
-export type ShipmentAnnouncementKind = "delivered" | "exception" | "postDeliveryFollowUp";
+/** Milestones that can use the generic, non-follow-up announcement path. */
+export type ShipmentAnnouncementKind = "delivered" | "exception";
+type ShipmentNotificationKind = ShipmentAnnouncementKind | "postDeliveryFollowUp";
 
 /** How long after delivery before Opportunity owners get a one-time follow-up nudge. */
 export const OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS = 7;
 
 /** Stored on the tracking row when nobody can be notified, so the cron does not retry forever. */
 export const SHIPMENT_NOTIFICATION_SKIPPED = "skipped";
+const SHIPMENT_NOTIFICATION_PENDING = "pending";
 
 export function opportunityPostDeliveryFollowUpIsDue(deliveredAt: Date | null, now: Date) {
   if (!deliveredAt) return false;
@@ -40,14 +43,14 @@ export function opportunityPostDeliveryFollowUpIsDue(deliveredAt: Date | null, n
 function notificationCopy(
   tracking: ShipmentTracking,
   recipient: ShipmentRecipient,
-  kind: ShipmentAnnouncementKind
+  kind: ShipmentNotificationKind
 ) {
   if (kind === "postDeliveryFollowUp") {
     return {
       title: "Follow up after delivery",
-      body: `${recipient.subjectLabel} was delivered ${OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS} days ago — a good time to follow up.`,
+      body: `At least ${OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS} days have passed since ${recipient.subjectLabel} was delivered — a good time to follow up.`,
       delivered: true as const,
-      followUp: true as const
+      followUpDays: OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS
     };
   }
   const delivered = kind === "delivered";
@@ -59,14 +62,14 @@ function notificationCopy(
       ? `${recipient.subjectLabel} — ${summary}`
       : `${tracking.carrier} ${tracking.trackingNumber} ${state} (${recipient.subjectLabel}).`,
     delivered,
-    followUp: false as const
+    followUpDays: undefined
   };
 }
 
 async function emailRecipient(
   tracking: ShipmentTracking,
   recipient: ShipmentRecipient,
-  kind: ShipmentAnnouncementKind,
+  kind: ShipmentNotificationKind,
   dependencies: ShipmentNotificationDependencies
 ) {
   if (!isValidEmail(recipient.email)) return;
@@ -80,7 +83,7 @@ async function emailRecipient(
     statusLabel: shipmentStatusLabel(tracking.status),
     statusSummary: tracking.statusSummary,
     delivered: copy.delivered,
-    followUp: copy.followUp,
+    followUpDays: copy.followUpDays,
     recordUrl: new URL(recipient.href, resolvePublicAppUrl(dependencies.publicAppUrl)).toString(),
     carrierUrl: carrierTrackingUrl(tracking.carrier, tracking.trackingNumber)
   });
@@ -136,5 +139,73 @@ export async function announceShipmentStatus(
     console.error("[shipments] status email was not accepted", error);
   }
 
+  return notification.id;
+}
+
+/**
+ * Atomically create and stamp an Opportunity's week-later notification. The temporary claim,
+ * Notification insert, and final id are one transaction, so a crash cannot leave a permanent
+ * `pending` marker or create a duplicate in-app notification on the next sweep.
+ *
+ * Email remains best-effort after the commit: the durable in-app notification is the primary
+ * channel, and a provider failure must not make a later sweep duplicate it.
+ */
+export async function announceOpportunityPostDeliveryFollowUp(
+  tracking: ShipmentTracking,
+  dependencies: ShipmentNotificationDependencies = {}
+): Promise<string | null> {
+  const recipient = await resolveShipmentRecipient(
+    tracking.organizationId,
+    tracking.subjectType as ShipmentSubjectType,
+    tracking.subjectId
+  );
+  const copy = recipient ? notificationCopy(tracking, recipient, "postDeliveryFollowUp") : null;
+
+  const notification = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.shipmentTracking.updateMany({
+      where: {
+        id: tracking.id,
+        subjectType: "Opportunity",
+        status: "Delivered",
+        postDeliveryNotificationId: null
+      },
+      data: { postDeliveryNotificationId: SHIPMENT_NOTIFICATION_PENDING }
+    });
+    if (!claimed.count) return null;
+
+    if (!recipient || !recipient.notifyInApp || !copy) {
+      await tx.shipmentTracking.update({
+        where: { id: tracking.id },
+        data: { postDeliveryNotificationId: SHIPMENT_NOTIFICATION_SKIPPED }
+      });
+      return SHIPMENT_NOTIFICATION_SKIPPED;
+    }
+
+    const created = await tx.notification.create({
+      data: {
+        organizationId: tracking.organizationId,
+        userId: recipient.userId,
+        title: copy.title,
+        body: copy.body,
+        href: recipient.href,
+        category: SHIPPING_CATEGORY,
+        read: false
+      }
+    });
+    await tx.shipmentTracking.update({
+      where: { id: tracking.id },
+      data: { postDeliveryNotificationId: created.id }
+    });
+    return created;
+  });
+
+  if (!notification) return null;
+  if (notification === SHIPMENT_NOTIFICATION_SKIPPED) return SHIPMENT_NOTIFICATION_SKIPPED;
+  if (!recipient) return null;
+  try {
+    await emailRecipient(tracking, recipient, "postDeliveryFollowUp", dependencies);
+  } catch (error) {
+    console.error("[shipments] post-delivery follow-up email was not accepted", error);
+  }
   return notification.id;
 }

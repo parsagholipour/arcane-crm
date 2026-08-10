@@ -24,7 +24,7 @@ import { CommunicationsStatusBadge } from "@/components/crm/CommunicationsWorksp
 import { CampaignStatusBadge } from "@/components/crm/CampaignWorkspace";
 import { TrackingStatusBadge } from "@/components/crm/record-details/shipment-card";
 import { Button } from "@/components/ui/crm-primitives";
-import { checkboxClass, inputClass } from "@/features/crm/controls";
+import { checkboxClass, inputClass, NativeSelect } from "@/features/crm/controls";
 import { formatListCell } from "@/features/crm/form-model";
 import { parseColumnWidth } from "@/features/crm/list-model";
 import {
@@ -33,6 +33,8 @@ import {
   canEditFromRow,
   canRouteToRecord,
   inlineEditableFieldForColumn,
+  inlinePicklistForColumn,
+  isRecordReadOnly,
   requiredId
 } from "@/features/crm/record-model";
 import { type InlineEditingCell, type ListSortState } from "@/features/crm/shared-types";
@@ -77,6 +79,7 @@ export function DataGrid({
   const allSelected = records.length > 0 && selected.length === records.length;
   const canSortColumn = (column: string) => !sortableColumns || sortableColumns.includes(column);
   const [editingCell, setEditingCell] = useState<InlineEditingCell>(null);
+  const [savingPicklistCell, setSavingPicklistCell] = useState<string | null>(null);
   const cancelInlineEditRef = useRef(false);
 
   async function commitInlineEdit() {
@@ -99,6 +102,16 @@ export function DataGrid({
     if (saved) setEditingCell(null);
   }
 
+  async function commitPicklistEdit(record: RecordData, key: string, value: string) {
+    const id = requiredId(record);
+    if (!id || !onInlineSave || savingPicklistCell || String(record[key] ?? "") === value) return;
+    setSavingPicklistCell(`${id}:${key}`);
+    try {
+      await onInlineSave(record, key, value);
+    } finally {
+      setSavingPicklistCell(null);
+    }
+  }
   function startInlineEdit(record: RecordData, column: ObjectDefinition["columns"][number]) {
     const key = inlineEditableFieldForColumn(definition.object, column.key);
     if (!key || !onInlineSave) {
@@ -262,6 +275,9 @@ export function DataGrid({
                 const editing = Boolean(
                   sourceKey && editingCell?.recordId === requiredId(record) && editingCell.key === sourceKey
                 );
+                const picklist = onInlineSave ? inlinePicklistForColumn(definition.object, column.key) : null;
+                const picklistCellKey = `${requiredId(record)}:${column.key}`;
+                const picklistLocked = isRecordReadOnly(definition.object, record);
                 const value = formatListCell(definition.object, record, column.key);
                 const labels = recordLabels[requiredId(record)] ?? [];
                 const campaigns = campaignMembers[requiredId(record)] ?? [];
@@ -304,6 +320,16 @@ export function DataGrid({
                           <CommunicationsStatusBadge status={record.status} />
                         ) : definition.object === "Campaign" && column.key === "status" ? (
                           <CampaignStatusBadge status={record.status} />
+                        ) : picklist ? (
+                          <NativeSelect
+                            className="min-h-7 w-full py-0.5 text-xs"
+                            options={picklist}
+                            value={String(record[column.key] ?? "")}
+                            placeholder="--None--"
+                            disabled={picklistLocked || savingPicklistCell === picklistCellKey}
+                            onChange={(next) => void commitPicklistEdit(record, column.key, next)}
+                            aria-label={`${column.label} for ${recordTitle(definition.object, record)}`}
+                          />
                         ) : definition.object === "Opportunity" && column.key === "trackingStatus" ? (
                           record.trackingStatus ? (
                             <TrackingStatusBadge status={String(record.trackingStatus)} />

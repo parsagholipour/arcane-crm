@@ -86,12 +86,12 @@ export function shipmentStatusTemplate(input: {
   statusLabel: string;
   statusSummary?: string | null;
   delivered: boolean;
-  /** Opportunity follow-up nudge a week after delivery. */
-  followUp?: boolean;
+  /** Opportunity follow-up nudge this many days after delivery. */
+  followUpDays?: number;
   recordUrl: string;
   carrierUrl?: string | null;
 }) {
-  const headline = input.followUp
+  const headline = input.followUpDays
     ? "Follow up after delivery"
     : input.delivered
       ? "Package delivered"
@@ -101,7 +101,9 @@ export function shipmentStatusTemplate(input: {
     `${text(input.carrier)} ${text(input.trackingNumber)}`,
     `Status: ${text(input.statusLabel)}`,
     `Record: ${text(input.subjectLabel)}`,
-    ...(input.followUp ? ["This package was delivered 7 days ago — a good time to follow up."] : [])
+    ...(input.followUpDays
+      ? [`At least ${input.followUpDays} days have passed since delivery — a good time to follow up.`]
+      : [])
   ];
   const plainText = [
     `${text(input.organizationName)} shipment update`,

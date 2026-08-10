@@ -1,4 +1,4 @@
-import { FORM_DEFINITIONS } from "@/lib/crm-metadata";
+import { FORM_DEFINITIONS, LEAD_STATUS } from "@/lib/crm-metadata";
 import { contactName, recordTitle, routeForRecord } from "@/lib/crm-data";
 import { type ScopedCrmData, type CrmObject, type RecordData } from "@/lib/crm-types";
 import { isCrmObject } from "@/features/routing/lightning-route";
@@ -56,6 +56,15 @@ export function inlineEditableFieldForColumn(object: CrmObject, columnKey: strin
   if (object === "Account" && ["name", "phone"].includes(columnKey)) return columnKey;
   if (object === "Contact" && ["phone", "email"].includes(columnKey)) return columnKey;
   return null;
+}
+/** Columns the list view edits with a picklist in place instead of the pencil/text-input flow. */
+export function inlinePicklistForColumn(object: CrmObject, columnKey: string) {
+  if (object === "Lead" && columnKey === "status") return LEAD_STATUS.filter((status) => status !== "--None--");
+  return null;
+}
+/** Converted leads are read-only on the server, so the list can't edit them in place either. */
+export function isRecordReadOnly(object: CrmObject, record: RecordData) {
+  return object === "Lead" && Boolean(record.convertedAt);
 }
 export function canDeleteFromRow(object: CrmObject) {
   return [

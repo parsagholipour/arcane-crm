@@ -3,6 +3,7 @@ import "server-only";
 import type { ShipmentTracking } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
+  announceOpportunityPostDeliveryFollowUp,
   announceShipmentStatus,
   OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS,
   opportunityPostDeliveryFollowUpIsDue,
@@ -173,26 +174,11 @@ async function announceDuePostDeliveryFollowUps(
 
   for (const candidate of candidates) {
     if (!opportunityPostDeliveryFollowUpIsDue(candidate.deliveredAt, now)) continue;
-    // Claim first so concurrent cron/sweep runs do not double-notify.
-    const claimed = await prisma.shipmentTracking.updateMany({
-      where: { id: candidate.id, postDeliveryNotificationId: null },
-      data: { postDeliveryNotificationId: "pending" }
-    });
-    if (!claimed.count) continue;
-
     try {
-      const notificationId = await announceShipmentStatus(candidate, "postDeliveryFollowUp", dependencies);
-      await prisma.shipmentTracking.update({
-        where: { id: candidate.id },
-        data: { postDeliveryNotificationId: notificationId ?? SHIPMENT_NOTIFICATION_SKIPPED }
-      });
+      const notificationId = await announceOpportunityPostDeliveryFollowUp(candidate, dependencies);
       if (notificationId && notificationId !== SHIPMENT_NOTIFICATION_SKIPPED) summary.followUps += 1;
     } catch (error) {
-      // Release the claim so the next sweep can retry instead of leaving the row stuck on pending.
-      await prisma.shipmentTracking.update({
-        where: { id: candidate.id },
-        data: { postDeliveryNotificationId: null }
-      });
+      // The atomic transaction rolled back, so the next sweep can safely retry this row.
       console.error("[shipments] post-delivery follow-up failed", error);
     }
   }

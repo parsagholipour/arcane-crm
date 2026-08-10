@@ -7,7 +7,8 @@ import { SendGridEmailAdapter, toSendGridMailData } from "@/lib/email/sendgrid";
 import {
   calendarReminderTemplate,
   caseNotificationTemplate,
-  organizationInvitationTemplate
+  organizationInvitationTemplate,
+  shipmentStatusTemplate
 } from "@/lib/email/templates";
 import { sendGridDeliveryState } from "@/lib/email/tracking";
 import type { EmailAdapter, OutboundEmail } from "@/lib/email/types";
@@ -182,6 +183,22 @@ test("calendar reminder emails include localized schedule details and an event l
   assert.match(message.text, /Location: Conference Room/);
   assert.match(message.html, /Open event/);
   assert.match(message.html, /eventId=event-1/);
+});
+
+test("Opportunity post-delivery emails identify the seven-day follow-up", () => {
+  const message = shipmentStatusTemplate({
+    organizationName: "Example CRM",
+    carrier: "USPS",
+    trackingNumber: "9400100000000000000000",
+    subjectLabel: "Acme renewal",
+    statusLabel: "Delivered",
+    delivered: true,
+    followUpDays: 7,
+    recordUrl: "https://crm.example.com/lightning/r/Opportunity/opp-1/view"
+  });
+  assert.equal(message.subject, "Follow up after delivery: 9400100000000000000000");
+  assert.match(message.text, /At least 7 days have passed since delivery/);
+  assert.match(message.html, /Opportunity\/opp-1\/view/);
 });
 
 test("organization invitations are branded, role-aware, and HTML escaped", () => {

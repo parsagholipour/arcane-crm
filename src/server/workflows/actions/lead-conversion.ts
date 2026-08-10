@@ -10,6 +10,7 @@ import {
   opportunityNameFor,
   splitCollidingRows
 } from "@/lib/lead-conversion";
+import { syncShipmentTracking } from "@/lib/shipment-tracking-sync";
 import { DomainActionValidationError as WorkflowValidationError } from "@/server/workflows/actions/errors";
 
 type PrismaTransaction = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
@@ -123,6 +124,13 @@ export async function convertLeads(
               }
             });
           }
+          await syncShipmentTracking(tx, {
+            organizationId,
+            subjectType: "Opportunity",
+            subjectId: opportunity.id,
+            carrier: opportunity.courier,
+            trackingNumber: opportunity.trackingNumber
+          });
         }
 
         // The lead becomes read-only below, so its history has to follow the contact.
