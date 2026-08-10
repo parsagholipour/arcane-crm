@@ -1,5 +1,6 @@
 import "server-only";
 
+import { splitDisplayName } from "@/lib/auth-display-name";
 import { resolvePublicAppUrl } from "@/lib/public-app-url";
 import { normalizeEmail } from "@/lib/super-admin-constants";
 
@@ -111,15 +112,23 @@ export async function findKeycloakUserByEmail(email: string) {
 
 export async function provisionKeycloakUser(input: { email: string; name: string }) {
   const email = normalizeEmail(input.email);
+  const { firstName, lastName } = splitDisplayName(input.name);
   const existing = await findKeycloakUserByEmail(email);
-  if (existing?.id) return { id: existing.id, created: false, user: existing };
+  if (existing?.id) {
+    if (!existing.firstName?.trim() && firstName) {
+      await updateKeycloakIdentity(existing.id, { email, name: input.name });
+      return { id: existing.id, created: false, user: { ...existing, firstName, lastName, email } };
+    }
+    return { id: existing.id, created: false, user: existing };
+  }
 
   const response = await adminFetch("/users", {
     method: "POST",
     body: JSON.stringify({
       username: email,
       email,
-      firstName: input.name.trim(),
+      firstName,
+      lastName: lastName || undefined,
       enabled: true,
       emailVerified: false,
       requiredActions: ["VERIFY_EMAIL", "UPDATE_PASSWORD"]
@@ -128,14 +137,22 @@ export async function provisionKeycloakUser(input: { email: string; name: string
   const locationHeader = response.headers.get("location");
   const id = locationHeader?.split("/").filter(Boolean).pop() ?? (await findKeycloakUserByEmail(email))?.id;
   if (!id) throw new KeycloakAdminError("Keycloak created the user but returned no user ID.");
-  return { id, created: true, user: { id, email, firstName: input.name.trim(), enabled: true } };
+  return { id, created: true, user: { id, email, firstName, lastName, enabled: true } };
 }
 
 export async function updateKeycloakIdentity(id: string, input: { email: string; name: string }) {
   const email = normalizeEmail(input.email);
+  const { firstName, lastName } = splitDisplayName(input.name);
+  const currentResponse = await adminFetch(`/users/${encodeURIComponent(id)}`);
+  const current = (await currentResponse.json()) as KeycloakUser;
   await adminFetch(`/users/${encodeURIComponent(id)}`, {
     method: "PUT",
-    body: JSON.stringify({ username: email, email, firstName: input.name.trim() })
+    body: JSON.stringify({
+      ...current,
+      email,
+      firstName,
+      lastName
+    })
   });
 }
 

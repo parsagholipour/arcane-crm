@@ -23,6 +23,7 @@ import { reportHref } from "@/features/crm/route-model";
 import { apiRequest, jsonBody } from "@/lib/api/client";
 import { type ScopedCrmDataUpdater } from "@/features/crm/shared-types";
 import { quarterlyGoalOrFallback } from "@/features/crm/home-model";
+import { welcomeFirstName } from "@/lib/auth-display-name";
 
 export function HomePage({
   data,
@@ -409,7 +410,7 @@ export function HomePage({
       <div className="rounded-lg border border-[#e4e7ec] bg-white p-4 shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h1 className="text-2xl font-semibold">Welcome, {data.user.name.split(/\s+/)[0] || data.user.name}</h1>
+            <h1 className="text-2xl font-semibold">Welcome, {welcomeFirstName(data.user.name)}</h1>
             <p className="text-sm text-[#706e6b]">Check out these suggestions to kick off your day.</p>
           </div>
           <div className="flex gap-2">

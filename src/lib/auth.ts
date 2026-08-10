@@ -8,20 +8,16 @@ import authConfig from "@/auth.config";
 import { clearForceSignOut, markForceSignOut } from "@/lib/auth-session";
 import { touchAppSession } from "@/lib/app-sessions";
 import { BRAND } from "@/lib/brand";
+import {
+  profileDisplayName,
+  resolveSyncedDisplayName,
+  stringClaim
+} from "@/lib/auth-display-name";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdminEmail, normalizeEmail } from "@/lib/super-admin-constants";
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
-}
-
-function stringClaim(value: unknown, keys: string[]) {
-  const source = record(value);
-  for (const key of keys) {
-    const claim = source?.[key];
-    if (typeof claim === "string" && claim.trim()) return claim.trim();
-  }
-  return null;
 }
 
 function decodedJwtClaim(value: unknown, keys: string[]) {
@@ -48,10 +44,6 @@ function profileEmail(profile: unknown) {
   return normalizeEmail(stringClaim(profile, ["email"]));
 }
 
-function profileName(profile: unknown, email: string) {
-  return stringClaim(profile, ["name", "preferred_username"]) ?? email.split("@")[0] ?? `${BRAND.name} User`;
-}
-
 function aliasFrom(name: string, email: string) {
   const compact = name.replace(/[^a-z0-9]/gi, "");
   return (compact || email.split("@")[0] || "User").slice(0, 8);
@@ -60,7 +52,8 @@ function aliasFrom(name: string, email: string) {
 async function resolveLoginUser(sub: string, profile: unknown) {
   const email = profileEmail(profile);
   if (!email) return null;
-  const name = profileName(profile, email);
+  const preferredUsername = stringClaim(profile, ["preferred_username"]);
+  const { name: incomingName, quality } = profileDisplayName(profile, email, `${BRAND.name} User`);
   const bySub = await prisma.user.findUnique({ where: { keycloakSub: sub } });
   const byEmail = bySub ? null : await prisma.user.findUnique({ where: { email } });
   const existing = bySub ?? byEmail;
@@ -68,11 +61,25 @@ async function resolveLoginUser(sub: string, profile: unknown) {
   if (!existing) {
     if (!isSuperAdminEmail(email)) return null;
     return prisma.user.create({
-      data: { keycloakSub: sub, email, name, alias: aliasFrom(name, email), status: "ACTIVE", lastLoginAt: new Date() }
+      data: {
+        keycloakSub: sub,
+        email,
+        name: incomingName,
+        alias: aliasFrom(incomingName, email),
+        status: "ACTIVE",
+        lastLoginAt: new Date()
+      }
     });
   }
 
   if (existing.status === "SUSPENDED") return null;
+  const name = resolveSyncedDisplayName({
+    incoming: incomingName,
+    quality,
+    existingName: existing.name,
+    preferredUsername,
+    email
+  });
   return prisma.user.update({
     where: { id: existing.id },
     data: { keycloakSub: sub, email, name, lastLoginAt: new Date() }
