@@ -1350,9 +1350,11 @@ model ShipmentTracking {
   expectedDeliveryAt      DateTime?
   lastEventAt             DateTime?
   lastEventDescription    String?
-  deliveredAt             DateTime?
-  deliveredNotificationId String?
-  alertNotificationId     String?
+  deliveredAt                  DateTime?
+  deliveredNotificationId      String?
+  /// Opportunity-only: in-app (and email) follow-up fired once, 7 days after delivery.
+  postDeliveryNotificationId   String?
+  alertNotificationId          String?
   attemptCount            Int       @default(0)
   failureCount            Int       @default(0)
   lastPolledAt            DateTime?

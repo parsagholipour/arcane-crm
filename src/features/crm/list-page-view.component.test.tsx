@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ListView } from "@/features/crm/list-page-view";
 import { type ListViewPageModel } from "@/features/crm/list-page-controller";
@@ -38,6 +39,9 @@ function loadingLeadListModel(): ListViewPageModel {
     setDisabledMessage: noop,
     selected: [],
     setSelected: noop,
+    selectedRecords: [],
+    canDeleteSelected: false,
+    deleteSelected: noop,
     sortState: null,
     controlDialog: null,
     setControlDialog: noop,
@@ -93,5 +97,30 @@ describe("ListView loading state", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("Loading leads…");
     expect(screen.queryByRole("heading", { name: model.definition.emptyTitle })).not.toBeInTheDocument();
+  });
+});
+
+describe("ListView bulk delete", () => {
+  it("deletes the current selection from the list header", async () => {
+    const user = userEvent.setup();
+    const deleteSelected = vi.fn();
+    const model: ListViewPageModel = {
+      ...loadingLeadListModel(),
+      listLoading: false,
+      selected: ["lead-1", "lead-2"],
+      canDeleteSelected: true,
+      deleteSelected
+    };
+    render(<ListView model={model} />);
+
+    await user.click(screen.getByRole("button", { name: "Delete (2)" }));
+
+    expect(deleteSelected).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the delete action while nothing is selected", () => {
+    render(<ListView model={loadingLeadListModel()} />);
+
+    expect(screen.queryByRole("button", { name: /^Delete \(/ })).not.toBeInTheDocument();
   });
 });

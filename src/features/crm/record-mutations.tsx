@@ -1,9 +1,39 @@
 import { OBJECT_DEFINITIONS } from "@/lib/crm-metadata";
 import { recordTitle, routeForRecord } from "@/lib/crm-data";
 import { type CrmObject, type RecordData } from "@/lib/crm-types";
+import { apiRequest } from "@/lib/api/client";
 import { formatCell } from "@/features/crm/form-model";
 import { canRouteToRecord, requiredId } from "@/features/crm/record-model";
 import { listSearchHref } from "@/features/crm/route-model";
+
+export function recordDeleteUrl(object: CrmObject, id: string) {
+  if (object === "Invoice") return `/api/invoices/${id}`;
+  if (object === "MessagingSession") return `/api/messaging-sessions/${id}`;
+  if (object === "VideoCall") return `/api/video-calls/${id}`;
+  if (object === "Campaign") return `/api/campaigns/${id}`;
+  return `/api/records/${object}/${id}`;
+}
+
+/**
+ * Deletes each record on its own request so a record the server refuses (a converted lead, a
+ * product still used by an invoice) doesn't hide the records that were deleted successfully.
+ */
+export async function deleteRecordsRequest(object: CrmObject, ids: string[]) {
+  const results = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        await apiRequest<RecordData>(recordDeleteUrl(object, id), { method: "DELETE" });
+        return { id, error: "" };
+      } catch (error) {
+        return { id, error: error instanceof Error ? error.message : "The record couldn't be deleted." };
+      }
+    })
+  );
+  return {
+    deletedIds: results.filter((result) => !result.error).map((result) => result.id),
+    errors: Array.from(new Set(results.filter((result) => result.error).map((result) => result.error)))
+  };
+}
 
 export function notificationForSavedRecord(
   object: CrmObject,

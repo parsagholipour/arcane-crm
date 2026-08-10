@@ -14,7 +14,7 @@ import { isCrmObject, parseLightningRoute } from "@/features/routing/lightning-r
 import { type ToastState } from "@/components/ui/crm-primitives";
 import { campaignMembersFromData, enrichLocalRecord, isRecordData, labelsFromData } from "@/features/crm/data-model";
 import { defaultRouteForObject, objectFromObjectRoute, requiredId } from "@/features/crm/record-model";
-import { notificationForSavedRecord } from "@/features/crm/record-mutations";
+import { deleteRecordsRequest, notificationForSavedRecord, recordDeleteUrl } from "@/features/crm/record-mutations";
 import { type ConsoleTab, type FileUploadRequest, type ModalState } from "@/features/crm/shared-types";
 import { screenToTab } from "@/features/crm/shell-model";
 import { createCrmWorkflowActions } from "@/features/crm/workflow-actions";
@@ -341,18 +341,8 @@ export function useCrmController(initialData: ScopedCrmData) {
   }
 
   async function deleteRecord(object: CrmObject, id: string) {
-    const url =
-      object === "Invoice"
-        ? `/api/invoices/${id}`
-        : object === "MessagingSession"
-          ? `/api/messaging-sessions/${id}`
-          : object === "VideoCall"
-            ? `/api/video-calls/${id}`
-            : object === "Campaign"
-              ? `/api/campaigns/${id}`
-              : `/api/records/${object}/${id}`;
     try {
-      await apiRequest<RecordData>(url, { method: "DELETE" });
+      await apiRequest<RecordData>(recordDeleteUrl(object, id), { method: "DELETE" });
     } catch (error) {
       showToast({
         tone: "error",
@@ -378,6 +368,39 @@ export function useCrmController(initialData: ScopedCrmData) {
     });
     showToast({ tone: "success", message: `${OBJECT_DEFINITIONS[object].label} deleted.` });
     router.push(defaultRouteForObject(object));
+  }
+
+  /** Bulk delete for list view selections. Stays on the list and reports partial failures once. */
+  async function deleteRecords(object: CrmObject, ids: string[]) {
+    const definition = OBJECT_DEFINITIONS[object];
+    const noun = (count: number) => (count === 1 ? definition.label : definition.plural).toLowerCase();
+    const { deletedIds, errors } = await deleteRecordsRequest(object, ids);
+    if (deletedIds.length) {
+      const key = dataKeyForObject(object);
+      setData((previous) =>
+        decorateScopedData({
+          ...previous,
+          [key]: (previous[key] as RecordData[]).filter((record) => !deletedIds.includes(requiredId(record)))
+        } as ScopedCrmData)
+      );
+      void createAppNotification({
+        title: `${definition.plural} deleted`,
+        body: `${deletedIds.length} ${noun(deletedIds.length)} were removed from the workspace.`,
+        category: "Records"
+      });
+      await queryClient.invalidateQueries({
+        queryKey: [...crmQueryKeys.all(data.organization.id), "records", object]
+      });
+    }
+    showToast(
+      errors.length
+        ? {
+            tone: deletedIds.length ? "warning" : "error",
+            message: `${deletedIds.length} of ${ids.length} ${noun(ids.length)} deleted. ${errors[0]}`
+          }
+        : { tone: "success", message: `${deletedIds.length} ${noun(deletedIds.length)} deleted.` }
+    );
+    return deletedIds;
   }
 
   /** Delete from the event modal, which can target one occurrence of a series instead of the whole thing. */
@@ -560,6 +583,7 @@ export function useCrmController(initialData: ScopedCrmData) {
     refreshScopedCrmData,
     saveRecord,
     deleteRecord,
+    deleteRecords,
     deleteEventOccurrence,
     saveActivity,
     saveFile,

@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { configuredShipmentTrackingCronSecret, validBearerSecret } from "@/lib/cron-auth";
 import { RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
+import {
+  OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS,
+  opportunityPostDeliveryFollowUpIsDue
+} from "@/lib/shipment-notifications";
 
 test("shipment tracking cron authorization requires an exact bearer secret", () => {
   assert.equal(validBearerSecret("Bearer correct", "correct"), true);
@@ -97,5 +101,25 @@ test("shipping fields stay optional", () => {
     fields(() => validateRecordPayload("Opportunity", { ...base, courier: "USPS", trackingNumber: "  " })),
     null,
     "a courier without a number yet is a legitimate half-filled form"
+  );
+});
+
+test("Opportunity post-delivery follow-ups become due exactly 7 days after delivery", () => {
+  const deliveredAt = new Date("2026-08-01T12:00:00.000Z");
+  assert.equal(opportunityPostDeliveryFollowUpIsDue(null, deliveredAt), false);
+  assert.equal(opportunityPostDeliveryFollowUpIsDue(deliveredAt, deliveredAt), false);
+  assert.equal(
+    opportunityPostDeliveryFollowUpIsDue(
+      deliveredAt,
+      new Date(deliveredAt.getTime() + (OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000 - 1))
+    ),
+    false
+  );
+  assert.equal(
+    opportunityPostDeliveryFollowUpIsDue(
+      deliveredAt,
+      new Date(deliveredAt.getTime() + OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000)
+    ),
+    true
   );
 });

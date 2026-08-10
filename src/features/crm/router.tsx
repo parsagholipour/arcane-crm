@@ -80,6 +80,7 @@ export function FeatureScreen({
   onCreate,
   onEdit,
   onDelete,
+  onDeleteRecords,
   onSaveActivity,
   onSaveFile,
   onDeleteFile,
@@ -113,6 +114,7 @@ export function FeatureScreen({
   onCreate: (object: CrmObject, initialValues?: RecordData) => void;
   onEdit: (object: CrmObject, record: RecordData) => void;
   onDelete: (object: CrmObject, record: RecordData) => void;
+  onDeleteRecords: (object: CrmObject, records: RecordData[], onDeleted?: () => void) => void;
   onSaveActivity: (activity: RecordData) => Promise<boolean>;
   onSaveFile: (file: FileUploadRequest, attachment?: boolean) => Promise<boolean>;
   onDeleteFile: (file: RecordData, attachment?: boolean) => Promise<boolean>;
@@ -363,6 +365,7 @@ export function FeatureScreen({
       onCreate={onCreate}
       onEdit={onEdit}
       onDelete={onDelete}
+      onDeleteRecords={onDeleteRecords}
       onToast={onToast}
       onListAction={onListAction}
       onSaveRecord={onSaveRecord}

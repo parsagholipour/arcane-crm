@@ -2,7 +2,13 @@ import "server-only";
 
 import type { ShipmentTracking } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { announceShipmentStatus, type ShipmentNotificationDependencies } from "@/lib/shipment-notifications";
+import {
+  announceShipmentStatus,
+  OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS,
+  opportunityPostDeliveryFollowUpIsDue,
+  SHIPMENT_NOTIFICATION_SKIPPED,
+  type ShipmentNotificationDependencies
+} from "@/lib/shipment-notifications";
 import { fetchUspsTracking, UspsError, uspsTrackingConfigured } from "@/lib/usps-client";
 import {
   isExceptionShipmentStatus,
@@ -26,6 +32,8 @@ export type ShipmentPollSummary = {
   updated: number;
   delivered: number;
   alerted: number;
+  /** Opportunity follow-ups fired 7 days after delivery. */
+  followUps: number;
   retried: number;
   failed: number;
 };
@@ -117,7 +125,7 @@ async function announceIfNeeded(
   dependencies: ShipmentNotificationDependencies
 ) {
   if (tracking.status === "Delivered" && !tracking.deliveredNotificationId) {
-    const notificationId = await announceShipmentStatus(tracking, true, dependencies);
+    const notificationId = await announceShipmentStatus(tracking, "delivered", dependencies);
     if (notificationId)
       await prisma.shipmentTracking.update({
         where: { id: tracking.id },
@@ -127,13 +135,66 @@ async function announceIfNeeded(
     return;
   }
   if (isExceptionShipmentStatus(tracking.status) && !tracking.alertNotificationId) {
-    const notificationId = await announceShipmentStatus(tracking, false, dependencies);
+    const notificationId = await announceShipmentStatus(tracking, "exception", dependencies);
     if (notificationId)
       await prisma.shipmentTracking.update({
         where: { id: tracking.id },
         data: { alertNotificationId: notificationId }
       });
     summary.alerted += 1;
+  }
+}
+
+/**
+ * Opportunity owners get a one-time nudge a week after delivery. Delivered rows are terminal
+ * for USPS polling, so this is a separate pass over already-delivered Opportunity shipments.
+ */
+async function announceDuePostDeliveryFollowUps(
+  now: Date,
+  organizationId: string | undefined,
+  limit: number,
+  summary: ShipmentPollSummary,
+  dependencies: ShipmentNotificationDependencies
+) {
+  const dueBefore = new Date(
+    now.getTime() - OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000
+  );
+  const candidates = await prisma.shipmentTracking.findMany({
+    where: {
+      subjectType: "Opportunity",
+      status: "Delivered",
+      deliveredAt: { lte: dueBefore },
+      postDeliveryNotificationId: null,
+      ...(organizationId ? { organizationId } : {})
+    },
+    orderBy: [{ deliveredAt: "asc" }, { createdAt: "asc" }],
+    take: limit
+  });
+
+  for (const candidate of candidates) {
+    if (!opportunityPostDeliveryFollowUpIsDue(candidate.deliveredAt, now)) continue;
+    // Claim first so concurrent cron/sweep runs do not double-notify.
+    const claimed = await prisma.shipmentTracking.updateMany({
+      where: { id: candidate.id, postDeliveryNotificationId: null },
+      data: { postDeliveryNotificationId: "pending" }
+    });
+    if (!claimed.count) continue;
+
+    try {
+      const notificationId = await announceShipmentStatus(candidate, "postDeliveryFollowUp", dependencies);
+      await prisma.shipmentTracking.update({
+        where: { id: candidate.id },
+        data: { postDeliveryNotificationId: notificationId ?? SHIPMENT_NOTIFICATION_SKIPPED }
+      });
+      if (notificationId && notificationId !== SHIPMENT_NOTIFICATION_SKIPPED) summary.followUps += 1;
+    } catch (error) {
+      // Release the claim so the next sweep can retry instead of leaving the row stuck on pending.
+      await prisma.shipmentTracking.update({
+        where: { id: candidate.id },
+        data: { postDeliveryNotificationId: null }
+      });
+      console.error("[shipments] post-delivery follow-up failed", error);
+    }
   }
 }
 
@@ -196,14 +257,28 @@ async function recordFailure(
 }
 
 /**
- * Refresh every USPS shipment that is due, notifying owners on delivery and on exceptions.
+ * Refresh every USPS shipment that is due, notifying owners on delivery and on exceptions,
+ * then fire Opportunity follow-ups that are 7 days past delivery.
  * Called both by the scheduled dispatch route and by the in-app sweep (scoped to one org).
  */
 export async function pollDueShipments(options: ShipmentPollOptions = {}): Promise<ShipmentPollSummary> {
   const now = options.now ?? new Date();
   const limit = Math.max(1, Math.min(options.limit ?? DEFAULT_BATCH_LIMIT, MAX_BATCH_LIMIT));
   const dependencies = options.dependencies ?? {};
-  const summary: ShipmentPollSummary = { processed: 0, updated: 0, delivered: 0, alerted: 0, retried: 0, failed: 0 };
+  const summary: ShipmentPollSummary = {
+    processed: 0,
+    updated: 0,
+    delivered: 0,
+    alerted: 0,
+    followUps: 0,
+    retried: 0,
+    failed: 0
+  };
+
+  // Follow-ups only need deliveredAt; they do not call USPS. Run them even when tracking
+  // credentials are missing so Opportunity owners still get the week-later nudge.
+  await announceDuePostDeliveryFollowUps(now, options.organizationId, limit, summary, dependencies);
+
   if (!uspsTrackingConfigured()) return summary;
 
   const staleBefore = new Date(now.getTime() - MAX_TRACKING_AGE_DAYS * 24 * 60 * 60 * 1000);

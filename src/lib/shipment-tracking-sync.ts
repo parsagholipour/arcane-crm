@@ -62,6 +62,7 @@ export async function syncShipmentTracking(client: TrackingClient, subject: Ship
       lastEventDescription: null,
       deliveredAt: null,
       deliveredNotificationId: null,
+      postDeliveryNotificationId: null,
       alertNotificationId: null,
       attemptCount: 0,
       failureCount: 0,

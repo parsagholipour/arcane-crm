@@ -24,6 +24,7 @@ function accountListProps(): ListViewPageProps {
     onCreate: vi.fn(),
     onEdit: vi.fn(),
     onDelete: vi.fn(),
+    onDeleteRecords: vi.fn(),
     onToast: vi.fn(),
     onListAction: vi.fn(),
     onSaveRecord: vi.fn().mockResolvedValue(true),
@@ -33,6 +34,34 @@ function accountListProps(): ListViewPageProps {
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe("useListViewController bulk delete", () => {
+  it("stays unavailable until rows are selected, then deletes the selected records", () => {
+    const props = accountListProps();
+    const { result } = renderHook(() => useListViewController(props));
+    expect(result.current.canDeleteSelected).toBe(false);
+
+    act(() => result.current.setSelected([account.id]));
+    expect(result.current.canDeleteSelected).toBe(true);
+
+    act(() => result.current.deleteSelected());
+
+    expect(props.onDeleteRecords).toHaveBeenCalledWith("Account", [account], expect.any(Function));
+  });
+
+  it("drops selected ids once their records leave the list", () => {
+    const props = accountListProps();
+    const { result, rerender } = renderHook((currentProps: ListViewPageProps) => useListViewController(currentProps), {
+      initialProps: props
+    });
+
+    act(() => result.current.setSelected([account.id]));
+    rerender({ ...props, records: [] });
+
+    expect(result.current.selected).toEqual([]);
+    expect(result.current.canDeleteSelected).toBe(false);
+  });
 });
 
 describe("useListViewController loading transitions", () => {

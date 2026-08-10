@@ -11,7 +11,8 @@ import {
   Pin,
   Plus,
   RefreshCw,
-  Search
+  Search,
+  Trash2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button, LoadingPanel, ToolbarButton } from "@/components/ui/crm-primitives";
@@ -50,6 +51,8 @@ export function ListView({ model }: { model: ListViewPageModel }) {
     setDisabledMessage,
     selected,
     setSelected,
+    canDeleteSelected,
+    deleteSelected,
     sortState,
     controlDialog,
     setControlDialog,
@@ -158,6 +161,12 @@ export function ListView({ model }: { model: ListViewPageModel }) {
             </div>
           </div>
           <div className="flex flex-wrap justify-end gap-1">
+            {canDeleteSelected && (
+              <Button variant="destructive" onClick={deleteSelected}>
+                <Trash2 size={14} />
+                Delete ({selected.length})
+              </Button>
+            )}
             {definition.actions
               .filter((action) => action !== "Assign Label" || selected.length > 0)
               .map((action) => (

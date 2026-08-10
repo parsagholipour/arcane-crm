@@ -20,7 +20,7 @@ import {
   recordMatchesStateFilter,
   recordMatchesStandardListView
 } from "@/features/crm/list-model";
-import { requiredId } from "@/features/crm/record-model";
+import { canDeleteFromRow, requiredId } from "@/features/crm/record-model";
 import { type ScopedCrmDataUpdater, type ListSortState, type SaveRecordHandler } from "@/features/crm/shared-types";
 import { type ToastState } from "@/components/ui/crm-primitives";
 import { guidanceItemForObject, isContextualGuidanceVisible } from "@/features/crm/shell-model";
@@ -38,6 +38,7 @@ export function useListViewController({
   onCreate,
   onEdit,
   onDelete,
+  onDeleteRecords,
   onToast,
   onListAction,
   onSaveRecord,
@@ -53,6 +54,7 @@ export function useListViewController({
   onCreate: (object: CrmObject, initialValues?: RecordData) => void;
   onEdit: (object: CrmObject, record: RecordData) => void;
   onDelete: (object: CrmObject, record: RecordData) => void;
+  onDeleteRecords: (object: CrmObject, records: RecordData[], onDeleted?: () => void) => void;
   onToast: (toast: ToastState) => void;
   onListAction: (action: string, object: CrmObject, records: RecordData[], selectedIds: string[]) => void;
   onSaveRecord: SaveRecordHandler;
@@ -146,6 +148,15 @@ export function useListViewController({
     // omitted because their identities change when the scoped data collection changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [country, state, object, listView, pageSize, query, serverSortState?.key, serverSortState?.direction]);
+  // Records deleted from a row menu or a bulk delete must not linger in the selection.
+  useEffect(() => {
+    setSelected((current) => {
+      if (current.length === 0) return current;
+      const availableIds = new Set(records.map((record) => requiredId(record)));
+      const next = current.filter((id) => availableIds.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [records]);
   const visibleRecords = useMemo(() => {
     const filteredByLocation = records.filter(
       (record) =>
@@ -294,6 +305,17 @@ export function useListViewController({
     else if (action === "Edit List") setControlDialog("Select Fields to Display");
     else if (action === "Charts" || action === "Filters" || action === "List View Controls") setControlDialog(action);
     else onListAction(action, object, visibleRecords, selected);
+  }
+  const selectedRecords = visibleRecords.filter((record) => selected.includes(requiredId(record)));
+  // Only the table shows checkboxes, so a selection carried over from it stays hidden on the board.
+  const canDeleteSelected = display === "Table" && canDeleteFromRow(object) && selectedRecords.length > 0;
+  function deleteSelected() {
+    if (!canDeleteSelected) return;
+    onDeleteRecords(object, selectedRecords, () => {
+      setSelected([]);
+      // Re-read the page so the item count and any rows the delete pulled forward stay accurate.
+      void requestListPage(pageCursors[pageIndex] ?? null, pageIndex);
+    });
   }
   function sortColumn(column: string, direction?: "asc" | "desc") {
     if (visibleRecords.length < 1) {
@@ -513,6 +535,9 @@ export function useListViewController({
     setDisabledMessage,
     selected,
     setSelected,
+    selectedRecords,
+    canDeleteSelected,
+    deleteSelected,
     sortState,
     controlDialog,
     setControlDialog,

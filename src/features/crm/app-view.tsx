@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { OBJECT_DEFINITIONS } from "@/lib/crm-metadata";
 import { decorateScopedData, recordTitle } from "@/lib/crm-data";
 import { pathnameWithSearch } from "@/features/routing/lightning-route";
 import { ToastHost } from "@/components/ui/crm-primitives";
@@ -40,6 +41,7 @@ export function CrmAppView({ controller }: { controller: ReturnType<typeof useCr
     refreshScopedCrmData,
     saveRecord,
     deleteRecord,
+    deleteRecords,
     deleteEventOccurrence,
     saveActivity,
     saveFile,
@@ -103,6 +105,21 @@ export function CrmAppView({ controller }: { controller: ReturnType<typeof useCr
                   onConfirm: () => {
                     setModal(null);
                     return deleteRecord(object, requiredId(record));
+                  }
+                })
+              }
+              onDeleteRecords={(object, records, onDeleted) =>
+                setModal({
+                  type: "confirm",
+                  title: `Delete ${records.length} selected ${(records.length === 1
+                    ? OBJECT_DEFINITIONS[object].label
+                    : OBJECT_DEFINITIONS[object].plural
+                  ).toLowerCase()}?`,
+                  body: "This action can't be undone.",
+                  onConfirm: async () => {
+                    setModal(null);
+                    const deletedIds = await deleteRecords(object, records.map(requiredId));
+                    if (deletedIds.length) onDeleted?.();
                   }
                 })
               }
