@@ -147,6 +147,11 @@ export async function updateRecord(object: CrmObject, id: string, payload: Recor
           annualRevenue: updateOptionalStringValue(payload.annualRevenue),
           leadSource: payload.leadSource as string | null | undefined,
           industry: payload.industry as string | null | undefined,
+          sampleRequestedDate: updateOptionalDateValue(payload.sampleRequestedDate),
+          sampleStatus: payload.sampleStatus as string | null | undefined,
+          courier: payload.courier as string | null | undefined,
+          trackingNumber: payload.trackingNumber as string | null | undefined,
+          deliveryDate: updateOptionalDateValue(payload.deliveryDate),
           updatedById: userId
         }
       });

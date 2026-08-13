@@ -249,7 +249,8 @@ export async function DELETE(request: NextRequest, context: { params: Params }) 
               invoiceLineItems: true,
               commerceOrderLines: true,
               inventoryItems: true,
-              opportunityProducts: true
+              opportunityProducts: true,
+              leadSampleProducts: true
             }
           }
         }
@@ -268,12 +269,13 @@ export async function DELETE(request: NextRequest, context: { params: Params }) 
         (usage._count.invoiceLineItems ||
           usage._count.commerceOrderLines ||
           usage._count.inventoryItems ||
-          usage._count.opportunityProducts)
+          usage._count.opportunityProducts ||
+          usage._count.leadSampleProducts)
       )
         return NextResponse.json(
           {
             error:
-              "A Product used by an invoice, order, inventory, or opportunity record cannot be deleted. Deactivate it instead."
+              "A Product used by an invoice, order, inventory, opportunity, or lead sample cannot be deleted. Deactivate it instead."
           },
           { status: 409 }
         );

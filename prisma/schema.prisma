@@ -191,6 +191,12 @@ model Lead {
   annualRevenue            Decimal?
   leadSource               String?
   industry                 String?
+  sampleRequestedDate      DateTime?
+  sampleStatus             String?
+  courier                  String?
+  trackingNumber           String?
+  /// Set from USPS when the tracked sample is delivered (also editable for other couriers).
+  deliveryDate             DateTime?
   convertedAt              DateTime?
   convertedAccountId       String?
   convertedContactId       String?
@@ -200,13 +206,37 @@ model Lead {
   createdAt                DateTime                  @default(now())
   updatedAt                DateTime                  @updatedAt
   marketingFormSubmissions MarketingFormSubmission[]
+  sampleProducts           LeadSampleProduct[]
 
   @@index([organizationId])
   @@index([organizationId, convertedAt])
 }
 
+/// A Product sent to a Lead as a sample, with its quantity and sales price.
+/// totalPrice is derived server-side so the stored figure always matches quantity * unitPrice.
+model LeadSampleProduct {
+  id             String   @id @default(cuid())
+  organizationId String
+  leadId         String
+  productId      String
+  quantity       Decimal  @db.Decimal(18, 4)
+  unitPrice      Decimal  @db.Decimal(18, 2)
+  totalPrice     Decimal  @db.Decimal(18, 2)
+  description    String?
+  displayOrder   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  lead           Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, productId])
+  @@index([organizationId])
+  @@index([leadId, displayOrder])
+  @@index([productId])
+}
+
 model Opportunity {
-  id               String      @id @default(cuid())
+  id               String               @id @default(cuid())
   organizationId   String
   name             String
   accountId        String
@@ -226,8 +256,8 @@ model Opportunity {
   deliveryDate     DateTime?
   createdById      String
   updatedById      String
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
   account          Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
   contact          Contact?             @relation(fields: [contactId], references: [id])
   invoices         Invoice[]
@@ -294,47 +324,48 @@ model CaseNumberSequence {
 }
 
 model Product {
-  id                 String              @id @default(cuid())
-  organizationId     String
-  name               String
-  family             String?
-  productCode        String?
-  sku                String?
-  category           String?
-  active             Boolean             @default(false)
-  description        String?
+  id                  String               @id @default(cuid())
+  organizationId      String
+  name                String
+  family              String?
+  productCode         String?
+  sku                 String?
+  category            String?
+  active              Boolean              @default(false)
+  description         String?
   // PO App linkage. NULLs are distinct in Postgres, so manually created products never
   // collide on the unique index below.
-  poAppProductId     String?
-  poAppUpdatedAt     DateTime?
-  poAppSyncedAt      DateTime?
-  poAppDeletedAt     DateTime?
+  poAppProductId      String?
+  poAppUpdatedAt      DateTime?
+  poAppSyncedAt       DateTime?
+  poAppDeletedAt      DateTime?
   // Catalogue attributes carried over from PO App.
-  upcGtin            String?
-  imageLink          String?
-  cost               Decimal?            @db.Decimal(18, 2)
-  price              Decimal?            @db.Decimal(18, 2)
-  mapPrice           Decimal?            @db.Decimal(18, 2)
-  msrp               Decimal?            @db.Decimal(18, 2)
-  minimumOrderPieces Int?
-  quantityPerCarton  Int?
-  stockCount         Int?
-  orderByDate        DateTime?
-  editingStatus      String?
-  verified           Boolean             @default(false)
-  manufacturerName   String?
-  manufacturerRegion String?
-  manufacturerEmail  String?
-  manufacturerPhone  String?
-  productType        String?
-  collectionName     String?
+  upcGtin             String?
+  imageLink           String?
+  cost                Decimal?             @db.Decimal(18, 2)
+  price               Decimal?             @db.Decimal(18, 2)
+  mapPrice            Decimal?             @db.Decimal(18, 2)
+  msrp                Decimal?             @db.Decimal(18, 2)
+  minimumOrderPieces  Int?
+  quantityPerCarton   Int?
+  stockCount          Int?
+  orderByDate         DateTime?
+  editingStatus       String?
+  verified            Boolean              @default(false)
+  manufacturerName    String?
+  manufacturerRegion  String?
+  manufacturerEmail   String?
+  manufacturerPhone   String?
+  productType         String?
+  collectionName      String?
   entries             PriceBookEntry[]
   invoiceLineItems    InvoiceLineItem[]
   commerceOrderLines  CommerceOrderLine[]
   inventoryItems      InventoryItem[]
   opportunityProducts OpportunityProduct[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  leadSampleProducts  LeadSampleProduct[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   @@unique([organizationId, poAppProductId])
   @@index([organizationId])

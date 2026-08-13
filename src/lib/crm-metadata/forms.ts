@@ -14,8 +14,23 @@ import {
   LEAD_STATUS,
   OPPORTUNITY_STAGE,
   PRODUCT_FAMILY,
-  SALUTATIONS
+  SALUTATIONS,
+  SAMPLE_STATUS
 } from "@/lib/crm-metadata/options";
+
+/** Courier, tracking number, and delivery date, shared verbatim by Opportunity and Lead. */
+const shipmentFields = (section: string) => [
+  {
+    name: "courier",
+    label: "Courier",
+    section,
+    type: "picklist" as const,
+    options: COURIER,
+    defaultValue: "--None--"
+  },
+  { name: "trackingNumber", label: "Tracking Number", section, type: "text" as const },
+  { name: "deliveryDate", label: "Delivery Date", section, type: "date" as const }
+];
 
 const addressFields = (prefix: string, section: string) => [
   {
@@ -201,7 +216,17 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
         type: "picklist",
         options: INDUSTRIES,
         defaultValue: "--None--"
-      }
+      },
+      { name: "sampleRequestedDate", label: "Sample Requested Date", section: "Sample", type: "date" },
+      {
+        name: "sampleStatus",
+        label: "Sample Status",
+        section: "Sample",
+        type: "picklist",
+        options: SAMPLE_STATUS,
+        defaultValue: "--None--"
+      },
+      ...shipmentFields("Sample")
     ]
   },
   Opportunity: {
@@ -256,16 +281,7 @@ export const FORM_DEFINITIONS: Partial<Record<CrmObject, FormDefinition>> = {
         options: LEAD_SOURCE,
         defaultValue: "--None--"
       },
-      {
-        name: "courier",
-        label: "Courier",
-        section: "Shipping",
-        type: "picklist",
-        options: COURIER,
-        defaultValue: "--None--"
-      },
-      { name: "trackingNumber", label: "Tracking Number", section: "Shipping", type: "text" },
-      { name: "deliveryDate", label: "Delivery Date", section: "Shipping", type: "date" }
+      ...shipmentFields("Shipping")
     ]
   },
   Case: {

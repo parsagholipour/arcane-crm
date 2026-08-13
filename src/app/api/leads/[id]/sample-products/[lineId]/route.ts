@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
-import {
-  deleteOpportunityProduct,
-  updateOpportunityProduct
-} from "@/lib/opportunity-products";
+import { deleteLeadSampleProduct, updateLeadSampleProduct } from "@/lib/lead-sample-products";
 import { productLineErrorResponse } from "@/lib/product-line-service";
 
 type Params = Promise<{ id: string; lineId: string }>;
@@ -13,13 +10,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Params }
     const context = await requireOrganizationContext();
     const { id, lineId } = await params;
     const payload = await request.json();
-    const line = await updateOpportunityProduct(context.organizationId, id, lineId, payload);
+    const line = await updateLeadSampleProduct(context.organizationId, id, lineId, payload);
     return NextResponse.json({ product: JSON.parse(JSON.stringify(line)) });
   } catch (error) {
     return (
       authorizationErrorResponse(error) ??
       productLineErrorResponse(error) ??
-      NextResponse.json({ error: "Unable to update the Opportunity Product." }, { status: 500 })
+      NextResponse.json({ error: "Unable to update the Sample Product." }, { status: 500 })
     );
   }
 }
@@ -28,13 +25,13 @@ export async function DELETE(_request: NextRequest, { params }: { params: Params
   try {
     const context = await requireOrganizationContext();
     const { id, lineId } = await params;
-    await deleteOpportunityProduct(context.organizationId, id, lineId);
+    await deleteLeadSampleProduct(context.organizationId, id, lineId);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return (
       authorizationErrorResponse(error) ??
       productLineErrorResponse(error) ??
-      NextResponse.json({ error: "Unable to remove the Opportunity Product." }, { status: 500 })
+      NextResponse.json({ error: "Unable to remove the Sample Product." }, { status: 500 })
     );
   }
 }

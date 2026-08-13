@@ -15,7 +15,16 @@ export class RecordPayloadValidationError extends Error {
   }
 }
 
-export const LEAD_STATUSES = new Set(["New", "Contacted", "Nurturing", "Qualified", "Unqualified"]);
+export const LEAD_STATUSES = new Set([
+  "New",
+  "Contacted",
+  "Nurturing",
+  "Sample requested",
+  "Sample rejected",
+  "Qualified",
+  "Unqualified"
+]);
+export const SAMPLE_STATUSES = new Set(["Need shipping", "Shipped", "Follow ups due", "Converted", "No interest"]);
 export const OPPORTUNITY_STAGES = new Set([
   "Qualify",
   "Meet & Present",
@@ -49,10 +58,12 @@ export function validateRecordPayload(object: CrmObject, payload: RecordData) {
     optionalEmail(payload.email, "email");
     optionalNonNegativeInteger(payload.numberOfEmployees, "Number of Employees", "numberOfEmployees");
     optionalNonNegativeDecimal(payload.annualRevenue, "Annual Revenue", "annualRevenue");
+    optionalChoice(payload.sampleStatus, SAMPLE_STATUSES, "Choose a valid Sample Status.", "sampleStatus");
+    optionalDate(payload.sampleRequestedDate, "Choose a valid Sample Requested Date.", "sampleRequestedDate");
+    validateShipmentFields(payload);
   }
   if (object === "Opportunity") {
     optionalDate(payload.closeDate, "Choose a valid Close Date.", "closeDate");
-    optionalDate(payload.deliveryDate, "Choose a valid Delivery Date.", "deliveryDate");
     optionalChoice(payload.stage, OPPORTUNITY_STAGES, "Choose a valid Stage.", "stage");
     optionalChoice(
       payload.forecastCategory,
@@ -69,16 +80,7 @@ export function validateRecordPayload(object: CrmObject, payload: RecordData) {
         ]);
       }
     }
-    optionalChoice(payload.courier, COURIER_CHOICES, "Choose a valid Courier.", "courier");
-    // Catch a mistyped USPS number at save time rather than letting the poller fail on it.
-    if (isUspsCarrier(payload.courier) && !isBlank(payload.trackingNumber)) {
-      if (!isLikelyUspsTrackingNumber(payload.trackingNumber)) {
-        throw new RecordPayloadValidationError(
-          "Enter a valid USPS tracking number (20-22 digits, or two letters, nine digits, and US).",
-          ["trackingNumber"]
-        );
-      }
-    }
+    validateShipmentFields(payload);
   }
   if (object === "Case") {
     optionalChoice(payload.status, CASE_STATUSES, "Choose a valid Case Status.", "status");
@@ -118,6 +120,21 @@ export function validateRecordPayload(object: CrmObject, payload: RecordData) {
       throw new RecordPayloadValidationError("URL Name can contain lowercase letters, numbers, and single hyphens.", [
         "urlName"
       ]);
+    }
+  }
+}
+
+/** The courier/tracking/delivery trio, validated identically wherever a shipment is watched. */
+function validateShipmentFields(payload: RecordData) {
+  optionalDate(payload.deliveryDate, "Choose a valid Delivery Date.", "deliveryDate");
+  optionalChoice(payload.courier, COURIER_CHOICES, "Choose a valid Courier.", "courier");
+  // Catch a mistyped USPS number at save time rather than letting the poller fail on it.
+  if (isUspsCarrier(payload.courier) && !isBlank(payload.trackingNumber)) {
+    if (!isLikelyUspsTrackingNumber(payload.trackingNumber)) {
+      throw new RecordPayloadValidationError(
+        "Enter a valid USPS tracking number (20-22 digits, or two letters, nine digits, and US).",
+        ["trackingNumber"]
+      );
     }
   }
 }

@@ -88,6 +88,13 @@ export async function createRecord(object: CrmObject, payload: RecordData, organ
           annualRevenue: optionalStringValue(payload.annualRevenue),
           leadSource: payload.leadSource as string | null,
           industry: payload.industry as string | null,
+          sampleRequestedDate: payload.sampleRequestedDate
+            ? new Date(String(payload.sampleRequestedDate))
+            : null,
+          sampleStatus: payload.sampleStatus as string | null,
+          courier: payload.courier as string | null,
+          trackingNumber: payload.trackingNumber as string | null,
+          deliveryDate: payload.deliveryDate ? new Date(String(payload.deliveryDate)) : null,
           createdById: userId,
           updatedById: userId
         }

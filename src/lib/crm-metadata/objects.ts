@@ -67,6 +67,8 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
       { key: "phone", label: "Phone" },
       { key: "email", label: "Email" },
       { key: "status", label: "Lead Status" },
+      { key: "sampleStatus", label: "Sample Status" },
+      { key: "trackingStatus", label: "Tracking Status" },
       { key: "createdAt", label: "Created Date" },
       { key: "ownerAlias", label: "Owner Alias" }
     ],
