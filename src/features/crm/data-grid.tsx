@@ -39,6 +39,11 @@ import {
 } from "@/features/crm/record-model";
 import { type InlineEditingCell, type ListSortState } from "@/features/crm/shared-types";
 
+function columnSizeStyle(column: { width?: string }) {
+  const width = column.width ?? "150px";
+  return column.width ? { minWidth: width, width, maxWidth: width } : { minWidth: width, width };
+}
+
 export function DataGrid({
   definition,
   records,
@@ -171,10 +176,10 @@ export function DataGrid({
                       : "descending"
                     : undefined
                 }
-                className="border-r border-[#d8dde6] px-3 py-2 text-left"
-                style={{ minWidth: column.width ?? "150px", width: column.width ?? "150px" }}
+                className={cn("border-r border-[#d8dde6] px-3 py-2 text-left", column.width && "overflow-hidden")}
+                style={columnSizeStyle(column)}
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center justify-between gap-2">
                   <button
                     className={cn(
                       "flex items-center gap-1 font-semibold hover:text-brand-700",
@@ -284,11 +289,11 @@ export function DataGrid({
                 return (
                   <td
                     key={column.key}
-                    className="border-r border-[#eef1f6] px-3 py-2"
-                    style={{ minWidth: column.width ?? "150px", width: column.width ?? "150px" }}
+                    className={cn("border-r border-[#eef1f6] px-3 py-2", column.width && "overflow-hidden")}
+                    style={columnSizeStyle(column)}
                   >
-                    <div>
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-center gap-2">
                         {editing ? (
                           <input
                             autoFocus
@@ -339,12 +344,12 @@ export function DataGrid({
                         ) : column.link && canRouteToRecord(definition.object) ? (
                           <Link
                             href={routeForRecord(definition.object, requiredId(record))}
-                            className="truncate text-brand-700 hover:underline"
+                            className="block min-w-0 truncate text-brand-700 hover:underline"
                           >
                             {value || "-"}
                           </Link>
                         ) : (
-                          <span className="truncate">{value || "-"}</span>
+                          <span className="min-w-0 truncate">{value || "-"}</span>
                         )}
                         {column.editable && (
                           <button

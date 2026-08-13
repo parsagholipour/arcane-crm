@@ -61,16 +61,15 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     listViews: ["All Open Leads", "My Leads", "Recently Viewed (Pinned list)", "Today's Leads"],
     actions: ["New", "Import", "Send Email", "Convert Lead", "Add to Campaign", "Change Owner"],
     columns: [
-      { key: "displayName", label: "Name", link: true },
-      { key: "company", label: "Company" },
+      { key: "displayName", label: "Name", link: true, width: "140px" },
+      { key: "company", label: "Company", width: "140px" },
       { key: "state", label: "State/Province (text only)" },
       { key: "phone", label: "Phone" },
-      { key: "email", label: "Email" },
+      { key: "email", label: "Email", width: "160px" },
       { key: "status", label: "Lead Status" },
       { key: "sampleStatus", label: "Sample Status" },
       { key: "trackingStatus", label: "Tracking Status" },
-      { key: "createdAt", label: "Created Date" },
-      { key: "ownerAlias", label: "Owner Alias" }
+      { key: "createdAt", label: "Created Date" }
     ],
     searchInputName: "Lead-search-input",
     statusWhenEmpty: "0 items - Sorted by Name - Filtered by Lead Status - Updated a few seconds ago",
