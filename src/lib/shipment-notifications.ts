@@ -25,16 +25,19 @@ export type ShipmentNotificationDependencies = {
 export type ShipmentAnnouncementKind = "delivered" | "exception";
 type ShipmentNotificationKind = ShipmentAnnouncementKind | "postDeliveryFollowUp";
 
-/** How long after delivery before Opportunity owners get a one-time follow-up nudge. */
-export const OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS = 7;
+/** How long after delivery before the record owner gets a one-time follow-up nudge. */
+export const POST_DELIVERY_FOLLOW_UP_DAYS = 7;
+
+/** Subjects whose owners get the week-later nudge: sales shipments and Lead samples. */
+export const POST_DELIVERY_FOLLOW_UP_SUBJECTS: ShipmentSubjectType[] = ["Opportunity", "Lead"];
 
 /** Stored on the tracking row when nobody can be notified, so the cron does not retry forever. */
 export const SHIPMENT_NOTIFICATION_SKIPPED = "skipped";
 const SHIPMENT_NOTIFICATION_PENDING = "pending";
 
-export function opportunityPostDeliveryFollowUpIsDue(deliveredAt: Date | null, now: Date) {
+export function postDeliveryFollowUpIsDue(deliveredAt: Date | null, now: Date) {
   if (!deliveredAt) return false;
-  const dueAt = new Date(deliveredAt.getTime() + OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000);
+  const dueAt = new Date(deliveredAt.getTime() + POST_DELIVERY_FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000);
   return dueAt <= now;
 }
 
@@ -42,9 +45,9 @@ function notificationCopy(tracking: ShipmentTracking, recipient: ShipmentRecipie
   if (kind === "postDeliveryFollowUp") {
     return {
       title: "Follow up after delivery",
-      body: `At least ${OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS} days have passed since ${recipient.subjectLabel} was delivered — a good time to follow up.`,
+      body: `At least ${POST_DELIVERY_FOLLOW_UP_DAYS} days have passed since ${recipient.subjectLabel} was delivered — a good time to follow up.`,
       delivered: true as const,
-      followUpDays: OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS
+      followUpDays: POST_DELIVERY_FOLLOW_UP_DAYS
     };
   }
   const delivered = kind === "delivered";
@@ -137,14 +140,14 @@ export async function announceShipmentStatus(
 }
 
 /**
- * Atomically create and stamp an Opportunity's week-later notification. The temporary claim,
+ * Atomically create and stamp a subject's week-later notification. The temporary claim,
  * Notification insert, and final id are one transaction, so a crash cannot leave a permanent
  * `pending` marker or create a duplicate in-app notification on the next sweep.
  *
  * Email remains best-effort after the commit: the durable in-app notification is the primary
  * channel, and a provider failure must not make a later sweep duplicate it.
  */
-export async function announceOpportunityPostDeliveryFollowUp(
+export async function announcePostDeliveryFollowUp(
   tracking: ShipmentTracking,
   dependencies: ShipmentNotificationDependencies = {}
 ): Promise<string | null> {
@@ -159,7 +162,7 @@ export async function announceOpportunityPostDeliveryFollowUp(
     const claimed = await tx.shipmentTracking.updateMany({
       where: {
         id: tracking.id,
-        subjectType: "Opportunity",
+        subjectType: { in: POST_DELIVERY_FOLLOW_UP_SUBJECTS },
         status: "Delivered",
         postDeliveryNotificationId: null
       },

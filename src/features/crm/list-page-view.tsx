@@ -1,24 +1,12 @@
 "use client";
 
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import {
-  ChevronDown,
-  ChevronsUpDown,
-  Columns3,
-  Edit3,
-  Filter,
-  LayoutDashboard,
-  Pin,
-  Plus,
-  RefreshCw,
-  Search,
-  Trash2
-} from "lucide-react";
+import { ChevronDown, Columns3, Filter, Pin, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button, LoadingPanel, ToolbarButton } from "@/components/ui/crm-primitives";
 import { GuidanceCard, inputBareClass, inputClass, ListViewControlsMenu, ObjectIcon } from "@/features/crm/controls";
 import { DataGrid, EmptyState } from "@/features/crm/data-grid";
-import { KanbanBoard, KanbanUnavailable } from "@/features/crm/kanban";
+import { KanbanBoard } from "@/features/crm/kanban";
 import { LeadLocationFilters } from "@/features/crm/lead-country-filter";
 import { ListViewPreferenceModal } from "@/features/crm/list-preferences";
 import { requiredId } from "@/features/crm/record-model";
@@ -47,10 +35,11 @@ export function ListView({ model }: { model: ListViewPageModel }) {
     setState,
     listViewSearch,
     setListViewSearch,
-    disabledMessage,
-    setDisabledMessage,
+    showListViewSearch,
     selected,
     setSelected,
+    headerActions,
+    selectionActions,
     canDeleteSelected,
     deleteSelected,
     sortState,
@@ -60,7 +49,6 @@ export function ListView({ model }: { model: ListViewPageModel }) {
     sortableColumns,
     activeColumnWidths,
     activeFilters,
-    activeSharing,
     chartType,
     chartField,
     activeDefinition,
@@ -80,20 +68,17 @@ export function ListView({ model }: { model: ListViewPageModel }) {
     previousPage,
     nextPage,
     changePageSize,
-    recentListViews,
-    otherListViews,
+    filteredListViews,
     status,
     handleAction,
     sortColumn,
     saveListViewPreference,
     pinListView,
     deleteListViewPreference,
-    handleListViewControl,
     hideColumn,
     resizeColumn,
     resetColumnWidth,
     moveKanbanRecord,
-    columnSortDisabledReason,
     updateContextualGuidance,
     addSampleLeadFromGuidance
   } = model;
@@ -118,33 +103,27 @@ export function ListView({ model }: { model: ListViewPageModel }) {
                   </DropdownMenu.Trigger>
                   <DropdownMenu.Portal>
                     <DropdownMenu.Content className="z-50 w-72 rounded border border-[#d8dde6] bg-white p-2 shadow-popover">
-                      <input
-                        className={cn(inputClass, "mb-2")}
-                        placeholder="Search lists..."
-                        value={listViewSearch}
-                        onChange={(event) => setListViewSearch(event.target.value)}
-                      />
-                      <div className="px-2 py-1 text-xs font-semibold uppercase text-[#706e6b]">Recent List Views</div>
-                      {recentListViews.map((view) => (
+                      {showListViewSearch && (
+                        <input
+                          className={cn(inputClass, "mb-2")}
+                          placeholder="Search lists..."
+                          value={listViewSearch}
+                          onChange={(event) => setListViewSearch(event.target.value)}
+                        />
+                      )}
+                      {filteredListViews.map((view) => (
                         <DropdownMenu.Item
                           key={view}
                           onSelect={() => setListView(view)}
-                          className="cursor-pointer rounded px-2 py-2 text-sm hover:bg-brand-50"
+                          className={cn(
+                            "cursor-pointer rounded px-2 py-2 text-sm hover:bg-brand-50",
+                            view === listView && "font-semibold text-brand-700"
+                          )}
                         >
                           {view}
                         </DropdownMenu.Item>
                       ))}
-                      <div className="px-2 py-1 text-xs font-semibold uppercase text-[#706e6b]">All Other Lists</div>
-                      {otherListViews.map((view) => (
-                        <DropdownMenu.Item
-                          key={view}
-                          onSelect={() => setListView(view)}
-                          className="cursor-pointer rounded px-2 py-2 text-sm hover:bg-brand-50"
-                        >
-                          {view}
-                        </DropdownMenu.Item>
-                      ))}
-                      {recentListViews.length === 0 && otherListViews.length === 0 && (
+                      {filteredListViews.length === 0 && (
                         <div className="px-2 py-3 text-sm text-[#706e6b]">No list views found.</div>
                       )}
                     </DropdownMenu.Content>
@@ -160,27 +139,50 @@ export function ListView({ model }: { model: ListViewPageModel }) {
               </div>
             </div>
           </div>
-          <div className="flex flex-wrap justify-end gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-1">
             {canDeleteSelected && (
               <Button variant="destructive" onClick={deleteSelected}>
                 <Trash2 size={14} />
                 Delete ({selected.length})
               </Button>
             )}
-            {definition.actions
-              .filter((action) => action !== "Assign Label" || selected.length > 0)
-              .map((action) => (
-                <Button
-                  key={action}
-                  variant={
-                    action === "New" || action === "New Quick Text" || action === "New Event" ? "primary" : "secondary"
-                  }
-                  onClick={() => handleAction(action)}
-                >
-                  {action === "New" && <Plus size={14} />}
-                  {object === "Invoice" && action === "New" ? "New Invoice" : action}
-                </Button>
-              ))}
+            {selectionActions.length > 0 && (
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button className="inline-flex min-h-8 items-center gap-1 rounded border border-[#cfd4dc] bg-white px-3.5 py-1 text-xs font-semibold text-brand-700 shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:border-[#b5bcc7] hover:bg-[#f8f9fb] active:scale-[0.97]">
+                    Actions ({selected.length}) <ChevronDown size={14} />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    align="end"
+                    className="z-50 min-w-48 rounded border border-[#d8dde6] bg-white p-1 shadow-popover"
+                  >
+                    {selectionActions.map((action) => (
+                      <DropdownMenu.Item
+                        key={action}
+                        onSelect={() => handleAction(action)}
+                        className="cursor-pointer rounded px-3 py-2 text-sm outline-none hover:bg-brand-50"
+                      >
+                        {action}
+                      </DropdownMenu.Item>
+                    ))}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            )}
+            {headerActions.map((action) => (
+              <Button
+                key={action}
+                variant={
+                  action === "New" || action === "New Quick Text" || action === "New Event" ? "primary" : "secondary"
+                }
+                onClick={() => handleAction(action)}
+              >
+                {action === "New" && <Plus size={14} />}
+                {object === "Invoice" && action === "New" ? "New Invoice" : action}
+              </Button>
+            ))}
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-2 p-3">
@@ -204,64 +206,37 @@ export function ListView({ model }: { model: ListViewPageModel }) {
                 placeholder="Search this list..."
               />
             </div>
-            <ListViewControlsMenu
-              object={object}
-              listView={listView}
-              isCustom={isCustomListView}
-              onAction={handleListViewControl}
-            />
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <button
-                  className="flex h-8 items-center gap-1 rounded border border-[#c9c9c9] px-2 text-xs hover:bg-[#f3f3f3]"
-                  aria-label="Select list display"
-                >
-                  <Columns3 size={14} />
-                  {display}
-                </button>
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Portal>
-                <DropdownMenu.Content className="z-50 rounded border border-[#d8dde6] bg-white p-1 shadow-popover">
-                  {["Table", "Kanban"].map((mode) => (
-                    <DropdownMenu.Item
-                      key={mode}
-                      onSelect={() => setDisplay(mode as "Table" | "Kanban")}
-                      className="cursor-pointer rounded px-3 py-2 text-sm hover:bg-brand-50"
-                    >
-                      {mode}
-                    </DropdownMenu.Item>
-                  ))}
-                </DropdownMenu.Content>
-              </DropdownMenu.Portal>
-            </DropdownMenu.Root>
-            <ToolbarButton label="Refresh" icon={RefreshCw} onClick={() => void refreshList()} />
-            <ToolbarButton
-              label="Column sort"
-              icon={ChevronsUpDown}
-              disabled={visibleRecords.length < 1 || sortableColumns.length < 1}
-              disabledReason={columnSortDisabledReason}
-              onDisabled={() => setDisabledMessage(columnSortDisabledReason)}
-              onClick={() => sortColumn(sortableColumns[0] ?? "name")}
-            />
-            <ToolbarButton
-              label="Edit List"
-              icon={Edit3}
-              onClick={() => setControlDialog("Select Fields to Display")}
-            />
-            <ToolbarButton label="Charts" icon={LayoutDashboard} onClick={() => setControlDialog("Charts")} />
+            {kanbanConfig && (
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    className="flex h-8 items-center gap-1 rounded border border-[#c9c9c9] px-2 text-xs hover:bg-[#f3f3f3]"
+                    aria-label="Select list display"
+                  >
+                    <Columns3 size={14} />
+                    {display}
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content className="z-50 rounded border border-[#d8dde6] bg-white p-1 shadow-popover">
+                    {["Table", "Kanban"].map((mode) => (
+                      <DropdownMenu.Item
+                        key={mode}
+                        onSelect={() => setDisplay(mode as "Table" | "Kanban")}
+                        className="cursor-pointer rounded px-3 py-2 text-sm hover:bg-brand-50"
+                      >
+                        {mode}
+                      </DropdownMenu.Item>
+                    ))}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            )}
             <ToolbarButton label="Filters" icon={Filter} onClick={() => setControlDialog("Filters")} />
+            <ToolbarButton label="Refresh" icon={RefreshCw} onClick={() => void refreshList()} />
+            <ListViewControlsMenu listView={listView} isCustom={isCustomListView} onAction={setControlDialog} />
           </div>
         </div>
-        {disabledMessage && (
-          <div className="mx-3 mb-2 rounded border border-[#f1c40f] bg-[#fff7d6] px-3 py-2 text-xs text-[#5f4b00]">
-            {disabledMessage}
-          </div>
-        )}
-        {definition.disabledInlineEditMessage && (
-          <div className="mx-3 mb-2 rounded border border-[#d8dde6] bg-[#f8f8f8] px-3 py-2 text-xs text-[#706e6b]">
-            {definition.disabledInlineEditMessage}
-          </div>
-        )}
         {listLoading ? (
           <LoadingPanel label={`Loading ${definition.plural.toLowerCase()}…`} />
         ) : display === "Kanban" && kanbanConfig ? (
@@ -275,8 +250,6 @@ export function ListView({ model }: { model: ListViewPageModel }) {
             onChangeOwner={(record) => onListAction("Change Owner", object, [record], [requiredId(record)])}
             onConvertLead={(record) => onListAction("Convert Lead", object, [record], [requiredId(record)])}
           />
-        ) : display === "Kanban" ? (
-          <KanbanUnavailable definition={definition} records={visibleRecords} />
         ) : (
           <DataGrid
             definition={activeDefinition}
@@ -358,12 +331,10 @@ export function ListView({ model }: { model: ListViewPageModel }) {
           records={visibleRecords}
           chartType={chartType}
           chartField={chartField}
-          activeSharing={activeSharing}
           isCustom={isCustomListView}
           onClose={() => setControlDialog(null)}
           onSave={saveListViewPreference}
           onDelete={deleteListViewPreference}
-          onControlAction={handleListViewControl}
         />
       )}
     </section>

@@ -36,10 +36,9 @@ import {
   type ReactElement,
   type ReactNode
 } from "react";
-import { type CrmObject, type ObjectDefinition } from "@/lib/crm-types";
+import { type ObjectDefinition } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/crm-primitives";
-import { listViewSharingOptions } from "@/features/crm/list-model";
 
 export const iconMap: Record<string, ElementType> = {
   user: User,
@@ -58,17 +57,15 @@ export const iconMap: Record<string, ElementType> = {
   video: Video
 };
 export function ListViewControlsMenu({
-  object,
   listView,
   isCustom,
   onAction
 }: {
-  object: CrmObject;
   listView: string;
   isCustom: boolean;
   onAction: (action: string) => void;
 }) {
-  const items = listViewControlItems(object, listView, isCustom);
+  const items = listViewControlItems(listView, isCustom);
 
   return (
     <DropdownMenu.Root>
@@ -108,36 +105,23 @@ export type ListViewControlItem = {
   enabled: boolean;
   description: string;
 };
-export function listViewControlItems(object: CrmObject, listView: string, isCustom: boolean): ListViewControlItem[] {
+export function listViewControlItems(listView: string, isCustom: boolean): ListViewControlItem[] {
   const isRecentlyViewed = listView.includes("Recently Viewed");
   return [
-    { label: "New", enabled: true, description: "Create a private list view with its own fields and filters." },
-    { label: "Clone", enabled: !isRecentlyViewed, description: "Copy this list view into a new editable custom view." },
-    { label: "Rename", enabled: isCustom, description: "Update the name of this custom list view." },
-    { label: "Sharing Settings", enabled: !isRecentlyViewed, description: "Choose who can see this list view." },
     {
       label: "Select Fields to Display",
       enabled: !isRecentlyViewed,
       description: "Choose columns, display order, and saved widths."
     },
-    { label: "Delete", enabled: isCustom, description: "Remove this custom list view without deleting records." },
-    ...(object === "Knowledge__kav"
-      ? []
-      : [
-          { label: "Reset Column Sorting", enabled: true, description: "Clear the current column sort for this view." }
-        ]),
-    { label: "Reset Column Widths", enabled: true, description: "Restore default column widths for this view." }
+    { label: "Charts", enabled: true, description: "Summarize the current results as a chart." },
+    { label: "New", enabled: true, description: "Create a private list view with its own fields and filters." },
+    { label: "Clone", enabled: !isRecentlyViewed, description: "Copy this list view into a new editable custom view." },
+    { label: "Rename", enabled: isCustom, description: "Update the name of this custom list view." },
+    { label: "Delete", enabled: isCustom, description: "Remove this custom list view without deleting records." }
   ];
 }
 export function listViewMatchesSearch(view: string, query: string) {
   return view.toLowerCase().includes(query.trim().toLowerCase());
-}
-export function normalizeListViewSharing(value: unknown) {
-  const sharing = String(value ?? "");
-  if (listViewSharingOptions.includes(sharing)) return sharing;
-  if (sharing === "All") return listViewSharingOptions[1];
-  if (sharing === "Groups") return listViewSharingOptions[2];
-  return listViewSharingOptions[0];
 }
 export function ObjectIcon({ definition }: { definition: ObjectDefinition }) {
   const Icon = iconMap[definition.icon] ?? Box;

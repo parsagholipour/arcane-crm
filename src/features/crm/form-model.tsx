@@ -200,10 +200,12 @@ export function formatListCell(object: CrmObject, record: RecordData, key: strin
   }
   if (object === "Invoice" && ["issueDate", "dueDate"].includes(key) && record[key])
     return formatDate(String(record[key]));
-  if (object === "Opportunity" && key === "trackingStatus" && record[key]) {
+  // Opportunity shipments and Lead samples share the tracking columns and their formatting.
+  const tracked = object === "Opportunity" || object === "Lead";
+  if (tracked && key === "trackingStatus" && record[key]) {
     return shipmentStatusLabel(String(record[key]));
   }
-  if (object === "Opportunity" && key === "deliveryDate" && record[key]) {
+  if (tracked && ["deliveryDate", "sampleRequestedDate"].includes(key) && record[key]) {
     return formatDate(String(record[key]));
   }
   return formatCell(record[key]);

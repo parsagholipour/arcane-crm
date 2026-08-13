@@ -4,6 +4,7 @@ import { AppAuthorizationError } from "@/lib/authorization-errors";
 import { campaignInclude } from "@/lib/campaigns";
 import type { GenericRecord, RecordDetail } from "@/lib/api/contracts";
 import { invoiceInclude } from "@/lib/invoices";
+import { leadSampleProductInclude, leadSampleProductOrder } from "@/lib/lead-sample-products";
 import { opportunityProductInclude, opportunityProductOrder } from "@/lib/opportunity-products";
 import { prisma } from "@/lib/prisma";
 import type { CrmObject } from "@/lib/crm-types";
@@ -36,7 +37,12 @@ function recordDelegate(object: CrmObject) {
     case "Contact":
       return { delegate: delegate(prisma.contact), include: { account: true } };
     case "Lead":
-      return { delegate: delegate(prisma.lead) };
+      return {
+        delegate: delegate(prisma.lead),
+        include: {
+          sampleProducts: { include: leadSampleProductInclude, orderBy: leadSampleProductOrder }
+        }
+      };
     case "Opportunity":
       return {
         delegate: delegate(prisma.opportunity),
@@ -156,9 +162,9 @@ export async function getRecordDetail(
   // Carry live carrier status alongside the record so the detail page can render it without
   // a second round trip.
   const shipment =
-    object === "Opportunity"
+    object === "Opportunity" || object === "Lead"
       ? await prisma.shipmentTracking.findUnique({
-          where: { organizationId_subjectType_subjectId: { organizationId, subjectType: "Opportunity", subjectId: id } }
+          where: { organizationId_subjectType_subjectId: { organizationId, subjectType: object, subjectId: id } }
         })
       : null;
   return JSON.parse(JSON.stringify({ record: shipment ? { ...record, shipment } : record, related })) as RecordDetail<

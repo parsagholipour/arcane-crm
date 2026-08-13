@@ -3,15 +3,16 @@ import "server-only";
 import type { ShipmentTracking } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
-  announceOpportunityPostDeliveryFollowUp,
+  announcePostDeliveryFollowUp,
   announceShipmentStatus,
-  OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS,
-  opportunityPostDeliveryFollowUpIsDue,
+  POST_DELIVERY_FOLLOW_UP_DAYS,
+  POST_DELIVERY_FOLLOW_UP_SUBJECTS,
+  postDeliveryFollowUpIsDue,
   SHIPMENT_NOTIFICATION_SKIPPED,
   type ShipmentNotificationDependencies
 } from "@/lib/shipment-notifications";
 import { fetchUspsTracking, UspsError, uspsTrackingConfigured } from "@/lib/usps-client";
-import { persistOpportunityDeliveryDate } from "@/lib/shipment-tracking-sync";
+import { persistSubjectDeliveryDate } from "@/lib/shipment-tracking-sync";
 import {
   isExceptionShipmentStatus,
   isTerminalShipmentStatus,
@@ -34,7 +35,7 @@ export type ShipmentPollSummary = {
   updated: number;
   delivered: number;
   alerted: number;
-  /** Opportunity follow-ups fired 7 days after delivery. */
+  /** Opportunity and Lead sample follow-ups fired 7 days after delivery. */
   followUps: number;
   retried: number;
   failed: number;
@@ -148,8 +149,8 @@ async function announceIfNeeded(
 }
 
 /**
- * Opportunity owners get a one-time nudge a week after delivery. Delivered rows are terminal
- * for USPS polling, so this is a separate pass over already-delivered Opportunity shipments.
+ * Opportunity and Lead owners get a one-time nudge a week after delivery. Delivered rows are
+ * terminal for USPS polling, so this is a separate pass over already-delivered shipments.
  */
 async function announceDuePostDeliveryFollowUps(
   now: Date,
@@ -158,10 +159,10 @@ async function announceDuePostDeliveryFollowUps(
   summary: ShipmentPollSummary,
   dependencies: ShipmentNotificationDependencies
 ) {
-  const dueBefore = new Date(now.getTime() - OPPORTUNITY_POST_DELIVERY_FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000);
+  const dueBefore = new Date(now.getTime() - POST_DELIVERY_FOLLOW_UP_DAYS * 24 * 60 * 60 * 1000);
   const candidates = await prisma.shipmentTracking.findMany({
     where: {
-      subjectType: "Opportunity",
+      subjectType: { in: POST_DELIVERY_FOLLOW_UP_SUBJECTS },
       status: "Delivered",
       deliveredAt: { lte: dueBefore },
       postDeliveryNotificationId: null,
@@ -172,9 +173,9 @@ async function announceDuePostDeliveryFollowUps(
   });
 
   for (const candidate of candidates) {
-    if (!opportunityPostDeliveryFollowUpIsDue(candidate.deliveredAt, now)) continue;
+    if (!postDeliveryFollowUpIsDue(candidate.deliveredAt, now)) continue;
     try {
-      const notificationId = await announceOpportunityPostDeliveryFollowUp(candidate, dependencies);
+      const notificationId = await announcePostDeliveryFollowUp(candidate, dependencies);
       if (notificationId && notificationId !== SHIPMENT_NOTIFICATION_SKIPPED) summary.followUps += 1;
     } catch (error) {
       // The atomic transaction rolled back, so the next sweep can safely retry this row.
@@ -206,7 +207,7 @@ async function refreshShipment(
       lastError: null
     }
   });
-  await persistOpportunityDeliveryDate(prisma, updated, deliveredAt);
+  await persistSubjectDeliveryDate(prisma, updated, deliveredAt);
   summary.updated += 1;
   await announceIfNeeded(updated, summary, dependencies);
 }
@@ -245,7 +246,7 @@ async function recordFailure(
 
 /**
  * Refresh every USPS shipment that is due, notifying owners on delivery and on exceptions,
- * then fire Opportunity follow-ups that are 7 days past delivery.
+ * then fire Opportunity and Lead sample follow-ups that are 7 days past delivery.
  * Called both by the scheduled dispatch route and by the in-app sweep (scoped to one org).
  */
 export async function pollDueShipments(options: ShipmentPollOptions = {}): Promise<ShipmentPollSummary> {
@@ -263,7 +264,7 @@ export async function pollDueShipments(options: ShipmentPollOptions = {}): Promi
   };
 
   // Follow-ups only need deliveredAt; they do not call USPS. Run them even when tracking
-  // credentials are missing so Opportunity owners still get the week-later nudge.
+  // credentials are missing so record owners still get the week-later nudge.
   await announceDuePostDeliveryFollowUps(now, options.organizationId, limit, summary, dependencies);
 
   if (!uspsTrackingConfigured()) return summary;

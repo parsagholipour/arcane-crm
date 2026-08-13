@@ -1,13 +1,13 @@
 "use client";
 
-import { ChevronRight, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { type ObjectDefinition, type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
 import { BaseDialog, Button } from "@/components/ui/crm-primitives";
-import { checkboxClass, FieldShell, inputClass, listViewControlItems, NativeSelect } from "@/features/crm/controls";
+import { checkboxClass, FieldShell, inputClass, NativeSelect } from "@/features/crm/controls";
 import { fieldLabel } from "@/features/crm/form-model";
-import { chartDataForRecords, listViewSharingOptions } from "@/features/crm/list-model";
+import { chartDataForRecords } from "@/features/crm/list-model";
 
 export function ListViewPreferenceModal({
   action,
@@ -19,12 +19,10 @@ export function ListViewPreferenceModal({
   records,
   chartType,
   chartField,
-  activeSharing,
   isCustom,
   onClose,
   onSave,
-  onDelete,
-  onControlAction
+  onDelete
 }: {
   action: string;
   definition: ObjectDefinition;
@@ -35,7 +33,6 @@ export function ListViewPreferenceModal({
   records: RecordData[];
   chartType: string;
   chartField: string;
-  activeSharing: string;
   isCustom: boolean;
   onClose: () => void;
   onSave: (values: {
@@ -48,10 +45,8 @@ export function ListViewPreferenceModal({
     pinned?: boolean;
     isCustom?: boolean;
     previousViewName?: string;
-    sharing?: string;
   }) => Promise<boolean>;
   onDelete: () => Promise<boolean>;
-  onControlAction?: (action: string) => void;
 }) {
   const defaultName =
     action === "New" ? `New ${definition.label} List` : action === "Clone" ? `${listView} Clone` : listView;
@@ -66,7 +61,6 @@ export function ListViewPreferenceModal({
   );
   const [selectedChartType, setSelectedChartType] = useState(chartType);
   const [selectedChartField, setSelectedChartField] = useState(chartField);
-  const [sharing, setSharing] = useState(activeSharing);
   const [error, setError] = useState("");
   const isFieldAction =
     action === "Select Fields to Display" || action === "New" || action === "Clone" || action === "Rename";
@@ -138,83 +132,6 @@ export function ListViewPreferenceModal({
         <p className="text-sm text-[#444]">
           This removes the custom list view for you. Records in the list are not deleted.
         </p>
-      </BaseDialog>
-    );
-  }
-
-  if (action === "Sharing Settings") {
-    return (
-      <BaseDialog
-        open
-        title="Sharing Settings"
-        onClose={onClose}
-        footer={
-          <>
-            <Button onClick={onClose}>Close</Button>
-            <Button
-              variant="primary"
-              onClick={() =>
-                onSave({
-                  viewName: listView,
-                  columns,
-                  columnWidths,
-                  filters: activeFilters,
-                  chartType,
-                  chartField,
-                  isCustom,
-                  sharing
-                })
-              }
-            >
-              Done
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3 text-sm">
-          <p className="text-[#706e6b]">Choose who can see this list view.</p>
-          {listViewSharingOptions.map((option) => (
-            <label key={option} className="flex items-center gap-2 rounded border border-[#d8dde6] p-2">
-              <input
-                type="radio"
-                name="list-sharing"
-                checked={sharing === option}
-                onChange={() => setSharing(option)}
-              />
-              {option}
-            </label>
-          ))}
-        </div>
-      </BaseDialog>
-    );
-  }
-
-  if (action === "List View Controls") {
-    const controls = listViewControlItems(definition.object, listView, isCustom);
-    return (
-      <BaseDialog open title="List View Controls" onClose={onClose} footer={<Button onClick={onClose}>Close</Button>}>
-        <div className="space-y-3">
-          <div className="rounded border border-[#d8dde6] bg-[#f8f8f8] p-3 text-sm">
-            <div className="font-semibold">{listView}</div>
-            <div className="text-xs text-[#706e6b]">{definition.plural} list view tools</div>
-          </div>
-          <div className="grid gap-2">
-            {controls.map((item) => (
-              <button
-                key={item.label}
-                disabled={!item.enabled}
-                onClick={() => item.enabled && onControlAction?.(item.label)}
-                className="flex items-center justify-between gap-3 rounded border border-[#d8dde6] p-3 text-left text-sm hover:border-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:bg-[#f8f8f8] disabled:text-[#a8a8a8] disabled:hover:border-[#d8dde6]"
-              >
-                <span>
-                  <span className="block font-semibold">{item.label}</span>
-                  <span className="mt-0.5 block text-xs text-[#706e6b]">{item.description}</span>
-                </span>
-                <ChevronRight size={15} className="shrink-0" />
-              </button>
-            ))}
-          </div>
-        </div>
       </BaseDialog>
     );
   }

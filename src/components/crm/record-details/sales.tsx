@@ -18,7 +18,7 @@ import {
   Detail
 } from "@/components/crm/record-details/primitives";
 import { ShipmentCard } from "@/components/crm/record-details/shipment-card";
-import { OpportunityProductsCard } from "@/components/crm/opportunities/products";
+import { ProductLinesCard } from "@/components/crm/products/product-lines-card";
 import { type ToastState } from "@/components/ui/crm-primitives";
 import { type ScopedCrmDataUpdater } from "@/features/crm/shared-types";
 
@@ -69,6 +69,8 @@ export function SalesRecordDetailPage({
           ["Industry", record.industry],
           ["Annual Revenue", record.annualRevenue ? money(record.annualRevenue) : ""],
           ["Owner", owner?.name],
+          ["Sample Requested Date", record.sampleRequestedDate ? formatDate(text(record.sampleRequestedDate)) : ""],
+          ["Sample Status", record.sampleStatus],
           ["Conversion Date", record.convertedAt ? formatDateTime(text(record.convertedAt)) : ""],
           [
             "Converted Account",
@@ -180,10 +182,17 @@ export function SalesRecordDetailPage({
             </div>
           )}
         </Card>
-        {object === "Opportunity" && (
-          <OpportunityProductsCard opportunity={record} data={data} onDataChange={onDataChange} onToast={onToast} />
+        {(object === "Opportunity" || object === "Lead") && (
+          <ProductLinesCard
+            subjectKind={object}
+            subject={record}
+            data={data}
+            readOnly={object === "Lead" && converted}
+            onDataChange={onDataChange}
+            onToast={onToast}
+          />
         )}
-        {object === "Opportunity" && (
+        {(object === "Opportunity" || object === "Lead") && (
           <ShipmentCard
             courier={record.courier}
             trackingNumber={record.trackingNumber}

@@ -116,7 +116,6 @@ export type ObjectDefinition = {
   statusWhenEmpty?: string;
   emptyTitle?: string;
   emptyBody?: string;
-  disabledInlineEditMessage?: string;
   supportsNew?: boolean;
 };
 

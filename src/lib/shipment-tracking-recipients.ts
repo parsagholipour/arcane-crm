@@ -29,6 +29,20 @@ async function opportunitySubject(organizationId: string, subjectId: string) {
   };
 }
 
+async function leadSubject(organizationId: string, subjectId: string) {
+  const lead = await prisma.lead.findFirst({
+    where: { id: subjectId, organizationId },
+    select: { id: true, firstName: true, lastName: true, company: true, ownerId: true }
+  });
+  if (!lead) return null;
+  const person = [lead.firstName, lead.lastName].filter(Boolean).join(" ").trim();
+  return {
+    userId: lead.ownerId,
+    subjectLabel: `Sample for ${person || String(lead.company ?? "").trim() || "a Lead"}`,
+    href: `/lightning/r/Lead/${lead.id}/view`
+  };
+}
+
 async function fulfillmentSubject(organizationId: string, subjectId: string) {
   const fulfillment = await prisma.commerceFulfillment.findFirst({
     where: { id: subjectId, organizationId },
@@ -55,7 +69,9 @@ export async function resolveShipmentRecipient(
   const subject =
     subjectType === "Opportunity"
       ? await opportunitySubject(organizationId, subjectId)
-      : await fulfillmentSubject(organizationId, subjectId);
+      : subjectType === "Lead"
+        ? await leadSubject(organizationId, subjectId)
+        : await fulfillmentSubject(organizationId, subjectId);
   if (!subject) return null;
 
   const [membership, organization, preference] = await Promise.all([

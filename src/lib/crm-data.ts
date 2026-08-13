@@ -75,11 +75,15 @@ export function decorateScopedData(data: ScopedCrmData): ScopedCrmData {
         ownerName: ownerName(contact.ownerId)
       };
     }),
-    leads: data.leads.map((lead) => ({
-      ...lead,
-      displayName: contactName(lead),
-      ownerAlias: ownerAlias(lead.ownerId)
-    })),
+    leads: data.leads.map((lead) => {
+      const shipment = lead.shipment as RecordData | undefined;
+      return {
+        ...lead,
+        displayName: contactName(lead),
+        trackingStatus: String(shipment?.status ?? lead.trackingStatus ?? ""),
+        ownerAlias: ownerAlias(lead.ownerId)
+      };
+    }),
     opportunities: data.opportunities.map((opportunity) => {
       const shipment = opportunity.shipment as RecordData | undefined;
       return {

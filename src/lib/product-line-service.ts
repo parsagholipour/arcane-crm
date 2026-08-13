@@ -63,11 +63,7 @@ export async function assignableProduct(organizationId: string, rawProductId: un
  * Sales price suggested when a line is added without one: the active list price from the
  * standard price book wins, then any other active price book, then the catalogue price.
  */
-export async function defaultUnitPrice(
-  organizationId: string,
-  productId: string,
-  catalogPrice: Prisma.Decimal | null
-) {
+export async function defaultUnitPrice(organizationId: string, productId: string, catalogPrice: Prisma.Decimal | null) {
   const now = new Date();
   const entries = await prisma.priceBookEntry.findMany({
     where: {

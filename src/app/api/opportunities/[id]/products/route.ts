@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
-import {
-  addOpportunityProduct,
-  listOpportunityProducts
-} from "@/lib/opportunity-products";
+import { addOpportunityProduct, listOpportunityProducts } from "@/lib/opportunity-products";
 import { productLineErrorResponse } from "@/lib/product-line-service";
 
 type Params = Promise<{ id: string }>;

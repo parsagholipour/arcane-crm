@@ -57,8 +57,8 @@ function modelConfig(object: CrmObject): ModelConfig {
     case "Lead":
       return {
         delegate: delegate(prisma.lead),
-        searchFields: ["firstName", "lastName", "company", "email", "phone"],
-        sortFields: ["firstName", "lastName", "company", "status", "updatedAt"],
+        searchFields: ["firstName", "lastName", "company", "email", "phone", "trackingNumber"],
+        sortFields: ["firstName", "lastName", "company", "status", "sampleStatus", "updatedAt"],
         defaultSort: "displayName",
         ownerField: "ownerId"
       };
@@ -293,12 +293,12 @@ export async function listRecords(
   const page = hasNextPage ? records.slice(0, query.limit) : records;
   let items = serializeRecords(page);
 
-  // Flatten live carrier status onto each opportunity so the list column can read a
+  // Flatten live carrier status onto each opportunity and lead so the list column can read a
   // plain `trackingStatus` field without nesting.
-  if (object === "Opportunity" && items.length) {
+  if ((object === "Opportunity" || object === "Lead") && items.length) {
     const shipments = await shipmentTrackingBySubject(
       organizationId,
-      "Opportunity",
+      object,
       items.map((item) => String(item.id))
     );
     items = items.map((item) => ({

@@ -3,7 +3,7 @@ import type { CrmObject, RecordData, ScopedCrmData } from "@/lib/crm-types";
 const baseEditorLookups: readonly CrmObject[] = ["Account", "Contact"];
 
 const objectEditorLookups: Partial<Record<CrmObject, readonly CrmObject[]>> = {
-  Lead: ["Opportunity"],
+  Lead: ["Opportunity", "Product2"],
   Opportunity: ["Product2"],
   Product2: ["Opportunity", "Product2", "Pricebook2"],
   Pricebook2: ["Opportunity", "Product2", "Pricebook2"],
@@ -34,13 +34,13 @@ export function editorLookupObjects(object: CrmObject, includeCurrentObject: boo
 /**
  * Product rows are decorated with their primary list price, while Product and Price Book detail
  * pages render their entries directly. Invoice editors also need the entries for line pricing,
- * as does the Opportunity Products card when it suggests a sales price.
+ * as do the Opportunity Products and Lead Sample Products cards when they suggest a sales price.
  */
 export function needsPriceBookEntries(object: CrmObject, screenKind: "list" | "record") {
   return (
     object === "Invoice" ||
     object === "Product2" ||
-    ((object === "Pricebook2" || object === "Opportunity") && screenKind === "record")
+    ((object === "Pricebook2" || object === "Opportunity" || object === "Lead") && screenKind === "record")
   );
 }
 

@@ -11,13 +11,19 @@ test("dateInputValue adapts persisted dates without changing empty or invalid va
   assert.equal(dateInputValue("not-a-date"), "not-a-date");
 });
 
-test("formatListCell labels opportunity tracking statuses", () => {
+test("formatListCell labels opportunity and lead sample tracking statuses", () => {
   assert.equal(formatListCell("Opportunity", { trackingStatus: "InTransit" }, "trackingStatus"), "In Transit");
   assert.equal(
     formatListCell("Opportunity", { trackingStatus: "OutForDelivery" }, "trackingStatus"),
     "Out for Delivery"
   );
   assert.equal(formatListCell("Opportunity", { trackingStatus: "" }, "trackingStatus"), "");
+  assert.equal(formatListCell("Lead", { trackingStatus: "InTransit" }, "trackingStatus"), "In Transit");
+  assert.equal(formatListCell("Lead", { trackingStatus: "" }, "trackingStatus"), "");
+  assert.equal(
+    formatListCell("Lead", { sampleRequestedDate: "2026-09-30T00:00:00.000Z" }, "sampleRequestedDate"),
+    formatListCell("Opportunity", { deliveryDate: "2026-09-30T00:00:00.000Z" }, "deliveryDate")
+  );
 });
 
 test("every metadata date field hydrates serialized API timestamps for its form control", () => {
@@ -37,6 +43,8 @@ test("every metadata date field hydrates serialized API timestamps for its form 
 
   assert.deepEqual(hydratedFields, [
     "Contact.birthDate",
+    "Lead.sampleRequestedDate",
+    "Lead.deliveryDate",
     "Opportunity.closeDate",
     "Opportunity.deliveryDate",
     "Pricebook2.validFrom",

@@ -6,7 +6,7 @@ import { type ScopedCrmData, type CrmObject, type RecordData } from "@/lib/crm-t
 import { dataKeyForObject } from "@/lib/crm-data";
 import { apiRequest } from "@/lib/api/client";
 import { type GenericRecord, type ListResult } from "@/lib/api/contracts";
-import { listViewMatchesSearch, normalizeListViewSharing } from "@/features/crm/controls";
+import { listViewMatchesSearch } from "@/features/crm/controls";
 import { resourceApi } from "@/lib/api/resources";
 import { fieldLabel } from "@/features/crm/form-model";
 import {
@@ -18,7 +18,8 @@ import {
   recordMatchesCountryFilter,
   recordMatchesListFilter,
   recordMatchesStateFilter,
-  recordMatchesStandardListView
+  recordMatchesStandardListView,
+  requiresSelection
 } from "@/features/crm/list-model";
 import { canDeleteFromRow, requiredId } from "@/features/crm/record-model";
 import { type ScopedCrmDataUpdater, type ListSortState, type SaveRecordHandler } from "@/features/crm/shared-types";
@@ -74,7 +75,6 @@ export function useListViewController({
   const [country, setCountry] = useState("");
   const [state, setState] = useState("");
   const [listViewSearch, setListViewSearch] = useState("");
-  const [disabledMessage, setDisabledMessage] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
   const [sortState, setSortState] = useState<ListSortState>(null);
   const [controlDialog, setControlDialog] = useState<string | null>(null);
@@ -85,7 +85,7 @@ export function useListViewController({
   const [pageIndex, setPageIndex] = useState(0);
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
   const listRequestIdRef = useRef(0);
-  useShipmentTrackingSweep(object === "Opportunity", onDataChange);
+  useShipmentTrackingSweep(object === "Opportunity" || object === "Lead", onDataChange);
   const listViews = useMemo(
     () =>
       Array.from(
@@ -104,7 +104,6 @@ export function useListViewController({
     .map((column) => column.key);
   const activeColumnWidths = columnWidthsForListView(activePreference);
   const activeFilters = filtersForListView(definition, activePreference);
-  const activeSharing = normalizeListViewSharing(activePreference?.sharing);
   const chartType = String(activePreference?.chartType ?? "Bar");
   const chartField = String(
     activePreference?.chartField ?? activeColumns[0]?.key ?? definition.columns[0]?.key ?? "name"
@@ -121,6 +120,7 @@ export function useListViewController({
   const serverSortState = sortState && sortableColumns.includes(sortState.key) ? sortState : null;
   useEffect(() => {
     setListView(String(initialListView || pinnedPreference?.viewName || definition.defaultList));
+    setDisplay("Table");
     setQuery(initialQuery);
     setCountry("");
     setState("");
@@ -251,14 +251,12 @@ export function useListViewController({
     setListLoading(true);
     setPageSize(value);
   }
-  const recentListViews = useMemo(
-    () => listViews.slice(0, 2).filter((view) => listViewMatchesSearch(view, listViewSearch)),
+  const filteredListViews = useMemo(
+    () => listViews.filter((view) => listViewMatchesSearch(view, listViewSearch)),
     [listViewSearch, listViews]
   );
-  const otherListViews = useMemo(
-    () => listViews.slice(2).filter((view) => listViewMatchesSearch(view, listViewSearch)),
-    [listViewSearch, listViews]
-  );
+  // The picker only needs a search box once the list outgrows a glance.
+  const showListViewSearch = listViews.length > 6;
   const sortedColumn = sortState
     ? (activeColumns.find((column) => column.key === sortState.key) ??
       definition.columns.find((column) => column.key === sortState.key))
@@ -301,13 +299,13 @@ export function useListViewController({
   function handleAction(action: string) {
     if (action === "New" || action === "New Quick Text" || action === "New Event") onCreate(object);
     else if (action === "Send Email") onCreate("ListEmail");
-    else if (action === "Refresh") onToast({ tone: "success", message: "List refreshed." });
-    else if (action === "Edit List") setControlDialog("Select Fields to Display");
-    else if (action === "Charts" || action === "Filters" || action === "List View Controls") setControlDialog(action);
     else onListAction(action, object, visibleRecords, selected);
   }
   const selectedRecords = visibleRecords.filter((record) => selected.includes(requiredId(record)));
   // Only the table shows checkboxes, so a selection carried over from it stays hidden on the board.
+  const headerActions = definition.actions.filter((action) => !requiresSelection(action));
+  const selectionActions =
+    display === "Table" && selected.length > 0 ? definition.actions.filter(requiresSelection) : [];
   const canDeleteSelected = display === "Table" && canDeleteFromRow(object) && selectedRecords.length > 0;
   function deleteSelected() {
     if (!canDeleteSelected) return;
@@ -318,15 +316,8 @@ export function useListViewController({
     });
   }
   function sortColumn(column: string, direction?: "asc" | "desc") {
-    if (visibleRecords.length < 1) {
-      setDisabledMessage("Column sort is disabled until the list has at least one row.");
-      return;
-    }
-    if (!sortableColumns.includes(column)) {
-      setDisabledMessage("This derived column cannot be sorted across the complete list.");
-      return;
-    }
-    setDisabledMessage("");
+    // The grid disables its sort affordances in both cases, so this is a defensive guard only.
+    if (visibleRecords.length < 1 || !sortableColumns.includes(column)) return;
     const nextSortState = direction
       ? { key: column, direction }
       : !sortState || sortState.key !== column
@@ -348,7 +339,6 @@ export function useListViewController({
     pinned?: boolean;
     isCustom?: boolean;
     previousViewName?: string;
-    sharing?: string;
   }) {
     const response = await resourceApi.saveListView({
       object,
@@ -357,8 +347,7 @@ export function useListViewController({
       filters: values.filters ?? activeFilters,
       chartType: values.chartType ?? chartType,
       chartField: values.chartField ?? chartField,
-      pinned: values.pinned ?? (values.viewName === listView && isPinned),
-      sharing: values.sharing
+      pinned: values.pinned ?? (values.viewName === listView && isPinned)
     });
     if (!Array.isArray(response?.listViewPreferences)) {
       onToast({ tone: "error", message: "List view couldn't be saved." });
@@ -403,26 +392,6 @@ export function useListViewController({
     onToast({ tone: "success", message: `List view "${listView}" deleted.` });
     return true;
   }
-  function handleListViewControl(action: string) {
-    if (action === "Reset Column Sorting") {
-      if (sortState) setListLoading(true);
-      setSortState(null);
-      onToast({ tone: "success", message: "Column sorting reset." });
-      return;
-    }
-    if (action === "Reset Column Widths") {
-      void saveListViewPreference({
-        viewName: listView,
-        columns: activeColumns.map((column) => column.key),
-        columnWidths: {},
-        isCustom: isCustomListView
-      }).then((saved) => {
-        if (saved) onToast({ tone: "success", message: "Column widths reset." });
-      });
-      return;
-    }
-    setControlDialog(action);
-  }
   async function hideColumn(columnKey: string) {
     if (activeColumns.length <= 1) {
       onToast({ tone: "warning", message: "At least one column must remain visible." });
@@ -462,10 +431,6 @@ export function useListViewController({
     if (!kanbanConfig || !id || String(record[kanbanConfig.field] ?? "") === value) return false;
     return onSaveRecord(object, { [kanbanConfig.field]: value }, { id, stayOpen: true });
   }
-  const columnSortDisabledReason =
-    visibleRecords.length < 1
-      ? "Column sort is disabled until the list has at least one row."
-      : "None of the displayed columns can be sorted across the complete list.";
   async function updateContextualGuidance(status: string, snoozedUntil?: string | null) {
     if (!contextualGuidance?.id) return false;
     const response = await resourceApi.updateGuidance(String(contextualGuidance.id), {
@@ -531,11 +496,12 @@ export function useListViewController({
     setState: changeState,
     listViewSearch,
     setListViewSearch,
-    disabledMessage,
-    setDisabledMessage,
+    showListViewSearch,
     selected,
     setSelected,
     selectedRecords,
+    headerActions,
+    selectionActions,
     canDeleteSelected,
     deleteSelected,
     sortState,
@@ -545,7 +511,6 @@ export function useListViewController({
     sortableColumns,
     activeColumnWidths,
     activeFilters,
-    activeSharing,
     chartType,
     chartField,
     activeDefinition,
@@ -567,20 +532,17 @@ export function useListViewController({
     previousPage,
     nextPage,
     changePageSize,
-    recentListViews,
-    otherListViews,
+    filteredListViews,
     status,
     handleAction,
     sortColumn,
     saveListViewPreference,
     pinListView,
     deleteListViewPreference,
-    handleListViewControl,
     hideColumn,
     resizeColumn,
     resetColumnWidth,
     moveKanbanRecord,
-    columnSortDisabledReason,
     updateContextualGuidance,
     addSampleLeadFromGuidance
   };

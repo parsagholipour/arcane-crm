@@ -26,14 +26,7 @@ export const LEAD_STATUS = [
 ];
 
 /** Where a requested sample has reached, from picking it off the shelf to the outcome. */
-export const SAMPLE_STATUS = [
-  "--None--",
-  "Need shipping",
-  "Shipped",
-  "Follow ups due",
-  "Converted",
-  "No interest"
-];
+export const SAMPLE_STATUS = ["--None--", "Need shipping", "Shipped", "Follow ups due", "Converted", "No interest"];
 
 export const LEAD_RATING = ["--None--", "Hot", "Warm", "Cold"];
 

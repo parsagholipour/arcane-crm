@@ -189,17 +189,3 @@ export function KanbanBoard({
     </div>
   );
 }
-export function KanbanUnavailable({ definition, records }: { definition: ObjectDefinition; records: RecordData[] }) {
-  if (records.length === 0) {
-    return (
-      <div className="border-t border-[#d8dde6] p-8 text-center text-sm text-[#706e6b]">
-        Kanban is available from the display selector, but this list needs records before a board can be shown.
-      </div>
-    );
-  }
-  return (
-    <div className="border-t border-[#d8dde6] p-8 text-center text-sm text-[#706e6b]">
-      Kanban grouping is not configured for {definition.plural}.
-    </div>
-  );
-}

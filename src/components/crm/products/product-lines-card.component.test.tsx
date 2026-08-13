@@ -2,30 +2,37 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { type ScopedCrmData, type RecordData } from "@/lib/crm-types";
-import { suggestedSalesPrice } from "./product-editor";
-import { OpportunityProductsCard } from "./products";
+import { suggestedSalesPrice } from "./product-line-editor";
+import { ProductLinesCard } from "./product-lines-card";
+
+const line = {
+  id: "line-1",
+  productId: "product-1",
+  quantity: "2",
+  unitPrice: "150.00",
+  totalPrice: "300.00",
+  description: null,
+  product: { id: "product-1", name: "Installed Widget", productCode: "WID-1" }
+};
 
 const opportunity: RecordData = {
   id: "opportunity-1",
   name: "Global Expansion",
-  products: [
-    {
-      id: "line-1",
-      opportunityId: "opportunity-1",
-      productId: "product-1",
-      quantity: "2",
-      unitPrice: "150.00",
-      totalPrice: "300.00",
-      description: null,
-      product: { id: "product-1", name: "Installed Widget", productCode: "WID-1" }
-    }
-  ]
+  products: [{ ...line, opportunityId: "opportunity-1" }]
+};
+
+const lead: RecordData = {
+  id: "lead-1",
+  firstName: "Dana",
+  lastName: "Reed",
+  sampleProducts: [{ ...line, leadId: "lead-1" }]
 };
 
 const data = {
   user: { id: "user-1", name: "Primary User", alias: "primary" },
   users: [{ id: "user-1", name: "Primary User", alias: "primary" }],
   opportunities: [opportunity],
+  leads: [lead],
   products: [
     { id: "product-1", name: "Installed Widget", productCode: "WID-1", active: true },
     { id: "product-2", name: "Support Retainer", active: true, price: "89.00" }
@@ -52,12 +59,13 @@ const data = {
   ]
 } as unknown as ScopedCrmData;
 
-function renderCard(overrides: Partial<Parameters<typeof OpportunityProductsCard>[0]> = {}) {
+function renderCard(overrides: Partial<Parameters<typeof ProductLinesCard>[0]> = {}) {
   const onDataChange = vi.fn();
   const onToast = vi.fn();
   render(
-    <OpportunityProductsCard
-      opportunity={opportunity}
+    <ProductLinesCard
+      subjectKind="Opportunity"
+      subject={opportunity}
       data={data}
       onDataChange={onDataChange}
       onToast={onToast}
@@ -67,7 +75,11 @@ function renderCard(overrides: Partial<Parameters<typeof OpportunityProductsCard
   return { onDataChange, onToast };
 }
 
-describe("Opportunity Products card", () => {
+function renderLeadCard(overrides: Partial<Parameters<typeof ProductLinesCard>[0]> = {}) {
+  return renderCard({ subjectKind: "Lead", subject: lead, ...overrides });
+}
+
+describe("Product lines card", () => {
   it("ignores inactive, expired, future, and non-USD prices before using the catalogue fallback", () => {
     const product = { id: "product-3", price: "44.00" };
     const priceBook = { active: true, isStandard: true };
@@ -193,6 +205,41 @@ describe("Opportunity Products card", () => {
 
     expect(await screen.findByText("This Product is already assigned to the Opportunity.")).toBeInTheDocument();
     expect(onDataChange).not.toHaveBeenCalled();
+  });
+
+  it("assigns the same catalogue Products to a Lead through the sample endpoint", async () => {
+    const user = userEvent.setup();
+    const created = {
+      id: "sample-2",
+      productId: "product-2",
+      quantity: "1",
+      unitPrice: "99.50",
+      totalPrice: "99.50",
+      product: { id: "product-2", name: "Support Retainer" }
+    };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 201, json: async () => ({ product: created }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const { onDataChange, onToast } = renderLeadCard();
+
+    expect(screen.getByText("Sample Products (1)")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Add Sample Product/ }));
+    await user.click(screen.getByRole("combobox", { name: /Product/ }));
+    await user.click(screen.getByRole("option", { name: "Support Retainer" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/leads/lead-1/sample-products");
+    expect(onDataChange).toHaveBeenCalledOnce();
+    expect(onToast).toHaveBeenCalledWith({ tone: "success", message: "Sample Product added." });
+  });
+
+  it("hides the write actions on a converted Lead, which the server also freezes", () => {
+    renderLeadCard({ readOnly: true });
+
+    expect(screen.getByRole("link", { name: "Installed Widget" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Add Sample Product/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Remove/ })).not.toBeInTheDocument();
   });
 
   it("blocks save when quantity or sales price is blank", async () => {

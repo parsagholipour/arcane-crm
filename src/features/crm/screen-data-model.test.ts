@@ -43,6 +43,12 @@ test("opportunity product editors load catalogue products and price book entries
   assert.equal(needsPriceBookEntries("Opportunity", "list"), false);
 });
 
+test("lead sample product editors load the same catalogue and pricing collections", () => {
+  assert.deepEqual(editorLookupObjects("Lead", true), ["Account", "Contact", "Opportunity", "Product2"]);
+  assert.equal(needsPriceBookEntries("Lead", "record"), true);
+  assert.equal(needsPriceBookEntries("Lead", "list"), false);
+});
+
 test("list lookup batches do not replace the current filtered list collection", () => {
   assert.deepEqual(editorLookupObjects("Account", false), ["Contact"]);
   assert.deepEqual(editorLookupObjects("Contact", false), ["Account"]);

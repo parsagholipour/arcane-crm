@@ -6,11 +6,24 @@ import { formatCell } from "@/features/crm/form-model";
 import { type KanbanConfig } from "@/features/crm/shared-types";
 import { usStateFilterValues } from "@/lib/crm-metadata/geographic";
 
-export const listViewSharingOptions = [
-  "Only I can see this list view",
-  "All users can see this list view",
-  "Share with groups of users"
+// Actions that operate on the rows a user ticked. They stay out of the header until
+// there is a selection, because running them against nothing is a dead end.
+const SELECTION_ACTIONS = [
+  "Add to Campaign",
+  "Add to Category",
+  "Archive",
+  "Assign",
+  "Assign Label",
+  "Change Owner",
+  "Convert Lead",
+  "Delete Article",
+  "Merge Cases",
+  "Publish",
+  "Show more actions"
 ];
+export function requiresSelection(action: string) {
+  return SELECTION_ACTIONS.includes(action);
+}
 export function columnsForListView(definition: ObjectDefinition, preference?: RecordData) {
   const keys = Array.isArray(preference?.columns)
     ? preference.columns.map(String)

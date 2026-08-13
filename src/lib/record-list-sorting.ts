@@ -3,7 +3,7 @@ import type { CrmObject } from "@/lib/crm-types";
 const SERVER_SORTABLE_COLUMNS: Record<CrmObject, readonly string[]> = {
   Account: ["name", "phone"],
   Contact: ["displayName", "accountName", "phone", "email"],
-  Lead: ["displayName", "company", "state", "phone", "email", "status", "createdAt"],
+  Lead: ["displayName", "company", "state", "phone", "email", "status", "sampleStatus", "createdAt"],
   Opportunity: ["name", "accountName", "closeDate", "stage", "amount"],
   Product2: ["name", "productCode", "family", "category", "stockCount", "syncSource", "active"],
   Pricebook2: ["name", "active", "isStandard", "validFrom", "validTo"],

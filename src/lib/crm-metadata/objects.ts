@@ -59,7 +59,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     dataKey: "leads",
     defaultList: "All Open Leads",
     listViews: ["All Open Leads", "My Leads", "Recently Viewed (Pinned list)", "Today's Leads"],
-    actions: ["New", "Import", "Convert Lead", "Add to Campaign", "Send Email", "Change Owner", "Show more actions"],
+    actions: ["New", "Import", "Send Email", "Convert Lead", "Add to Campaign", "Change Owner"],
     columns: [
       { key: "displayName", label: "Name", link: true },
       { key: "company", label: "Company" },
