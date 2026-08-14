@@ -13,9 +13,9 @@ function recordId(record: RecordData) {
 
 /**
  * Refresh due USPS shipments while a shipment-aware screen is open, so tracking works
- * without waiting on the external scheduler. Delivery and post-delivery notifications are
- * deduped server side, which is what makes it safe to run this alongside the scheduled
- * dispatch route.
+ * without waiting on the external scheduler. Delivery, post-delivery, and unshipped-sample
+ * notifications are deduped server side, which is what makes it safe to run this alongside
+ * the scheduled dispatch route.
  */
 export function useShipmentTrackingSweep(enabled: boolean, onDataChange: ScopedCrmDataUpdater) {
   useEffect(() => {

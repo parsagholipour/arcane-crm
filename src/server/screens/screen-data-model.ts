@@ -34,13 +34,16 @@ export function editorLookupObjects(object: CrmObject, includeCurrentObject: boo
 /**
  * Product rows are decorated with their primary list price, while Product and Price Book detail
  * pages render their entries directly. Invoice editors also need the entries for line pricing,
- * as do the Opportunity Products and Lead Sample Products cards when they suggest a sales price.
+ * as do the Opportunity Products and Lead Sample Products controls when they suggest a sales
+ * price — and those live in the record modal too, which opens from the list screen as well.
  */
 export function needsPriceBookEntries(object: CrmObject, screenKind: "list" | "record") {
   return (
     object === "Invoice" ||
     object === "Product2" ||
-    ((object === "Pricebook2" || object === "Opportunity" || object === "Lead") && screenKind === "record")
+    object === "Opportunity" ||
+    object === "Lead" ||
+    (object === "Pricebook2" && screenKind === "record")
   );
 }
 

@@ -131,6 +131,41 @@ export function shipmentStatusTemplate(input: {
   return { subject, text: plainText, html };
 }
 
+export function sampleRequestReminderTemplate(input: {
+  organizationName: string;
+  subjectLabel: string;
+  sampleStatus: string;
+  requestedDate: Date | string;
+  recordUrl: string;
+}) {
+  const headline = "Sample still needs shipping";
+  const requested = formatDate(input.requestedDate);
+  const subject = `${headline}: ${text(input.subjectLabel)}`;
+  const lines = [
+    `Record: ${text(input.subjectLabel)}`,
+    `Sample requested date: ${requested}`,
+    `Sample status: ${text(input.sampleStatus)}`,
+    "The sample requested date has passed and the sample has not been shipped."
+  ];
+  const plainText = [
+    `${text(input.organizationName)} sample reminder`,
+    "",
+    headline,
+    ...lines,
+    "",
+    `Open record: ${input.recordUrl}`
+  ].join("\n");
+  const html = [
+    `<div style="font-family:Arial,sans-serif;color:#181818">`,
+    `<p style="color:#706e6b">${escapeHtml(input.organizationName)} sample reminder</p>`,
+    `<h2>${escapeHtml(headline)}</h2>`,
+    `<p>${lines.map((line) => escapeHtml(line)).join("<br>")}</p>`,
+    `<p><a href="${escapeHtml(input.recordUrl)}">Open record</a></p>`,
+    `</div>`
+  ].join("");
+  return { subject, text: plainText, html };
+}
+
 export function organizationInvitationTemplate(input: {
   recipientName: string;
   organizationName: string;

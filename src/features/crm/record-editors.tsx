@@ -5,10 +5,27 @@ import { FORM_DEFINITIONS } from "@/lib/crm-metadata";
 import { recordTitle } from "@/lib/crm-data";
 import { type ScopedCrmData, type CrmObject, type RecordData } from "@/lib/crm-types";
 import { cn } from "@/lib/utils";
-import { BaseDialog, Button } from "@/components/ui/crm-primitives";
+import { BaseDialog, Button, type ToastState } from "@/components/ui/crm-primitives";
 import { FieldShell, inputClass, NativeSelect, RadixCheckbox } from "@/features/crm/controls";
 import { FormFields, picklistOptionsForField } from "@/features/crm/form-controls";
 import { buildInitialValues, recordDataShallowEqual, validateFields } from "@/features/crm/form-model";
+import { ProductLinesField } from "@/components/crm/products/product-lines-field";
+import { commitProductLines } from "@/components/crm/products/product-line-commit";
+import { PRODUCT_LINE_SUBJECTS, type ProductLineSubjectKind } from "@/components/crm/products/product-line-subjects";
+import { type ScopedCrmDataUpdater } from "@/features/crm/shared-types";
+
+/** Opportunity and Lead both assign catalogue Products from their record modal. */
+function productLineKind(object: CrmObject): ProductLineSubjectKind | null {
+  return object === "Opportunity" || object === "Lead" ? object : null;
+}
+
+function existingLines(record: RecordData | undefined, kind: ProductLineSubjectKind | null) {
+  if (!kind || !record) return [];
+  const lines = record[PRODUCT_LINE_SUBJECTS[kind].linesKey];
+  return Array.isArray(lines)
+    ? (lines.filter((line) => Boolean(line) && typeof line === "object" && !Array.isArray(line)) as RecordData[])
+    : [];
+}
 
 export function UnsavedChangesDialog({
   onKeepEditing,
@@ -55,22 +72,30 @@ export function GenericRecordModal({
   data,
   record,
   onClose,
-  onSave
+  onSave,
+  onDataChange,
+  onToast
 }: {
   mode: "new" | "edit";
   object: CrmObject;
   data: ScopedCrmData;
   record?: RecordData;
   onClose: () => void;
-  onSave: (values: RecordData, stayOpen?: boolean) => Promise<boolean>;
+  onSave: (values: RecordData, stayOpen?: boolean) => Promise<RecordData | null | boolean>;
+  onDataChange?: ScopedCrmDataUpdater;
+  onToast?: (toast: ToastState) => void;
 }) {
   const definition = FORM_DEFINITIONS[object];
+  const lineKind = productLineKind(object);
   const [initialValues, setInitialValues] = useState<RecordData>(() =>
     definition ? buildInitialValues(definition, record, data.user.id) : {}
   );
   const [values, setValues] = useState<RecordData>(() => initialValues);
+  const [originalLines, setOriginalLines] = useState<RecordData[]>(() => existingLines(record, lineKind));
+  const [lines, setLines] = useState<RecordData[]>(originalLines);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const isDirty = !recordDataShallowEqual(values, initialValues);
+  const linesDirty = !recordDataShallowEqual({ lines } as RecordData, { lines: originalLines } as RecordData);
+  const isDirty = !recordDataShallowEqual(values, initialValues) || linesDirty;
   const { requestClose, discardDialog } = useUnsavedChangesGuard(isDirty, onClose);
 
   if (!definition) return null;
@@ -78,15 +103,37 @@ export function GenericRecordModal({
   const formDefinition = definition;
   const title = mode === "edit" && record ? `Edit ${recordTitle(object, record)}` : formDefinition.title;
 
+  /** Lines need the record's id, so they are written once the record itself is saved. */
+  async function saveLines(saved: RecordData | null | boolean) {
+    if (!lineKind) return;
+    const savedRecord = saved && typeof saved === "object" ? saved : undefined;
+    const subjectId = String(savedRecord?.id ?? record?.id ?? "");
+    if (!subjectId || (!lines.length && !originalLines.length)) return;
+    const result = await commitProductLines(lineKind, subjectId, lines, originalLines);
+    const linesKey = PRODUCT_LINE_SUBJECTS[lineKind].linesKey;
+    const dataKey = PRODUCT_LINE_SUBJECTS[lineKind].dataKey;
+    onDataChange?.((previous) => ({
+      ...previous,
+      [dataKey]: previous[dataKey].map((item) =>
+        String(item.id) === subjectId ? { ...item, [linesKey]: result.lines } : item
+      )
+    }));
+    if (result.failures.length) onToast?.({ tone: "error", message: result.failures.join(" ") });
+  }
+
   async function submit(stayOpen = false) {
     const nextErrors = validateFields(formDefinition.fields, values, object);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
-    const ok = await onSave(values, stayOpen);
-    if (ok && stayOpen) {
+    const saved = await onSave(values, stayOpen);
+    if (!saved) return;
+    await saveLines(saved);
+    if (stayOpen) {
       const nextInitialValues = buildInitialValues(formDefinition, undefined, data.user.id);
       setInitialValues(nextInitialValues);
       setValues(nextInitialValues);
+      setOriginalLines([]);
+      setLines([]);
       setErrors({});
     }
   }
@@ -129,6 +176,7 @@ export function GenericRecordModal({
           })
         }
       />
+      {lineKind && <ProductLinesField subjectKind={lineKind} lines={lines} data={data} onChange={setLines} />}
     </BaseDialog>
   );
 }

@@ -21,6 +21,7 @@ import { ShipmentCard } from "@/components/crm/record-details/shipment-card";
 import { ProductLinesCard } from "@/components/crm/products/product-lines-card";
 import { type ToastState } from "@/components/ui/crm-primitives";
 import { type ScopedCrmDataUpdater } from "@/features/crm/shared-types";
+import { useShipmentTrackingSweep } from "@/features/crm/use-shipment-tracking-sweep";
 
 export function SalesRecordDetailPage({
   object,
@@ -57,6 +58,7 @@ export function SalesRecordDetailPage({
   const convertedContact = data.contacts.find((item) => item.id === record.convertedContactId);
   const convertedOpportunity = data.opportunities.find((item) => item.id === record.convertedOpportunityId);
   const converted = Boolean(record.convertedAt);
+  useShipmentTrackingSweep(object === "Lead", onDataChange);
   const details: Array<[string, unknown, string?]> =
     object === "Lead"
       ? [

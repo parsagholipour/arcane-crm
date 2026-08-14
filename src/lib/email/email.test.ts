@@ -8,6 +8,7 @@ import {
   calendarReminderTemplate,
   caseNotificationTemplate,
   organizationInvitationTemplate,
+  sampleRequestReminderTemplate,
   shipmentStatusTemplate
 } from "@/lib/email/templates";
 import { sendGridDeliveryState } from "@/lib/email/tracking";
@@ -199,6 +200,20 @@ test("Opportunity post-delivery emails identify the seven-day follow-up", () => 
   assert.equal(message.subject, "Follow up after delivery: 9400100000000000000000");
   assert.match(message.text, /At least 7 days have passed since delivery/);
   assert.match(message.html, /Opportunity\/opp-1\/view/);
+});
+
+test("Lead sample request reminders name the overdue unshipped sample", () => {
+  const message = sampleRequestReminderTemplate({
+    organizationName: "Example CRM",
+    subjectLabel: "Sample for Dana Reed",
+    sampleStatus: "Need shipping",
+    requestedDate: new Date("2026-08-01T00:00:00.000Z"),
+    recordUrl: "https://crm.example.com/lightning/r/Lead/lead-1/view"
+  });
+  assert.equal(message.subject, "Sample still needs shipping: Sample for Dana Reed");
+  assert.match(message.text, /Sample requested date: August 1, 2026/);
+  assert.match(message.text, /Sample status: Need shipping/);
+  assert.match(message.html, /Lead\/lead-1\/view/);
 });
 
 test("organization invitations are branded, role-aware, and HTML escaped", () => {

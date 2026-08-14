@@ -2,6 +2,7 @@ import "server-only";
 
 import type { ShipmentTracking } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { announceDueSampleRequestReminders } from "@/lib/sample-request-notifications";
 import {
   announcePostDeliveryFollowUp,
   announceShipmentStatus,
@@ -37,6 +38,8 @@ export type ShipmentPollSummary = {
   alerted: number;
   /** Opportunity and Lead sample follow-ups fired 7 days after delivery. */
   followUps: number;
+  /** Lead samples whose requested date passed while still Need shipping or none. */
+  sampleRequests: number;
   retried: number;
   failed: number;
 };
@@ -246,7 +249,8 @@ async function recordFailure(
 
 /**
  * Refresh every USPS shipment that is due, notifying owners on delivery and on exceptions,
- * then fire Opportunity and Lead sample follow-ups that are 7 days past delivery.
+ * then fire Opportunity and Lead sample follow-ups that are 7 days past delivery, and Lead
+ * sample reminders whose requested date has passed while still unshipped.
  * Called both by the scheduled dispatch route and by the in-app sweep (scoped to one org).
  */
 export async function pollDueShipments(options: ShipmentPollOptions = {}): Promise<ShipmentPollSummary> {
@@ -259,13 +263,21 @@ export async function pollDueShipments(options: ShipmentPollOptions = {}): Promi
     delivered: 0,
     alerted: 0,
     followUps: 0,
+    sampleRequests: 0,
     retried: 0,
     failed: 0
   };
 
-  // Follow-ups only need deliveredAt; they do not call USPS. Run them even when tracking
-  // credentials are missing so record owners still get the week-later nudge.
+  // Follow-ups and unshipped-sample reminders only need dates on the record; they do not
+  // call USPS. Run them even when tracking credentials are missing so owners still get nudged.
   await announceDuePostDeliveryFollowUps(now, options.organizationId, limit, summary, dependencies);
+  const sampleRequests = await announceDueSampleRequestReminders({
+    now,
+    organizationId: options.organizationId,
+    limit,
+    dependencies
+  });
+  summary.sampleRequests = sampleRequests.notified;
 
   if (!uspsTrackingConfigured()) return summary;
 

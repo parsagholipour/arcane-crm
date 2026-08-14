@@ -35,7 +35,7 @@ export function ListActionModal({
     object: CrmObject,
     values: RecordData,
     options?: { id?: string; stayOpen?: boolean }
-  ) => Promise<boolean>;
+  ) => Promise<RecordData | null>;
   onApply: (action: string, object: CrmObject, selectedIds: string[], payload: RecordData) => Promise<void>;
 }) {
   const [values, setValues] = useState<RecordData>({

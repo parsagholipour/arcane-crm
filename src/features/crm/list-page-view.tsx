@@ -265,7 +265,7 @@ export function ListView({ model }: { model: ListViewPageModel }) {
             onResizeColumn={(columnKey, width) => void resizeColumn(columnKey, width)}
             onResetColumnWidth={(columnKey) => void resetColumnWidth(columnKey)}
             onInlineSave={(record, key, value) =>
-              onSaveRecord(object, { [key]: value }, { id: requiredId(record), stayOpen: true })
+              onSaveRecord(object, { [key]: value }, { id: requiredId(record), stayOpen: true }).then(Boolean)
             }
             onEdit={onEdit}
             onDelete={onDelete}

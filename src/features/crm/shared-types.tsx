@@ -43,11 +43,12 @@ export type ConsoleTab = {
   label: string;
 };
 export type ScopedCrmDataUpdater = (updater: (previous: ScopedCrmData) => ScopedCrmData) => void;
+/** Resolves to the saved record (truthy) so callers can act on its server-assigned id, or null. */
 export type SaveRecordHandler = (
   object: CrmObject,
   values: RecordData,
   options?: { id?: string; stayOpen?: boolean }
-) => Promise<boolean>;
+) => Promise<RecordData | null>;
 export type FileUploadRequest = { file: File; relatedObjectType: "Account" | "Contact"; relatedRecordId: string };
 export type KanbanConfig = {
   field: string;

@@ -47,7 +47,7 @@ export function ModalHost({
     object: CrmObject,
     values: RecordData,
     options?: { id?: string; stayOpen?: boolean }
-  ) => Promise<boolean>;
+  ) => Promise<RecordData | null>;
   onDeleteEvent: (record: RecordData, scope: "single" | "all", occurrenceStart: string | null) => void;
   onSaveAppNav: (app: AppKey, items: AppNavItem[]) => Promise<boolean>;
   onResetAppNav: (app: AppKey) => Promise<boolean>;
@@ -131,7 +131,13 @@ export function ModalHost({
   if (modal.type === "navEdit")
     return <NavEditModal app={modal.app} data={data} onClose={onClose} onSave={onSaveAppNav} onReset={onResetAppNav} />;
   if (modal.type === "product")
-    return <ProductWizardModal data={data} onClose={onClose} onSave={(values) => onSaveRecord("Product2", values)} />;
+    return (
+      <ProductWizardModal
+        data={data}
+        onClose={onClose}
+        onSave={(values) => onSaveRecord("Product2", values).then(Boolean)}
+      />
+    );
   if (modal.type === "event") {
     return (
       <EventModal
@@ -146,7 +152,7 @@ export function ModalHost({
         endDate={modal.endDate}
         endTime={modal.endTime}
         onClose={onClose}
-        onSave={(values, options) => onSaveRecord("Event", values, options)}
+        onSave={(values, options) => onSaveRecord("Event", values, options).then(Boolean)}
         onDelete={(record, scope) => onDeleteEvent(record, scope, modal.occurrenceStart ?? null)}
       />
     );
@@ -157,7 +163,7 @@ export function ModalHost({
         data={data}
         initial={modal.record}
         onClose={onClose}
-        onSave={(values) => onSaveRecord("QuickText", values, { id: modal.record?.id })}
+        onSave={(values) => onSaveRecord("QuickText", values, { id: modal.record?.id }).then(Boolean)}
       />
     );
   if (modal.type === "knowledge")
@@ -166,7 +172,7 @@ export function ModalHost({
         data={data}
         initial={modal.record}
         onClose={onClose}
-        onSave={(values) => onSaveRecord("Knowledge__kav", values, { id: modal.record?.id })}
+        onSave={(values) => onSaveRecord("Knowledge__kav", values, { id: modal.record?.id }).then(Boolean)}
       />
     );
   if (modal.type === "listEmail")
@@ -177,7 +183,7 @@ export function ModalHost({
         startingStep={modal.startingStep}
         initialLayout={modal.layout}
         onClose={onClose}
-        onSave={(values) => onSaveRecord("ListEmail", values, { id: modal.record?.id })}
+        onSave={(values) => onSaveRecord("ListEmail", values, { id: modal.record?.id }).then(Boolean)}
       />
     );
   if (modal.type === "listAction")
@@ -228,6 +234,8 @@ export function ModalHost({
       record={modal.record}
       onClose={onClose}
       onSave={(values, stayOpen) => onSaveRecord(modal.object, values, { id: modal.record?.id, stayOpen })}
+      onDataChange={onDataChange}
+      onToast={onToast}
     />
   );
 }

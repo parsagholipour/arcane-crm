@@ -63,7 +63,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
     columns: [
       { key: "displayName", label: "Name", link: true, width: "140px" },
       { key: "company", label: "Company", width: "140px" },
-      { key: "state", label: "State/Province (text only)" },
+      { key: "state", label: "State/Province (text only)", width: "80px" },
       { key: "phone", label: "Phone" },
       { key: "email", label: "Email", width: "160px" },
       { key: "status", label: "Lead Status" },

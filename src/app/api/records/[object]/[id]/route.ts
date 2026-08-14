@@ -8,6 +8,7 @@ import { emailErrorResponse } from "@/lib/email/http";
 import { deliverCaseNotification, deliverListEmail } from "@/lib/email/workflows";
 import { prisma } from "@/lib/prisma";
 import { RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
+import { syncLeadSampleRequestReminder } from "@/lib/sample-request-notifications";
 import { deleteShipmentTracking, syncRecordShipment } from "@/lib/shipment-tracking-sync";
 import {
   calendarErrorResponse,
@@ -53,16 +54,18 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     const { object, id } = await context.params;
     if (!isCrmObject(object)) return NextResponse.json({ error: "Unknown object." }, { status: 404 });
     await assertScopedRecord(object, id, authContext.organizationId);
+    let existingLeadSample: { sampleRequestedDate: Date | null; sampleStatus: string | null } | undefined = undefined;
     if (object === "Lead") {
       const lead = await prisma.lead.findFirst({
         where: { id, organizationId: authContext.organizationId },
-        select: { convertedAt: true }
+        select: { convertedAt: true, sampleRequestedDate: true, sampleStatus: true }
       });
       if (lead?.convertedAt)
         return NextResponse.json(
           { error: "Converted Leads are read-only. Open the converted Account, Contact, or Opportunity instead." },
           { status: 409 }
         );
+      if (lead) existingLeadSample = { sampleRequestedDate: lead.sampleRequestedDate, sampleStatus: lead.sampleStatus };
     }
     const payload = normalizePayload(await request.json());
     validateRecordPayload(object, payload);
@@ -154,6 +157,7 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     const record = await updateRecord(object, id, payload, authContext.userId);
     if (object === "Opportunity" || object === "Lead")
       await syncRecordShipment(authContext.organizationId, object, record);
+    if (object === "Lead") await syncLeadSampleRequestReminder(record, existingLeadSample);
     const recordStatus = "status" in record ? String(record.status) : "";
     const skipped = delivery && "skipped" in delivery && Array.isArray(delivery.skipped) ? delivery.skipped.length : 0;
     const message =

@@ -193,6 +193,8 @@ model Lead {
   industry                 String?
   sampleRequestedDate      DateTime?
   sampleStatus             String?
+  /// In-app (and email) reminder fired once after Sample Requested Date passes while still unshipped.
+  sampleRequestedNotificationId String?
   courier                  String?
   trackingNumber           String?
   /// Set from USPS when the tracked sample is delivered (also editable for other couriers).
@@ -210,6 +212,7 @@ model Lead {
 
   @@index([organizationId])
   @@index([organizationId, convertedAt])
+  @@index([sampleRequestedNotificationId, sampleRequestedDate, convertedAt], map: "Lead_sample_requested_due_idx")
 }
 
 /// A Product sent to a Lead as a sample, with its quantity and sales price.

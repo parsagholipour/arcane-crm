@@ -40,13 +40,22 @@ test("opportunity product editors load catalogue products and price book entries
   assert.deepEqual(editorLookupObjects("Opportunity", true), ["Account", "Contact", "Product2"]);
   assert.deepEqual(editorLookupObjects("Opportunity", false), ["Account", "Contact", "Product2"]);
   assert.equal(needsPriceBookEntries("Opportunity", "record"), true);
-  assert.equal(needsPriceBookEntries("Opportunity", "list"), false);
+  // The record modal assigns Products too, and it opens from the list screen as well.
+  assert.equal(needsPriceBookEntries("Opportunity", "list"), true);
 });
 
 test("lead sample product editors load the same catalogue and pricing collections", () => {
   assert.deepEqual(editorLookupObjects("Lead", true), ["Account", "Contact", "Opportunity", "Product2"]);
   assert.equal(needsPriceBookEntries("Lead", "record"), true);
-  assert.equal(needsPriceBookEntries("Lead", "list"), false);
+  assert.equal(needsPriceBookEntries("Lead", "list"), true);
+});
+
+test("objects without product lines still skip the price book entry load", () => {
+  assert.equal(needsPriceBookEntries("Case", "list"), false);
+  assert.equal(needsPriceBookEntries("Case", "record"), false);
+  assert.equal(needsPriceBookEntries("Account", "record"), false);
+  assert.equal(needsPriceBookEntries("Pricebook2", "list"), false);
+  assert.equal(needsPriceBookEntries("Pricebook2", "record"), true);
 });
 
 test("list lookup batches do not replace the current filtered list collection", () => {

@@ -286,7 +286,7 @@ export function useCrmController(initialData: ScopedCrmData) {
         tone: "error",
         message: error instanceof Error ? error.message : "The record couldn't be saved."
       });
-      return false;
+      return null;
     }
 
     const responseRecord = isRecordData(json.record) ? json.record : {};
@@ -337,7 +337,7 @@ export function useCrmController(initialData: ScopedCrmData) {
         : { tone: "success", message: String(json.message ?? `${OBJECT_DEFINITIONS[object].label} saved.`) }
     );
     if (!options.stayOpen) closeModal();
-    return true;
+    return record;
   }
 
   async function deleteRecord(object: CrmObject, id: string) {

@@ -429,7 +429,7 @@ export function useListViewController({
   async function moveKanbanRecord(record: RecordData, value: string) {
     const id = requiredId(record);
     if (!kanbanConfig || !id || String(record[kanbanConfig.field] ?? "") === value) return false;
-    return onSaveRecord(object, { [kanbanConfig.field]: value }, { id, stayOpen: true });
+    return Boolean(await onSaveRecord(object, { [kanbanConfig.field]: value }, { id, stayOpen: true }));
   }
   async function updateContextualGuidance(status: string, snoozedUntil?: string | null) {
     if (!contextualGuidance?.id) return false;
