@@ -16,7 +16,7 @@ export function resolvePublicAppUrl(override?: string, environment: PublicAppEnv
     environment.PUBLIC_APP_URL?.trim() ||
     railwayUrl ||
     environment.AUTH_URL?.trim() ||
-    "http://localhost:3000";
+    "http://localhost:3007";
 
   let url: URL;
   try {

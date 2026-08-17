@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { createMarketingPageNotification, marketingLandingPageInclude } from "@/lib/marketing-pages";
 import { prisma } from "@/lib/prisma";
+import { emitLeadCreated } from "@/lib/public-api/emit";
 import { NextRequest, NextResponse } from "next/server";
 
 type Params = Promise<{ organization: string; slug: string }>;
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest, context: { params: Params }) {
       const notification = await createMarketingPageNotification(tx, { organizationId: page.organizationId, userId: page.ownerId, title: "New marketing form submission", body: `${submitter} submitted ${page.name}.`, href: `/lightning/r/Lead/${lead.id}/view` });
       return { submission, lead, notification };
     });
+    await emitLeadCreated(page.organizationId, result.lead.id);
     return NextResponse.json({ ok: true, successMessage: page.successMessage, submissionId: result.submission.id }, { status: 201 });
   } catch (error) {
     console.error(error);

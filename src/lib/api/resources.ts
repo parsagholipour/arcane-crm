@@ -48,5 +48,10 @@ export const resourceApi = {
   clearSearchRecents: () => mutate("/api/search/recents", "DELETE"),
   savePoAppIntegration: (values: RecordData) => mutate("/api/integrations/po-app", "PUT", values),
   testPoAppIntegration: () => mutate("/api/integrations/po-app/test", "POST"),
-  syncPoAppCatalogue: (values: RecordData) => mutate("/api/integrations/po-app/sync", "POST", values)
+  syncPoAppCatalogue: (values: RecordData) => mutate("/api/integrations/po-app/sync", "POST", values),
+  createOrganizationApiToken: () => mutate("/api/organization/api-access/token", "POST"),
+  revokeOrganizationApiToken: () => mutate("/api/organization/api-access/token", "DELETE"),
+  saveOrganizationApiAccess: (values: RecordData) => mutate("/api/organization/api-access", "PUT", values),
+  rotateOrganizationWebhookSecret: () => mutate("/api/organization/api-access/webhook", "PUT", { rotateSecret: true }),
+  testOrganizationWebhook: () => mutate("/api/organization/api-access/webhook/test", "POST")
 };

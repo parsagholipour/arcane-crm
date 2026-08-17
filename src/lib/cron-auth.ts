@@ -12,6 +12,10 @@ export function configuredPoAppSyncCronSecret(environment: Partial<NodeJS.Proces
   return environment.PO_APP_SYNC_CRON_SECRET?.trim() ?? "";
 }
 
+export function configuredLeadWebhookCronSecret(environment: Partial<NodeJS.ProcessEnv> = process.env) {
+  return environment.LEAD_WEBHOOK_CRON_SECRET?.trim() ?? "";
+}
+
 export function validBearerSecret(authorization: string | null, expectedSecret: string) {
   const prefix = "Bearer ";
   if (!expectedSecret || !authorization?.startsWith(prefix)) return false;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizationErrorResponse, requireOrganizationContext } from "@/lib/organization-context";
 import { addLeadSampleProduct, listLeadSampleProducts } from "@/lib/lead-sample-products";
+import { emitLeadUpdated } from "@/lib/public-api/emit";
 import { productLineErrorResponse } from "@/lib/product-line-service";
 
 type Params = Promise<{ id: string }>;
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: Params })
     const { id } = await params;
     const payload = await request.json();
     const line = await addLeadSampleProduct(context.organizationId, id, payload);
+    await emitLeadUpdated(context.organizationId, id);
     return NextResponse.json({ product: JSON.parse(JSON.stringify(line)) }, { status: 201 });
   } catch (error) {
     return (

@@ -7,6 +7,7 @@ import { EmailValidationError } from "@/lib/email/errors";
 import { emailErrorResponse } from "@/lib/email/http";
 import { deliverCaseNotification, deliverListEmail } from "@/lib/email/workflows";
 import { prisma } from "@/lib/prisma";
+import { emitLeadDeleted, emitLeadUpdated } from "@/lib/public-api/emit";
 import { RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
 import { syncLeadSampleRequestReminder } from "@/lib/sample-request-notifications";
 import { deleteShipmentTracking, syncRecordShipment } from "@/lib/shipment-tracking-sync";
@@ -158,6 +159,7 @@ export async function PATCH(request: NextRequest, context: { params: Params }) {
     if (object === "Opportunity" || object === "Lead")
       await syncRecordShipment(authContext.organizationId, object, record);
     if (object === "Lead") await syncLeadSampleRequestReminder(record, existingLeadSample);
+    if (object === "Lead") await emitLeadUpdated(authContext.organizationId, id);
     const recordStatus = "status" in record ? String(record.status) : "";
     const skipped = delivery && "skipped" in delivery && Array.isArray(delivery.skipped) ? delivery.skipped.length : 0;
     const message =
@@ -226,9 +228,13 @@ export async function DELETE(request: NextRequest, context: { params: Params }) 
     if (object === "Lead") {
       const lead = await prisma.lead.findFirst({
         where: { id, organizationId: authContext.organizationId },
-        select: { convertedAt: true }
+        select: { convertedAt: true, firstName: true, lastName: true, company: true, email: true }
       });
       if (lead?.convertedAt) return NextResponse.json({ error: "Converted Leads cannot be deleted." }, { status: 409 });
+      await deleteRecord(object, id);
+      await deleteShipmentTracking(authContext.organizationId, object, id);
+      if (lead) await emitLeadDeleted(authContext.organizationId, { id, ...lead });
+      return NextResponse.json({ ok: true });
     }
     if (object === "Knowledge__kav") {
       const article = await prisma.knowledgeArticle.findFirst({
@@ -296,8 +302,7 @@ export async function DELETE(request: NextRequest, context: { params: Params }) 
         );
     }
     await deleteRecord(object, id);
-    if (object === "Opportunity" || object === "Lead")
-      await deleteShipmentTracking(authContext.organizationId, object, id);
+    if (object === "Opportunity") await deleteShipmentTracking(authContext.organizationId, object, id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error(error);

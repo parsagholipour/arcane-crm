@@ -10,6 +10,7 @@ import {
   opportunityNameFor,
   splitCollidingRows
 } from "@/lib/lead-conversion";
+import { emitLeadConverted } from "@/lib/public-api/emit";
 import { syncShipmentTracking } from "@/lib/shipment-tracking-sync";
 import { DomainActionValidationError as WorkflowValidationError } from "@/server/workflows/actions/errors";
 
@@ -25,7 +26,7 @@ export async function convertLeads(
   if (uniqueIds.length === 0) return { accounts: [], contacts: [], opportunities: [], leads: [] };
   const options = normalizeConversionValues(values, uniqueIds.length);
 
-  return prisma.$transaction(
+  const result = await prisma.$transaction(
     async (tx) => {
       // Claim the leads with a guarded update rather than a read-then-write, so two
       // concurrent conversions cannot both pass the already-converted check.
@@ -158,6 +159,8 @@ export async function convertLeads(
     },
     { timeout: 30_000, maxWait: 10_000 }
   );
+  for (const lead of result.leads) await emitLeadConverted(organizationId, lead.id);
+  return result;
 }
 
 /**

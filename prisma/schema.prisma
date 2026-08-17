@@ -28,15 +28,17 @@ enum UserStatus {
 }
 
 model Organization {
-  id            String                   @id @default(cuid())
-  name          String
-  slug          String                   @unique
-  logoUrl       String?
-  logoObjectKey String?
-  status        OrganizationStatus       @default(ACTIVE)
-  memberships   OrganizationMembership[]
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @updatedAt
+  id                String                        @id @default(cuid())
+  name              String
+  slug              String                        @unique
+  logoUrl           String?
+  logoObjectKey     String?
+  status            OrganizationStatus            @default(ACTIVE)
+  memberships       OrganizationMembership[]
+  apiAccess         OrganizationApiAccess?
+  webhookDeliveries OrganizationWebhookDelivery[]
+  createdAt         DateTime                      @default(now())
+  updatedAt         DateTime                      @updatedAt
 }
 
 model User {
@@ -168,47 +170,47 @@ model Contact {
 }
 
 model Lead {
-  id                       String                    @id @default(cuid())
-  organizationId           String
-  status                   String                    @default("New")
-  salutation               String?
-  firstName                String?
-  lastName                 String?
-  company                  String?
-  title                    String?
-  website                  String?
-  description              String?
-  ownerId                  String
-  rating                   String?
-  phone                    String?
-  email                    String?
-  country                  String?
-  street                   String?
-  postalCode               String?
-  city                     String?
-  state                    String?
-  numberOfEmployees        Int?
-  annualRevenue            Decimal?
-  leadSource               String?
-  industry                 String?
-  sampleRequestedDate      DateTime?
-  sampleStatus             String?
+  id                            String                    @id @default(cuid())
+  organizationId                String
+  status                        String                    @default("New")
+  salutation                    String?
+  firstName                     String?
+  lastName                      String?
+  company                       String?
+  title                         String?
+  website                       String?
+  description                   String?
+  ownerId                       String
+  rating                        String?
+  phone                         String?
+  email                         String?
+  country                       String?
+  street                        String?
+  postalCode                    String?
+  city                          String?
+  state                         String?
+  numberOfEmployees             Int?
+  annualRevenue                 Decimal?
+  leadSource                    String?
+  industry                      String?
+  sampleRequestedDate           DateTime?
+  sampleStatus                  String?
   /// In-app (and email) reminder fired once after Sample Requested Date passes while still unshipped.
   sampleRequestedNotificationId String?
-  courier                  String?
-  trackingNumber           String?
+  courier                       String?
+  trackingNumber                String?
   /// Set from USPS when the tracked sample is delivered (also editable for other couriers).
-  deliveryDate             DateTime?
-  convertedAt              DateTime?
-  convertedAccountId       String?
-  convertedContactId       String?
-  convertedOpportunityId   String?
-  createdById              String
-  updatedById              String
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
-  marketingFormSubmissions MarketingFormSubmission[]
-  sampleProducts           LeadSampleProduct[]
+  deliveryDate                  DateTime?
+  convertedAt                   DateTime?
+  convertedAccountId            String?
+  convertedContactId            String?
+  convertedOpportunityId        String?
+  createdById                   String
+  updatedById                   String
+  createdAt                     DateTime                  @default(now())
+  updatedAt                     DateTime                  @updatedAt
+  marketingFormSubmissions      MarketingFormSubmission[]
+  sampleProducts                LeadSampleProduct[]
 
   @@index([organizationId])
   @@index([organizationId, convertedAt])
@@ -1470,4 +1472,42 @@ model PoAppWebhookDelivery {
   receivedAt     DateTime  @default(now())
 
   @@index([organizationId, receivedAt])
+}
+
+/// One API token and one outbound Lead webhook per organization. The token is stored as a
+/// hash only; the webhook signing secret is encrypted because deliveries have to sign with it.
+model OrganizationApiAccess {
+  organizationId         String       @id
+  tokenHash              String?      @unique
+  tokenPrefix            String?
+  tokenCreatedAt         DateTime?
+  lastUsedAt             DateTime?
+  webhookUrl             String?
+  webhookSecretCipher    String?
+  webhookEnabled         Boolean      @default(false)
+  webhookFailureCount    Int          @default(0)
+  webhookLastError       String?
+  webhookLastDeliveredAt DateTime?
+  organization           Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+}
+
+model OrganizationWebhookDelivery {
+  id             String       @id @default(cuid())
+  organizationId String
+  event          String
+  leadId         String?
+  payload        Json
+  status         String       @default("pending")
+  attempts       Int          @default(0)
+  nextAttemptAt  DateTime     @default(now())
+  lastError      String?
+  responseStatus Int?
+  createdAt      DateTime     @default(now())
+  deliveredAt    DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([organizationId, createdAt])
 }

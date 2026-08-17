@@ -184,6 +184,39 @@ export type PoAppSyncSummary = {
   failed: number;
 };
 
+/**
+ * Organization developer settings as they leave the server. The API token and webhook signing
+ * secret are never serialized except on the mutating response that first reveals them.
+ */
+export type OrganizationApiAccessDto = {
+  hasToken: boolean;
+  tokenPreview: string | null;
+  tokenCreatedAt: string | null;
+  lastUsedAt: string | null;
+  webhookUrl: string | null;
+  webhookEnabled: boolean;
+  hasWebhookSecret: boolean;
+  webhookSecretPreview: string | null;
+  webhookSecretReadable: boolean;
+  webhookFailureCount: number;
+  webhookLastError: string | null;
+  webhookLastDeliveredAt: string | null;
+  encryptionConfigured: boolean;
+  publicApiBaseUrl: string;
+};
+
+export type OrganizationApiAccessMutationDto = OrganizationApiAccessDto & {
+  token?: string;
+  webhookSecret?: string;
+};
+
+export type OrganizationWebhookTestDto = {
+  access: OrganizationApiAccessDto;
+  delivered: boolean;
+  status: number | null;
+  error: string | null;
+};
+
 export type ScreenDescriptor =
   | { kind: "home"; activeApp: AppKey }
   | { kind: "list"; activeApp: AppKey; object: CrmObject }

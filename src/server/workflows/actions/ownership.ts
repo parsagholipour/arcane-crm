@@ -1,5 +1,6 @@
 import { AppAuthorizationError } from "@/lib/organization-context";
 import { prisma } from "@/lib/prisma";
+import { emitLeadUpdated } from "@/lib/public-api/emit";
 
 export async function resolveOwner(organizationId: string, value: string) {
   const membership = await prisma.organizationMembership.findFirst({
@@ -49,7 +50,9 @@ export async function changeOwner(
         where: { organizationId, id: { in: ids } },
         data: { ownerId, updatedById: userId }
       });
-      return prisma.lead.findMany({ where: { organizationId, id: { in: ids } } });
+      const records = await prisma.lead.findMany({ where: { organizationId, id: { in: ids } } });
+      for (const lead of records) await emitLeadUpdated(organizationId, lead.id);
+      return records;
     }
     case "Opportunity": {
       await prisma.opportunity.updateMany({

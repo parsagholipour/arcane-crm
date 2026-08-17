@@ -13,6 +13,7 @@ import { attachTrackedDeliveries } from "@/lib/email/tracking";
 import { DEFAULT_EVENT_REMINDER_MINUTES } from "@/lib/calendar-reminder-values";
 import { calendarErrorResponse, validateEventReminderMinutes } from "@/lib/calendar-events";
 import { prisma } from "@/lib/prisma";
+import { emitLeadCreated } from "@/lib/public-api/emit";
 import { assertLeadIdentityFields, RecordPayloadValidationError, validateRecordPayload } from "@/lib/record-validation";
 import { syncLeadSampleRequestReminder } from "@/lib/sample-request-notifications";
 import { syncRecordShipment } from "@/lib/shipment-tracking-sync";
@@ -107,6 +108,7 @@ export async function POST(request: NextRequest, context: { params: Params }) {
     if (object === "Opportunity" || object === "Lead")
       await syncRecordShipment(authContext.organizationId, object, record);
     if (object === "Lead") await syncLeadSampleRequestReminder(record);
+    if (object === "Lead") await emitLeadCreated(authContext.organizationId, String(record.id));
     if (delivery?.deliveryIds?.length && (object === "Case" || object === "ListEmail")) {
       await attachTrackedDeliveries(delivery.deliveryIds, {
         organizationId: authContext.organizationId,
