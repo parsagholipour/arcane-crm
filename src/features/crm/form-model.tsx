@@ -208,6 +208,9 @@ export function formatListCell(object: CrmObject, record: RecordData, key: strin
   if (tracked && ["deliveryDate", "sampleRequestedDate"].includes(key) && record[key]) {
     return formatDate(String(record[key]));
   }
+  if (key === "createdAt" && record[key]) {
+    return formatDate(String(record[key]));
+  }
   return formatCell(record[key]);
 }
 export function fieldLabel(field: string) {

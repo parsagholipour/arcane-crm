@@ -69,7 +69,7 @@ export const OBJECT_DEFINITIONS: Record<CrmObject, ObjectDefinition> = {
       { key: "status", label: "Lead Status" },
       { key: "sampleStatus", label: "Sample Status" },
       { key: "trackingStatus", label: "Tracking Status" },
-      { key: "createdAt", label: "Created Date" }
+      { key: "createdAt", label: "Created Date", width: "90px" }
     ],
     searchInputName: "Lead-search-input",
     statusWhenEmpty: "0 items - Sorted by Name - Filtered by Lead Status - Updated a few seconds ago",
