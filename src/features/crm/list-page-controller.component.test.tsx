@@ -1,7 +1,13 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useListViewController, type ListViewPageProps } from "@/features/crm/list-page-controller";
 import { type ScopedCrmData } from "@/lib/crm-types";
+
+const resourceMocks = vi.hoisted(() => ({
+  saveListView: vi.fn()
+}));
+
+vi.mock("@/lib/api/resources", () => ({ resourceApi: resourceMocks }));
 
 const account = { id: "account-1", name: "Acme" };
 
@@ -32,6 +38,10 @@ function accountListProps(): ListViewPageProps {
   };
 }
 
+beforeEach(() => {
+  resourceMocks.saveListView.mockReset();
+});
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -61,6 +71,48 @@ describe("useListViewController bulk delete", () => {
 
     expect(result.current.selected).toEqual([]);
     expect(result.current.canDeleteSelected).toBe(false);
+  });
+});
+
+describe("useListViewController pin toggle", () => {
+  it("pins the current list view", async () => {
+    resourceMocks.saveListView.mockResolvedValue({
+      listViewPreferences: [{ object: "Account", viewName: "All Accounts", pinned: true }]
+    });
+    const props = accountListProps();
+    const { result } = renderHook(() => useListViewController(props));
+
+    await act(async () => {
+      await result.current.pinListView();
+    });
+
+    expect(resourceMocks.saveListView).toHaveBeenCalledWith(expect.objectContaining({ viewName: "All Accounts" }), true);
+    expect(props.onToast).toHaveBeenCalledWith({
+      tone: "success",
+      message: '"All Accounts" is now pinned.'
+    });
+  });
+
+  it("unpins the current list view", async () => {
+    resourceMocks.saveListView.mockResolvedValue({
+      listViewPreferences: [{ object: "Account", viewName: "All Accounts", pinned: false }]
+    });
+    const props = accountListProps();
+    props.data.listViewPreferences = [{ object: "Account", viewName: "All Accounts", pinned: true }];
+    const { result } = renderHook(() => useListViewController(props));
+
+    await act(async () => {
+      await result.current.pinListView();
+    });
+
+    expect(resourceMocks.saveListView).toHaveBeenCalledWith(
+      expect.objectContaining({ viewName: "All Accounts" }),
+      false
+    );
+    expect(props.onToast).toHaveBeenCalledWith({
+      tone: "success",
+      message: '"All Accounts" is no longer pinned.'
+    });
   });
 });
 

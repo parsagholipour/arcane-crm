@@ -360,6 +360,7 @@ export function useListViewController({
     return true;
   }
   async function pinListView() {
+    const nextPinned = !isPinned;
     const response = await resourceApi.saveListView(
       {
         object,
@@ -371,14 +372,20 @@ export function useListViewController({
         chartField,
         isCustom: isCustomListView
       },
-      true
+      nextPinned
     );
     if (!Array.isArray(response?.listViewPreferences)) {
-      onToast({ tone: "error", message: "List view couldn't be pinned." });
+      onToast({
+        tone: "error",
+        message: nextPinned ? "List view couldn't be pinned." : "List view couldn't be unpinned."
+      });
       return;
     }
     applyListViewPreferences(response.listViewPreferences as RecordData[]);
-    onToast({ tone: "success", message: `"${listView}" is now pinned.` });
+    onToast({
+      tone: "success",
+      message: nextPinned ? `"${listView}" is now pinned.` : `"${listView}" is no longer pinned.`
+    });
   }
   async function deleteListViewPreference() {
     const response = await resourceApi.deleteListView({ object, viewName: listView });

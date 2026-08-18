@@ -80,13 +80,16 @@ export async function handleListsMutation(context: ResourceMutationContext) {
     if (!object || !viewName || columns.length === 0)
       return NextResponse.json({ error: "Object, view name, and columns are required." }, { status: 400 });
 
-    await prisma.listViewPreference.updateMany({
-      where: { ...personalWhere, object },
-      data: { pinned: false }
-    });
+    const pinned = Boolean(values.pin);
+    if (pinned) {
+      await prisma.listViewPreference.updateMany({
+        where: { ...personalWhere, object },
+        data: { pinned: false }
+      });
+    }
     const preference = await prisma.listViewPreference.upsert({
       where: { organizationId_userId_object_viewName: { organizationId, userId, object, viewName } },
-      update: { columns, columnWidths, filters, chartType, chartField, pinned: true },
+      update: { columns, columnWidths, filters, chartType, chartField, pinned },
       create: {
         organizationId,
         userId,
@@ -97,7 +100,7 @@ export async function handleListsMutation(context: ResourceMutationContext) {
         filters,
         chartType,
         chartField,
-        pinned: true,
+        pinned,
         isCustom: Boolean(values.isCustom)
       }
     });

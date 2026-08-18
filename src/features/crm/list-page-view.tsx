@@ -131,7 +131,8 @@ export function ListView({ model }: { model: ListViewPageModel }) {
                 </DropdownMenu.Root>
                 <button
                   className="flex h-7 w-7 items-center justify-center rounded text-brand-700 hover:bg-brand-50"
-                  aria-label={isPinned ? "This list is pinned." : "Pin this list view."}
+                  aria-label={isPinned ? "Unpin this list view." : "Pin this list view."}
+                  aria-pressed={isPinned}
                   onClick={() => void pinListView()}
                 >
                   <Pin size={15} fill={isPinned ? "currentColor" : "none"} />

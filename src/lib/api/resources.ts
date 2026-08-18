@@ -41,8 +41,8 @@ export const resourceApi = {
   clearSetupShortcutHistory: () => mutate("/api/setup/history", "DELETE"),
   updateNavigationPreference: (values: RecordData) => mutate("/api/navigation/preferences", "PUT", values),
   resetNavigationPreference: (values: RecordData) => mutate("/api/navigation/preferences", "DELETE", values),
-  saveListView: (values: RecordData, pin = false) =>
-    mutate("/api/list-views", "PUT", { ...values, ...(pin ? { pin: true } : {}) }),
+  saveListView: (values: RecordData, pin?: boolean) =>
+    mutate("/api/list-views", "PUT", { ...values, ...(typeof pin === "boolean" ? { pin } : {}) }),
   deleteListView: (values: RecordData) => mutate("/api/list-views", "DELETE", values),
   saveSearchRecent: (values: RecordData) => mutate("/api/search/recents", "POST", values),
   clearSearchRecents: () => mutate("/api/search/recents", "DELETE"),

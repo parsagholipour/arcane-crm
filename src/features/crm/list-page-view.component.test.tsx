@@ -97,6 +97,32 @@ describe("ListView loading state", () => {
   });
 });
 
+describe("ListView pin control", () => {
+  it("pins the current list view", async () => {
+    const user = userEvent.setup();
+    const pinListView = vi.fn().mockResolvedValue(undefined);
+    render(<ListView model={{ ...loadingLeadListModel(), listLoading: false, pinListView }} />);
+
+    const pinButton = screen.getByRole("button", { name: "Pin this list view." });
+    expect(pinButton).toHaveAttribute("aria-pressed", "false");
+    await user.click(pinButton);
+
+    expect(pinListView).toHaveBeenCalledTimes(1);
+  });
+
+  it("unpins the current list view", async () => {
+    const user = userEvent.setup();
+    const pinListView = vi.fn().mockResolvedValue(undefined);
+    render(<ListView model={{ ...loadingLeadListModel(), listLoading: false, isPinned: true, pinListView }} />);
+
+    const pinButton = screen.getByRole("button", { name: "Unpin this list view." });
+    expect(pinButton).toHaveAttribute("aria-pressed", "true");
+    await user.click(pinButton);
+
+    expect(pinListView).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("ListView bulk delete", () => {
   it("deletes the current selection from the list header", async () => {
     const user = userEvent.setup();
