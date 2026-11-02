@@ -1,0 +1,31 @@
+# Image for the YPM app host on AWS (arm64), built by .github/workflows/deploy.yml.
+# Mirrors Railway's Railpack build (Node 22, npm ci, next build); Railway ran
+# `npx prisma migrate deploy` before each deploy, here it runs before the server.
+# Build-time values (NEXT_PUBLIC_*), if any are added, arrive in .aws-build.env,
+# which the workflow writes from SSM /ypm/prod/build/crm/.
+# The root filesystem is read-only at runtime: .next/cache and /tmp are tmpfs.
+
+FROM public.ecr.aws/docker/library/node:22.23.2-bookworm-slim AS build
+# Prisma's engines link against OpenSSL.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates openssl \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN if [ -f .aws-build.env ]; then cp .aws-build.env .env.production.local; fi \
+  && node_modules/.bin/prisma generate \
+  && NEXT_TELEMETRY_DISABLED=1 node_modules/.bin/next build \
+  && rm -rf .next/cache
+
+FROM public.ecr.aws/docker/library/node:22.23.2-bookworm-slim
+RUN apt-get update && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends ca-certificates openssl \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+# The prisma CLI is a devDependency, so dependencies are not pruned (as on Railway).
+COPY --from=build /app /app
+USER 1000:1000
+ENV NODE_ENV=production PORT=3007 HOME=/tmp NEXT_TELEMETRY_DISABLED=1 CHECKPOINT_DISABLE=1
+EXPOSE 3007
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && exec node_modules/.bin/next start -p 3007"]
